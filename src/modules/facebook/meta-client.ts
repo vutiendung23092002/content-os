@@ -1,0 +1,284 @@
+import "server-only";
+import { z } from "zod";
+import { AppError } from "@/lib/errors/app-error";
+
+const graphErrorSchema = z.object({
+  error: z.object({
+    code: z.number().optional(),
+    error_subcode: z.number().optional(),
+    type: z.string().optional(),
+    message: z.string().optional(),
+    fbtrace_id: z.string().optional(),
+  }),
+});
+
+const managedPagesSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      access_token: z.string().min(1),
+      category: z.string().optional(),
+      tasks: z.array(z.string()).optional().default([]),
+    }),
+  ),
+  paging: z
+    .object({
+      cursors: z.object({ after: z.string().optional() }).optional(),
+    })
+    .optional(),
+});
+
+const postMutationSchema = z.object({ id: z.string().min(1) });
+const updateMutationSchema = z.union([
+  z.object({ success: z.literal(true) }),
+  z.object({ id: z.string().min(1) }),
+]);
+const deleteMutationSchema = z.object({ success: z.boolean() });
+
+const scheduledPostsSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string().min(1),
+      message: z.string().optional(),
+      scheduled_publish_time: z.union([z.number(), z.string()]).optional(),
+      is_published: z.boolean().optional(),
+      created_time: z.string().optional(),
+    }),
+  ),
+  paging: z
+    .object({
+      cursors: z.object({ after: z.string().optional() }).optional(),
+    })
+    .optional(),
+});
+
+const publishedPostsSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string().min(1),
+      message: z.string().optional(),
+      created_time: z.string().optional(),
+      updated_time: z.string().optional(),
+      permalink_url: z.string().optional(),
+      is_published: z.boolean().optional(),
+    }),
+  ),
+  paging: z
+    .object({
+      cursors: z.object({ after: z.string().optional() }).optional(),
+    })
+    .optional(),
+});
+
+export type ManagedPageCredential = {
+  externalPageId: string;
+  name: string;
+  accessToken: string;
+  category?: string;
+  tasks: string[];
+};
+
+export type MetaClientOptions = {
+  graphVersion: string;
+  accessToken: string;
+  baseUrl?: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+};
+
+export class MetaGraphClient {
+  private readonly graphVersion: string;
+  private readonly accessToken: string;
+  private readonly baseUrl: string;
+  private readonly fetchImplementation: typeof fetch;
+  private readonly timeoutMs: number;
+
+  constructor(options: MetaClientOptions) {
+    this.graphVersion = options.graphVersion.startsWith("v")
+      ? options.graphVersion
+      : `v${options.graphVersion}`;
+    this.accessToken = options.accessToken;
+    this.baseUrl = options.baseUrl ?? "https://graph.facebook.com";
+    this.fetchImplementation = options.fetch ?? fetch;
+    this.timeoutMs = options.timeoutMs ?? 15_000;
+  }
+
+  async getManagedPages(after?: string): Promise<{
+    pages: ManagedPageCredential[];
+    after?: string;
+  }> {
+    const query = new URLSearchParams({
+      fields: "id,name,access_token,category,tasks",
+    });
+    if (after) query.set("after", after);
+    const result = managedPagesSchema.parse(
+      await this.request("me/accounts", { query }),
+    );
+
+    return {
+      pages: result.data.map((page) => ({
+        externalPageId: page.id,
+        name: page.name,
+        accessToken: page.access_token,
+        category: page.category,
+        tasks: page.tasks,
+      })),
+      after: result.paging?.cursors?.after,
+    };
+  }
+
+  async publishText(pageId: string, message: string): Promise<string> {
+    const result = postMutationSchema.parse(
+      await this.request(`${encodeURIComponent(pageId)}/feed`, {
+        method: "POST",
+        body: new URLSearchParams({ message }),
+      }),
+    );
+    return result.id;
+  }
+
+  async scheduleText(
+    pageId: string,
+    message: string,
+    scheduledFor: Date,
+  ): Promise<string> {
+    const result = postMutationSchema.parse(
+      await this.request(`${encodeURIComponent(pageId)}/feed`, {
+        method: "POST",
+        body: new URLSearchParams({
+          message,
+          published: "false",
+          scheduled_publish_time: String(
+            Math.floor(scheduledFor.getTime() / 1000),
+          ),
+        }),
+      }),
+    );
+    return result.id;
+  }
+
+  async getScheduledPosts(pageId: string, after?: string) {
+    const query = new URLSearchParams({
+      fields: "id,message,scheduled_publish_time,is_published,created_time",
+    });
+    if (after) query.set("after", after);
+
+    const result = scheduledPostsSchema.parse(
+      await this.request(`${encodeURIComponent(pageId)}/scheduled_posts`, {
+        query,
+      }),
+    );
+
+    return {
+      posts: result.data,
+      after: result.paging?.cursors?.after,
+    };
+  }
+
+  async getPublishedPosts(pageId: string, after?: string) {
+    const query = new URLSearchParams({
+      fields: "id,message,created_time,updated_time,permalink_url,is_published",
+    });
+    if (after) query.set("after", after);
+
+    const result = publishedPostsSchema.parse(
+      await this.request(`${encodeURIComponent(pageId)}/posts`, { query }),
+    );
+
+    return {
+      posts: result.data,
+      after: result.paging?.cursors?.after,
+    };
+  }
+
+  async reschedulePost(
+    remotePostId: string,
+    scheduledFor: Date,
+  ): Promise<void> {
+    updateMutationSchema.parse(
+      await this.request(encodeURIComponent(remotePostId), {
+        method: "POST",
+        body: new URLSearchParams({
+          scheduled_publish_time: String(
+            Math.floor(scheduledFor.getTime() / 1000),
+          ),
+        }),
+      }),
+    );
+  }
+
+  async cancelScheduledPost(remotePostId: string): Promise<void> {
+    const result = deleteMutationSchema.parse(
+      await this.request(encodeURIComponent(remotePostId), {
+        method: "DELETE",
+      }),
+    );
+
+    if (!result.success) {
+      throw new AppError({
+        code: "FACEBOOK_CANCEL_REJECTED",
+        message: "Facebook không xác nhận hủy bài hẹn giờ.",
+        status: 502,
+      });
+    }
+  }
+
+  private async request(
+    path: string,
+    options: {
+      method?: "GET" | "POST" | "DELETE";
+      query?: URLSearchParams;
+      body?: URLSearchParams;
+    },
+  ): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}/${this.graphVersion}/${path}`);
+    options.query?.forEach((value, key) => url.searchParams.set(key, value));
+
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(url, {
+        method: options.method ?? "GET",
+        headers: {
+          authorization: `Bearer ${this.accessToken}`,
+          ...(options.body
+            ? {
+                "content-type":
+                  "application/x-www-form-urlencoded;charset=UTF-8",
+              }
+            : {}),
+        },
+        body: options.body,
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch (error) {
+      throw new AppError({
+        code: "FACEBOOK_NETWORK_ERROR",
+        message: "Không thể kết nối Meta Graph API.",
+        status: 502,
+        retryable: true,
+        cause: error,
+      });
+    }
+
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      const graphError = graphErrorSchema.safeParse(payload);
+      const code = graphError.success ? graphError.data.error.code : undefined;
+      const permissionDenied = code === 10 || code === 190 || code === 200;
+
+      throw new AppError({
+        code: permissionDenied
+          ? "FACEBOOK_PERMISSION_DENIED"
+          : "FACEBOOK_API_ERROR",
+        message: permissionDenied
+          ? "Facebook token không còn đủ quyền cho thao tác này."
+          : "Meta Graph API từ chối yêu cầu.",
+        status: permissionDenied ? 403 : 502,
+        retryable: response.status === 429 || response.status >= 500,
+      });
+    }
+
+    return payload;
+  }
+}
