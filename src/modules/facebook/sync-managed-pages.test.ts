@@ -18,6 +18,7 @@ describe("syncManagedPages", () => {
             externalPageId: "external-1",
             name: "Page One",
             accessToken: "page-token-1",
+            avatarUrl: "https://images.test/page-one.jpg",
             tasks: ["CREATE_CONTENT"],
           },
         ],
@@ -49,6 +50,7 @@ describe("syncManagedPages", () => {
           id: `local-${index + 1}`,
           externalPageId: page.externalPageId,
           name: page.name,
+          avatarUrl: page.avatarUrl,
           category: page.category,
           tasks: page.tasks,
         }));
@@ -63,6 +65,7 @@ describe("syncManagedPages", () => {
     expect(getManagedPages).toHaveBeenNthCalledWith(1, undefined);
     expect(getManagedPages).toHaveBeenNthCalledWith(2, "cursor-2");
     expect(result).toHaveLength(2);
+    expect(result[0]?.avatarUrl).toBe("https://images.test/page-one.jpg");
     expect(JSON.stringify(result)).not.toContain("page-token");
   });
 

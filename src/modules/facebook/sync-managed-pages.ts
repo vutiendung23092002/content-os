@@ -24,6 +24,7 @@ export type SafeSyncedPage = {
   id: string;
   externalPageId: string;
   name: string;
+  avatarUrl?: string;
   category?: string;
   tasks: string[];
 };
@@ -45,6 +46,7 @@ async function persistManagedPages(
       const page = await pageRepository.upsertManagedPage({
         externalPageId: managedPage.externalPageId,
         name: managedPage.name,
+        avatarUrl: managedPage.avatarUrl,
         category: managedPage.category,
         remoteMetadata: { tasks: managedPage.tasks },
       });
@@ -56,6 +58,7 @@ async function persistManagedPages(
         id: page.id,
         externalPageId: page.externalPageId,
         name: page.name,
+        avatarUrl: page.avatarUrl ?? undefined,
         category: page.category ?? undefined,
         tasks: managedPage.tasks,
       });

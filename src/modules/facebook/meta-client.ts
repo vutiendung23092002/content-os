@@ -12,6 +12,15 @@ const graphErrorSchema = z.object({
   }),
 });
 
+const pictureSchema = z
+  .object({
+    data: z.object({
+      url: z.string().url(),
+      is_silhouette: z.boolean().optional(),
+    }),
+  })
+  .optional();
+
 const managedPagesSchema = z.object({
   data: z.array(
     z.object({
@@ -19,6 +28,7 @@ const managedPagesSchema = z.object({
       name: z.string().min(1),
       access_token: z.string().min(1),
       category: z.string().optional(),
+      picture: pictureSchema,
       tasks: z.array(z.string()).optional().default([]),
     }),
   ),
@@ -32,15 +42,6 @@ const managedPagesSchema = z.object({
 const graphIdSchema = z
   .union([z.string().min(1), z.number()])
   .transform((value) => String(value));
-
-const pictureSchema = z
-  .object({
-    data: z.object({
-      url: z.string().url(),
-      is_silhouette: z.boolean().optional(),
-    }),
-  })
-  .optional();
 
 const userProfileSchema = z.object({
   id: graphIdSchema,
@@ -88,6 +89,7 @@ const scheduledPostsSchema = z.object({
       scheduled_publish_time: z.union([z.number(), z.string()]).optional(),
       is_published: z.boolean().optional(),
       created_time: z.string().optional(),
+      full_picture: z.string().optional(),
     }),
   ),
   paging: z
@@ -96,6 +98,41 @@ const scheduledPostsSchema = z.object({
     })
     .optional(),
 });
+
+const engagementEdgeSchema = z
+  .object({
+    summary: z
+      .object({
+        total_count: z.number().int().nonnegative(),
+      })
+      .optional(),
+  })
+  .optional();
+
+const attachmentMediaSchema = z
+  .object({
+    image: z.object({ src: z.string().url() }).optional(),
+  })
+  .optional();
+
+const subattachmentSchema = z.object({
+  media_type: z.string().optional(),
+  media: attachmentMediaSchema,
+});
+
+const attachmentsSchema = z
+  .object({
+    data: z.array(
+      z.object({
+        media_type: z.string().optional(),
+        media: attachmentMediaSchema,
+        subattachments: z
+          .object({ data: z.array(subattachmentSchema) })
+          .optional(),
+      }),
+    ),
+  })
+  .optional();
 
 const publishedPostsSchema = z.object({
   data: z.array(
@@ -106,6 +143,11 @@ const publishedPostsSchema = z.object({
       updated_time: z.string().optional(),
       permalink_url: z.string().optional(),
       is_published: z.boolean().optional(),
+      full_picture: z.string().optional(),
+      reactions: engagementEdgeSchema,
+      comments: engagementEdgeSchema,
+      shares: z.object({ count: z.number().int().nonnegative() }).optional(),
+      attachments: attachmentsSchema,
     }),
   ),
   paging: z
@@ -119,6 +161,7 @@ export type ManagedPageCredential = {
   externalPageId: string;
   name: string;
   accessToken: string;
+  avatarUrl?: string;
   category?: string;
   tasks: string[];
 };
@@ -183,7 +226,7 @@ export class MetaGraphClient {
     after?: string;
   }> {
     const query = new URLSearchParams({
-      fields: "id,name,access_token,category,tasks",
+      fields: "id,name,access_token,category,picture.type(small),tasks",
     });
     if (after) query.set("after", after);
     const result = managedPagesSchema.parse(
@@ -195,6 +238,7 @@ export class MetaGraphClient {
         externalPageId: page.id,
         name: page.name,
         accessToken: page.access_token,
+        avatarUrl: page.picture?.data.url,
         category: page.category,
         tasks: page.tasks,
       })),
@@ -301,9 +345,11 @@ export class MetaGraphClient {
     return result.id;
   }
 
-  async getScheduledPosts(pageId: string, after?: string) {
+  async getScheduledPosts(pageId: string, after?: string, limit = 50) {
     const query = new URLSearchParams({
-      fields: "id,message,scheduled_publish_time,is_published,created_time",
+      fields:
+        "id,message,scheduled_publish_time,is_published,created_time,full_picture",
+      limit: String(Math.min(Math.max(limit, 1), 100)),
     });
     if (after) query.set("after", after);
 
@@ -319,9 +365,11 @@ export class MetaGraphClient {
     };
   }
 
-  async getPublishedPosts(pageId: string, after?: string) {
+  async getPublishedPosts(pageId: string, after?: string, limit = 50) {
     const query = new URLSearchParams({
-      fields: "id,message,created_time,updated_time,permalink_url,is_published",
+      fields:
+        "id,message,created_time,updated_time,permalink_url,is_published,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares,attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+      limit: String(Math.min(Math.max(limit, 1), 100)),
     });
     if (after) query.set("after", after);
 

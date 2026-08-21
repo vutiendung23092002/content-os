@@ -1,0 +1,227 @@
+import "server-only";
+import { z } from "zod";
+import { getDatabase } from "@/db/client";
+import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
+import { PageRepository } from "@/db/repositories/page-repository";
+import { decryptToken } from "@/lib/crypto/token-crypto";
+import { requireServerEnv } from "@/lib/env/server";
+import { AppError } from "@/lib/errors/app-error";
+import { MetaGraphClient } from "./meta-client";
+
+export const remotePostKindSchema = z.enum(["published", "scheduled"]);
+
+export type RemotePostKind = z.infer<typeof remotePostKindSchema>;
+
+export type RemoteFacebookPost = {
+  remoteId: string;
+  kind: RemotePostKind;
+  message: string;
+  effectiveAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  permalinkUrl: string | null;
+  imageUrl: string | null;
+  imageUrls: string[];
+  engagement: {
+    reactions: number;
+    comments: number;
+    shares: number;
+  } | null;
+  source: "facebook";
+};
+
+export type RemotePostPage = {
+  id: string;
+  externalPageId: string;
+  name: string;
+  avatarUrl: string | null;
+  timezone: string | null;
+};
+
+export type RemotePostAccess = {
+  load(localPageId: string): Promise<{
+    page: RemotePostPage;
+    pageAccessToken: string;
+  }>;
+};
+
+export type RemotePostMetaClient = Pick<
+  MetaGraphClient,
+  "getPublishedPosts" | "getScheduledPosts"
+>;
+
+class DatabaseRemotePostAccess implements RemotePostAccess {
+  async load(localPageId: string) {
+    const database = getDatabase();
+    const page = await new PageRepository(database).findById(localPageId);
+    if (!page || !page.isActive || page.connectionStatus !== "active") {
+      throw new AppError({
+        code: "PAGE_NOT_ACTIVE",
+        message: "Page chưa sẵn sàng để đọc bài viết.",
+        status: 409,
+      });
+    }
+
+    const credential = await new PageCredentialRepository(
+      database,
+    ).findByPageId(page.id);
+    if (
+      !credential ||
+      credential.revokedAt ||
+      (credential.expiresAt && credential.expiresAt <= new Date())
+    ) {
+      throw new AppError({
+        code: "PAGE_CREDENTIAL_MISSING",
+        message: "Page chưa có credential hợp lệ.",
+        status: 409,
+      });
+    }
+
+    return {
+      page: {
+        id: page.id,
+        externalPageId: page.externalPageId,
+        name: page.name,
+        avatarUrl: page.avatarUrl,
+        timezone: page.timezone,
+      },
+      pageAccessToken: decryptToken(
+        {
+          ciphertext: credential.accessTokenCiphertext,
+          nonce: credential.nonce,
+          authTag: credential.authTag,
+          keyVersion: credential.keyVersion,
+          fingerprint: credential.tokenFingerprint,
+        },
+        requireServerEnv("TOKEN_ENCRYPTION_KEY"),
+      ),
+    };
+  }
+}
+
+function toIsoDate(value?: string | number): string | null {
+  if (value === undefined || value === "") return null;
+
+  const numeric = typeof value === "number" ? value : Number(value);
+  const date = Number.isFinite(numeric)
+    ? new Date(numeric * 1000)
+    : new Date(String(value));
+
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function getPublishedImageUrls(post: {
+  full_picture?: string;
+  attachments?: {
+    data: Array<{
+      media?: { image?: { src: string } };
+      subattachments?: {
+        data: Array<{ media?: { image?: { src: string } } }>;
+      };
+    }>;
+  };
+}): string[] {
+  const rootAttachments = post.attachments?.data ?? [];
+  const nestedAttachments = rootAttachments.flatMap(
+    (attachment) => attachment.subattachments?.data ?? [],
+  );
+  const attachments =
+    nestedAttachments.length > 0 ? nestedAttachments : rootAttachments;
+  const urls = attachments.flatMap((attachment) =>
+    attachment.media?.image?.src ? [attachment.media.image.src] : [],
+  );
+  if (urls.length === 0 && post.full_picture) urls.push(post.full_picture);
+  return [...new Set(urls)];
+}
+
+export class RemotePostReader {
+  constructor(
+    private readonly access: RemotePostAccess = new DatabaseRemotePostAccess(),
+    private readonly clientFactory: (
+      pageAccessToken: string,
+    ) => RemotePostMetaClient = (pageAccessToken) =>
+      new MetaGraphClient({
+        graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
+        accessToken: pageAccessToken,
+      }),
+  ) {}
+
+  async list(input: {
+    localPageId: string;
+    kind: RemotePostKind;
+    after?: string;
+  }): Promise<{
+    page: RemotePostPage;
+    posts: RemoteFacebookPost[];
+    after: string | null;
+    fetchedAt: string;
+  }> {
+    const localPageId = z.uuid().parse(input.localPageId);
+    const kind = remotePostKindSchema.parse(input.kind);
+    const after = input.after
+      ? z.string().trim().min(1).max(2048).parse(input.after)
+      : undefined;
+    const context = await this.access.load(localPageId);
+    const client = this.clientFactory(context.pageAccessToken);
+
+    if (kind === "scheduled") {
+      const result = await client.getScheduledPosts(
+        context.page.externalPageId,
+        after,
+      );
+
+      return {
+        page: context.page,
+        posts: result.posts.map((post) => ({
+          remoteId: post.id,
+          kind,
+          message: post.message ?? "",
+          effectiveAt: toIsoDate(post.scheduled_publish_time),
+          createdAt: toIsoDate(post.created_time),
+          updatedAt: null,
+          permalinkUrl: null,
+          imageUrl: post.full_picture ?? null,
+          imageUrls: post.full_picture ? [post.full_picture] : [],
+          engagement: null,
+          source: "facebook",
+        })),
+        after: result.after ?? null,
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+
+    const result = await client.getPublishedPosts(
+      context.page.externalPageId,
+      after,
+    );
+
+    return {
+      page: context.page,
+      posts: result.posts.map((post) => {
+        const createdAt = toIsoDate(post.created_time);
+        const updatedAt = toIsoDate(post.updated_time);
+        const imageUrls = getPublishedImageUrls(post);
+
+        return {
+          remoteId: post.id,
+          kind,
+          message: post.message ?? "",
+          effectiveAt: createdAt ?? updatedAt,
+          createdAt,
+          updatedAt,
+          permalinkUrl: post.permalink_url ?? null,
+          imageUrl: imageUrls[0] ?? null,
+          imageUrls,
+          engagement: {
+            reactions: post.reactions?.summary?.total_count ?? 0,
+            comments: post.comments?.summary?.total_count ?? 0,
+            shares: post.shares?.count ?? 0,
+          },
+          source: "facebook" as const,
+        };
+      }),
+      after: result.after ?? null,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+}

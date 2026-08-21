@@ -10,6 +10,9 @@ describe("MetaGraphClient", () => {
             id: "page-1",
             name: "Page One",
             access_token: "page-token",
+            picture: {
+              data: { url: "https://images.test/page-one.jpg" },
+            },
             tasks: [],
           },
         ],
@@ -30,6 +33,10 @@ describe("MetaGraphClient", () => {
       "Bearer user-token",
     );
     expect(result.pages[0]?.accessToken).toBe("page-token");
+    expect(result.pages[0]?.avatarUrl).toBe("https://images.test/page-one.jpg");
+    expect(new URL(String(url)).searchParams.get("fields")).toContain(
+      "picture.type(small)",
+    );
   });
 
   it("creates a Facebook-native schedule", async () => {
@@ -90,6 +97,32 @@ describe("MetaGraphClient", () => {
             id: "page-1_post-1",
             message: "Published caption",
             is_published: true,
+            reactions: { summary: { total_count: 12 } },
+            comments: { summary: { total_count: 4 } },
+            shares: { count: 2 },
+            attachments: {
+              data: [
+                {
+                  media_type: "album",
+                  subattachments: {
+                    data: [
+                      {
+                        media_type: "photo",
+                        media: {
+                          image: { src: "https://images.test/photo-1.jpg" },
+                        },
+                      },
+                      {
+                        media_type: "photo",
+                        media: {
+                          image: { src: "https://images.test/photo-2.jpg" },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
           },
         ],
         paging: {
@@ -106,10 +139,58 @@ describe("MetaGraphClient", () => {
     });
 
     const result = await client.getPublishedPosts("page-1");
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
 
     expect(result.posts[0]?.id).toBe("page-1_post-1");
+    expect(result.posts[0]?.reactions?.summary?.total_count).toBe(12);
+    expect(result.posts[0]?.comments?.summary?.total_count).toBe(4);
+    expect(result.posts[0]?.shares?.count).toBe(2);
+    expect(
+      result.posts[0]?.attachments?.data[0]?.subattachments?.data,
+    ).toHaveLength(2);
     expect(result.after).toBe("safe-cursor");
     expect(JSON.stringify(result)).not.toContain("access_token");
+    expect(new URL(String(url)).searchParams.get("limit")).toBe("50");
+    expect(new URL(String(url)).searchParams.get("fields")).toContain(
+      "full_picture",
+    );
+    expect(new URL(String(url)).searchParams.get("fields")).toContain(
+      "reactions.limit(0).summary(true)",
+    );
+    expect(new URL(String(url)).searchParams.get("fields")).toContain(
+      "attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+    );
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.body).toBeUndefined();
+  });
+
+  it("reads scheduled posts with GET and a bounded page size", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        data: [
+          {
+            id: "page-1_post-2",
+            message: "Scheduled caption",
+            scheduled_publish_time: 1_800_000_000,
+            is_published: false,
+          },
+        ],
+      }),
+    );
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    const result = await client.getScheduledPosts("page-1", undefined, 500);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+
+    expect(result.posts[0]?.id).toBe("page-1_post-2");
+    expect(new URL(String(url)).searchParams.get("limit")).toBe("100");
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.body).toBeUndefined();
   });
 
   it("reschedules and cancels an existing scheduled post", async () => {
