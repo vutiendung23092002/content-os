@@ -1,0 +1,1168 @@
+"use client";
+
+import Link from "next/link";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  addDays,
+  getAdaptiveTimelineTop,
+  getDayIndexInWeek,
+  getTimelineHourLayouts,
+  getWeekDays,
+  isSameDay,
+  startOfWeek,
+  TIMELINE_EVENT_GAP,
+  TIMELINE_EVENT_HEIGHT,
+  TIMELINE_HOUR_PADDING,
+} from "./post-view-model";
+
+type PageDto = {
+  id: string;
+  externalPageId: string;
+  name: string;
+  avatarUrl: string | null;
+  category: string | null;
+  connectionStatus: string;
+};
+
+type DraftDto = {
+  id: string;
+  pageId: string;
+  message: string;
+  updatedAt: string;
+};
+
+type RemotePostDto = {
+  remoteId: string;
+  kind: "published" | "scheduled";
+  message: string;
+  effectiveAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  permalinkUrl: string | null;
+  imageUrl: string | null;
+  imageUrls: string[];
+  engagement: {
+    reactions: number;
+    comments: number;
+    shares: number;
+  } | null;
+  source: "facebook";
+};
+
+type PostTab = "drafts" | "scheduled" | "published";
+type ViewMode = "table" | "timeline";
+
+const OPERATOR_TIMEZONE = "Asia/Ho_Chi_Minh";
+const weekDayFormatter = new Intl.DateTimeFormat("vi-VN", {
+  weekday: "long",
+});
+const shortDateFormatter = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+});
+const weekRangeFormatter = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const dateTimeFormatter = new Intl.DateTimeFormat("vi-VN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: OPERATOR_TIMEZONE,
+});
+const timeFormatter = new Intl.DateTimeFormat("vi-VN", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: OPERATOR_TIMEZONE,
+});
+
+async function readPayload<ResponseBody>(response: Response) {
+  const payload = (await response.json()) as ResponseBody & {
+    error?: { message?: string };
+  };
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? "Không thể tải dữ liệu.");
+  }
+  return payload;
+}
+
+function formatDateTime(value: string | null): string {
+  return value
+    ? dateTimeFormatter.format(new Date(value))
+    : "Chưa có thời gian";
+}
+
+function excerpt(message: string, length = 96): string {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (!normalized) return "Bài viết không có caption";
+  return normalized.length > length
+    ? `${normalized.slice(0, length).trim()}…`
+    : normalized;
+}
+
+function mergePosts(
+  current: RemotePostDto[],
+  incoming: RemotePostDto[],
+): RemotePostDto[] {
+  const records = new Map(current.map((post) => [post.remoteId, post]));
+  for (const post of incoming) records.set(post.remoteId, post);
+  return Array.from(records.values()).sort((first, second) => {
+    const firstTime = first.effectiveAt
+      ? new Date(first.effectiveAt).getTime()
+      : 0;
+    const secondTime = second.effectiveAt
+      ? new Date(second.effectiveAt).getTime()
+      : 0;
+    return secondTime - firstTime;
+  });
+}
+
+function ViewIcon({ mode }: { mode: ViewMode }) {
+  return mode === "table" ? (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+      <path d="M3 4.5h14v11H3zM3 8h14M7 4.5v11" />
+    </svg>
+  ) : (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+      <path d="M3 5.5h14v11H3zM6 3.5v4M14 3.5v4M3 9h14M7.7 12h.1M12.2 12h.1" />
+    </svg>
+  );
+}
+
+const compactNumberFormatter = new Intl.NumberFormat("vi-VN", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function EngagementSummary({
+  engagement,
+  compact = false,
+  showLabels = false,
+}: {
+  engagement: RemotePostDto["engagement"];
+  compact?: boolean;
+  showLabels?: boolean;
+}) {
+  if (!engagement) return null;
+
+  const metrics = [
+    {
+      key: "reactions",
+      label: "lượt bày tỏ cảm xúc",
+      shortLabel: "Reaction",
+      value: engagement.reactions,
+      icon: (
+        <path d="M7.2 16H4.5V8.8h2.7M7.2 9l2.4-5c.3-.7 1.2-.7 1.5-.1.4.8.3 1.8-.2 3l-.4.9h4.2c1 0 1.7.9 1.5 1.9l-1 4.8c-.2.9-1 1.5-1.9 1.5H7.2V9Z" />
+      ),
+    },
+    {
+      key: "comments",
+      label: "bình luận",
+      shortLabel: "Bình luận",
+      value: engagement.comments,
+      icon: <path d="M4 4.5h12v8H9l-4 3v-3H4v-8Z" />,
+    },
+    {
+      key: "shares",
+      label: "lượt chia sẻ",
+      shortLabel: "Chia sẻ",
+      value: engagement.shares,
+      icon: (
+        <path d="m11 5 4 4-4 4v-2.6c-3.3 0-5.4 1-7 3.1.6-4.2 2.7-6.7 7-6.7V5Z" />
+      ),
+    },
+  ] as const;
+
+  return (
+    <span className={`engagementSummary ${compact ? "isCompact" : ""}`}>
+      {metrics.map((metric) => (
+        <span
+          aria-label={`${metric.value} ${metric.label}`}
+          key={metric.key}
+          title={`${metric.value.toLocaleString("vi-VN")} ${metric.label}`}
+        >
+          <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+            {metric.icon}
+          </svg>
+          {compactNumberFormatter.format(metric.value)}
+          {showLabels ? ` ${metric.shortLabel}` : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function PageAvatar({ page }: { page: PageDto }) {
+  return page.avatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img alt="" className="pagePickerAvatar" src={page.avatarUrl} />
+  ) : (
+    <span
+      className="pagePickerAvatar pagePickerAvatarFallback"
+      aria-hidden="true"
+    >
+      {page.name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+function PagePicker({
+  pages,
+  value,
+  disabled,
+  onChange,
+}: {
+  pages: PageDto[];
+  value: string;
+  disabled: boolean;
+  onChange: (pageId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedPage = pages.find((page) => page.id === value) ?? pages[0];
+
+  useEffect(() => {
+    function closeWhenClickingOutside(event: MouseEvent) {
+      if (!shellRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (
+        event.key === "Escape" &&
+        shellRef.current?.contains(document.activeElement)
+      ) {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("mousedown", closeWhenClickingOutside);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeWhenClickingOutside);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  function focusOption(index: number) {
+    const normalized = (index + pages.length) % pages.length;
+    optionRefs.current[normalized]?.focus();
+  }
+
+  function openAndFocusSelected() {
+    setOpen(true);
+    window.requestAnimationFrame(() => {
+      const selectedIndex = Math.max(
+        0,
+        pages.findIndex((page) => page.id === value),
+      );
+      focusOption(selectedIndex);
+    });
+  }
+
+  return (
+    <div className="pagePickerShell" ref={shellRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={`pagePickerTrigger ${open ? "isOpen" : ""}`}
+        disabled={disabled || !selectedPage}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            openAndFocusSelected();
+          }
+        }}
+        ref={triggerRef}
+        type="button"
+      >
+        {selectedPage ? <PageAvatar page={selectedPage} /> : null}
+        <span className="pagePickerTriggerCopy">
+          <strong>{selectedPage?.name ?? "Chưa có Page"}</strong>
+          <small>{selectedPage?.category ?? "Facebook Page"}</small>
+        </span>
+        <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+          <path d="m6 8 4 4 4-4" />
+        </svg>
+      </button>
+
+      {open ? (
+        <div
+          aria-label="Chọn Facebook Page"
+          className="pagePickerMenu"
+          onKeyDown={(event) => {
+            const currentIndex = optionRefs.current.findIndex(
+              (option) => option === document.activeElement,
+            );
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              focusOption(currentIndex + 1);
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              focusOption(currentIndex - 1);
+            } else if (event.key === "Home") {
+              event.preventDefault();
+              focusOption(0);
+            } else if (event.key === "End") {
+              event.preventDefault();
+              focusOption(pages.length - 1);
+            }
+          }}
+          role="listbox"
+        >
+          <div className="pagePickerMenuHeader">
+            <span>FACEBOOK PAGES</span>
+            <small>{pages.length} Page</small>
+          </div>
+          <div className="pagePickerOptions">
+            {pages.map((page, index) => {
+              const selected = page.id === value;
+              return (
+                <button
+                  aria-selected={selected}
+                  className={`pagePickerOption ${selected ? "isSelected" : ""}`}
+                  key={page.id}
+                  onClick={() => {
+                    onChange(page.id);
+                    setOpen(false);
+                  }}
+                  ref={(node) => {
+                    optionRefs.current[index] = node;
+                  }}
+                  role="option"
+                  type="button"
+                >
+                  <PageAvatar page={page} />
+                  <span>
+                    <strong>{page.name}</strong>
+                    <small>{page.category ?? "Facebook Page"}</small>
+                  </span>
+                  <i
+                    className={
+                      page.connectionStatus === "active" ? "isActive" : ""
+                    }
+                  />
+                  <b aria-hidden="true">{selected ? "✓" : ""}</b>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RemotePostTable({ posts }: { posts: RemotePostDto[] }) {
+  return (
+    <div
+      className="remotePostTable"
+      role="table"
+      aria-label="Bài viết Facebook"
+    >
+      <div className="remotePostTableHead" role="row">
+        <span role="columnheader">Thời gian · tương tác</span>
+        <span role="columnheader">Nội dung</span>
+        <span role="columnheader">Nguồn</span>
+        <span role="columnheader">Trạng thái</span>
+        <span aria-hidden="true" />
+      </div>
+      {posts.map((post) => (
+        <article className="remotePostTableRow" key={post.remoteId} role="row">
+          <div className="remotePostTimeCell" role="cell">
+            <time dateTime={post.effectiveAt ?? undefined}>
+              {formatDateTime(post.effectiveAt)}
+            </time>
+            <EngagementSummary engagement={post.engagement} />
+          </div>
+          <div className="remotePostContent" role="cell">
+            {post.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img alt="" src={post.imageUrl} />
+            ) : (
+              <span className="remotePostImageFallback" aria-hidden="true">
+                Aa
+              </span>
+            )}
+            <div>
+              <strong>{excerpt(post.message, 140)}</strong>
+              <small>ID {post.remoteId}</small>
+            </div>
+          </div>
+          <span className="facebookSourceBadge" role="cell">
+            Facebook
+          </span>
+          <span
+            className={`badge ${
+              post.kind === "published" ? "badgeSuccess" : "badgeScheduled"
+            }`}
+            role="cell"
+          >
+            {post.kind === "published" ? "Đã đăng" : "Đã hẹn giờ"}
+          </span>
+          <div className="remotePostLinkCell" role="cell">
+            {post.permalinkUrl ? (
+              <a
+                aria-label="Mở bài viết trên Facebook"
+                href={post.permalinkUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Mở bài ↗
+              </a>
+            ) : (
+              <span>—</span>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function TimelineEvent({
+  post,
+  top,
+  onSelect,
+}: {
+  post: RemotePostDto;
+  top: number;
+  onSelect: (post: RemotePostDto) => void;
+}) {
+  const eventDate = new Date(post.effectiveAt!);
+  const style = {
+    "--event-top": `${top}px`,
+  } as CSSProperties;
+
+  return (
+    <button
+      aria-label={`Xem chi tiết: ${excerpt(post.message, 80)}`}
+      className={`timelineEvent timelineEvent${
+        post.kind === "published" ? "Published" : "Scheduled"
+      }`}
+      onClick={() => onSelect(post)}
+      style={style}
+      type="button"
+    >
+      <span className="timelineEventHeader">
+        <time dateTime={post.effectiveAt ?? undefined}>
+          {timeFormatter.format(eventDate)}
+        </time>
+        <EngagementSummary compact engagement={post.engagement} />
+      </span>
+      <div>
+        {post.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img alt="" src={post.imageUrl} />
+        ) : (
+          <span aria-hidden="true">Aa</span>
+        )}
+        <p>{excerpt(post.message, 46)}</p>
+      </div>
+      <span className="timelineEventPreview" role="tooltip">
+        <span>NỘI DUNG BÀI VIẾT</span>
+        <strong>{excerpt(post.message, 360)}</strong>
+        <small>Nhấn vào card để xem đầy đủ</small>
+      </span>
+    </button>
+  );
+}
+
+function PostDetailDialog({
+  post,
+  pageName,
+  onClose,
+}: {
+  post: RemotePostDto;
+  pageName: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="postDetailBackdrop"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+      role="presentation"
+    >
+      <section
+        aria-labelledby="post-detail-title"
+        aria-modal="true"
+        className="postDetailDialog"
+        role="dialog"
+      >
+        <header className="postDetailHeader">
+          <div>
+            <span
+              className={`badge ${
+                post.kind === "published" ? "badgeSuccess" : "badgeScheduled"
+              }`}
+            >
+              {post.kind === "published" ? "Đã đăng" : "Đã hẹn giờ"}
+            </span>
+            <h2 id="post-detail-title">Chi tiết bài viết</h2>
+            <p>{pageName}</p>
+            <EngagementSummary engagement={post.engagement} showLabels />
+          </div>
+          <button
+            aria-label="Đóng chi tiết bài viết"
+            autoFocus
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </header>
+
+        <div
+          className={`postDetailBody ${post.imageUrls.length > 0 ? "" : "withoutImage"}`}
+        >
+          {post.imageUrls.length > 0 ? (
+            <div
+              className="postDetailGallery"
+              data-count={Math.min(post.imageUrls.length, 4)}
+            >
+              {post.imageUrls.map((imageUrl, index) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  alt={`Ảnh ${index + 1} của bài viết`}
+                  key={`${imageUrl}-${index}`}
+                  src={imageUrl}
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className="postDetailContent">
+            <dl className="postDetailMeta">
+              <div>
+                <dt>Thời gian</dt>
+                <dd>{formatDateTime(post.effectiveAt)}</dd>
+              </div>
+              <div>
+                <dt>Nguồn</dt>
+                <dd>Facebook</dd>
+              </div>
+              <div>
+                <dt>Post ID</dt>
+                <dd>{post.remoteId}</dd>
+              </div>
+            </dl>
+            <div className="postDetailCaption">
+              <span>NỘI DUNG</span>
+              <p>{post.message || "Bài viết không có caption."}</p>
+            </div>
+          </div>
+        </div>
+
+        <footer className="postDetailFooter">
+          <span>Chế độ chỉ đọc — không sửa hoặc xoá bài Facebook.</span>
+          {post.permalinkUrl ? (
+            <a
+              className="button"
+              href={post.permalinkUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Mở bài trên Facebook ↗
+            </a>
+          ) : null}
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function RemotePostTimeline({
+  posts,
+  weekStart,
+  onWeekChange,
+  onPostSelect,
+}: {
+  posts: RemotePostDto[];
+  weekStart: Date;
+  onWeekChange: (value: Date) => void;
+  onPostSelect: (post: RemotePostDto) => void;
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
+  const now = new Date();
+  const postsByDay = useMemo(
+    () =>
+      weekDays.map((_, dayIndex) =>
+        posts.filter((post) => {
+          if (!post.effectiveAt) return false;
+          return (
+            getDayIndexInWeek(new Date(post.effectiveAt), weekStart) ===
+            dayIndex
+          );
+        }),
+      ),
+    [posts, weekDays, weekStart],
+  );
+  const visibleCount = postsByDay.reduce((total, day) => total + day.length, 0);
+  const hasEarlyMorningPost = postsByDay.some((day) =>
+    day.some((post) => {
+      if (!post.effectiveAt) return false;
+      return new Date(post.effectiveAt).getHours() < 7;
+    }),
+  );
+  const visibleStartHour = hasEarlyMorningPost ? 0 : 7;
+  const visibleHours = 24 - visibleStartHour;
+  const maximumPostsPerHour = useMemo(
+    () =>
+      Array.from({ length: visibleHours }, (_, hourOffset) => {
+        const hour = visibleStartHour + hourOffset;
+        return Math.max(
+          0,
+          ...postsByDay.map(
+            (day) =>
+              day.filter(
+                (post) =>
+                  post.effectiveAt &&
+                  new Date(post.effectiveAt).getHours() === hour,
+              ).length,
+          ),
+        );
+      }),
+    [postsByDay, visibleHours, visibleStartHour],
+  );
+  const hourLayouts = useMemo(
+    () => getTimelineHourLayouts(maximumPostsPerHour, visibleStartHour),
+    [maximumPostsPerHour, visibleStartHour],
+  );
+  const timelineHeight = hourLayouts.reduce(
+    (height, layout) => height + layout.height,
+    0,
+  );
+  const positionedPostsByDay = useMemo(
+    () =>
+      postsByDay.map((day) => {
+        const slotsByHour = new Map<number, number>();
+        return [...day]
+          .sort(
+            (first, second) =>
+              new Date(first.effectiveAt!).getTime() -
+              new Date(second.effectiveAt!).getTime(),
+          )
+          .map((post) => {
+            const hour = new Date(post.effectiveAt!).getHours();
+            const slot = slotsByHour.get(hour) ?? 0;
+            slotsByHour.set(hour, slot + 1);
+            const layout = hourLayouts[hour - visibleStartHour];
+            return {
+              post,
+              top:
+                (layout?.top ?? 0) +
+                TIMELINE_HOUR_PADDING +
+                slot * (TIMELINE_EVENT_HEIGHT + TIMELINE_EVENT_GAP),
+            };
+          });
+      }),
+    [hourLayouts, postsByDay, visibleStartHour],
+  );
+
+  useEffect(() => {
+    if (viewportRef.current) {
+      viewportRef.current.scrollTop = 0;
+    }
+  }, [visibleStartHour, weekStart]);
+
+  return (
+    <div className="timelineSection">
+      <div className="timelineControls">
+        <div className="weekNavigator">
+          <button
+            aria-label="Tuần trước"
+            onClick={() => onWeekChange(addDays(weekStart, -7))}
+            type="button"
+          >
+            ‹
+          </button>
+          <strong>
+            {weekRangeFormatter.format(weekStart)} –{" "}
+            {weekRangeFormatter.format(addDays(weekStart, 6))}
+          </strong>
+          <button
+            aria-label="Tuần sau"
+            onClick={() => onWeekChange(addDays(weekStart, 7))}
+            type="button"
+          >
+            ›
+          </button>
+          <button
+            className="todayButton"
+            onClick={() => onWeekChange(startOfWeek(new Date()))}
+            type="button"
+          >
+            Hôm nay
+          </button>
+        </div>
+        <span>{visibleCount} bài trong tuần đang xem</span>
+      </div>
+
+      <div className="timelineViewport" ref={viewportRef}>
+        <div className="timelineWeekHeader">
+          <div className="timelineTimezone">GMT+7</div>
+          {weekDays.map((day) => (
+            <div
+              aria-current={isSameDay(day, now) ? "date" : undefined}
+              className={isSameDay(day, now) ? "isToday" : ""}
+              key={day.toISOString()}
+            >
+              <strong>{weekDayFormatter.format(day)}</strong>
+              <span>{shortDateFormatter.format(day)}</span>
+            </div>
+          ))}
+        </div>
+        <div
+          className="timelineCanvas"
+          style={
+            { "--timeline-height": `${timelineHeight}px` } as CSSProperties
+          }
+        >
+          <div className="timelineTimeColumn">
+            {hourLayouts.map((layout) => (
+              <time
+                dateTime={`${String(layout.hour).padStart(2, "0")}:00`}
+                key={layout.hour}
+                style={{ "--hour-top": `${layout.top}px` } as CSSProperties}
+              >
+                {String(layout.hour).padStart(2, "0")}:00
+              </time>
+            ))}
+          </div>
+          <div className="timelineHourGrid" aria-hidden="true">
+            {hourLayouts.map((layout) => (
+              <span
+                key={layout.hour}
+                style={
+                  {
+                    "--hour-top": `${layout.top}px`,
+                    "--hour-height": `${layout.height}px`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          {weekDays.map((day, dayIndex) => (
+            <div
+              aria-label={
+                isSameDay(day, now)
+                  ? `${weekDayFormatter.format(day)}, hôm nay`
+                  : weekDayFormatter.format(day)
+              }
+              className={`timelineDayColumn ${
+                isSameDay(day, now) ? "isToday" : ""
+              }`}
+              key={day.toISOString()}
+            >
+              {positionedPostsByDay[dayIndex]?.map(({ post, top }) => (
+                <TimelineEvent
+                  key={post.remoteId}
+                  onSelect={onPostSelect}
+                  post={post}
+                  top={top}
+                />
+              ))}
+            </div>
+          ))}
+          {getDayIndexInWeek(now, weekStart) >= 0 &&
+          getDayIndexInWeek(now, weekStart) <= 6 &&
+          now.getHours() >= visibleStartHour ? (
+            <div
+              className="timelineNowLine"
+              style={
+                {
+                  "--now-day": getDayIndexInWeek(now, weekStart) + 2,
+                  "--now-top": `${getAdaptiveTimelineTop(
+                    now,
+                    visibleStartHour,
+                    hourLayouts,
+                  )}px`,
+                } as CSSProperties
+              }
+            />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DraftList({ drafts }: { drafts: DraftDto[] }) {
+  return (
+    <div className="draftList">
+      {drafts.map((draft) => (
+        <article className="draftCard" key={draft.id}>
+          <p>{draft.message}</p>
+          <div className="draftMeta">
+            Cập nhật {dateTimeFormatter.format(new Date(draft.updatedAt))}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export function PostWorkspace() {
+  const [pages, setPages] = useState<PageDto[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState("");
+  const [activeTab, setActiveTab] = useState<PostTab>("published");
+  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
+  const [drafts, setDrafts] = useState<DraftDto[]>([]);
+  const [remotePosts, setRemotePosts] = useState<RemotePostDto[]>([]);
+  const [after, setAfter] = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [loadingPages, setLoadingPages] = useState(true);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+  const [stale, setStale] = useState(false);
+  const [refreshIndex, setRefreshIndex] = useState(0);
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [selectedPost, setSelectedPost] = useState<RemotePostDto | null>(null);
+  const loadedKeyRef = useRef("");
+  const selectedPage = pages.find((page) => page.id === selectedPageId);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/pages", { headers: { accept: "application/json" } })
+      .then((response) => readPayload<{ pages?: PageDto[] }>(response))
+      .then((payload) => {
+        if (!active) return;
+        const loadedPages = payload.pages ?? [];
+        setPages(loadedPages);
+        setSelectedPageId((current) => current || loadedPages[0]?.id || "");
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Không thể tải danh sách Page.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingPages(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const loadPosts = useCallback(
+    async (signal: AbortSignal) => {
+      if (!selectedPageId) {
+        setDrafts([]);
+        setRemotePosts([]);
+        setAfter(null);
+        return;
+      }
+
+      await Promise.resolve();
+      if (signal.aborted) return;
+      const requestKey = `${selectedPageId}:${activeTab}`;
+      setLoadingPosts(true);
+      setError("");
+      setAfter(null);
+      if (loadedKeyRef.current !== requestKey) {
+        setDrafts([]);
+        setRemotePosts([]);
+        setFetchedAt(null);
+        setStale(false);
+      }
+
+      try {
+        if (activeTab === "drafts") {
+          const response = await fetch(
+            `/api/posts?pageId=${encodeURIComponent(selectedPageId)}`,
+            { headers: { accept: "application/json" }, signal },
+          );
+          const payload = await readPayload<{ drafts?: DraftDto[] }>(response);
+          setDrafts(payload.drafts ?? []);
+          setRemotePosts([]);
+          setFetchedAt(new Date().toISOString());
+          loadedKeyRef.current = requestKey;
+          setStale(false);
+          return;
+        }
+
+        const query = new URLSearchParams({
+          pageId: selectedPageId,
+          kind: activeTab,
+        });
+        const response = await fetch(`/api/facebook/posts?${query}`, {
+          headers: { accept: "application/json" },
+          signal,
+        });
+        const payload = await readPayload<{
+          posts?: RemotePostDto[];
+          after?: string | null;
+          fetchedAt?: string;
+        }>(response);
+        setRemotePosts(mergePosts([], payload.posts ?? []));
+        setDrafts([]);
+        setAfter(payload.after ?? null);
+        setFetchedAt(payload.fetchedAt ?? new Date().toISOString());
+        loadedKeyRef.current = requestKey;
+        setStale(false);
+      } catch (reason) {
+        if (reason instanceof DOMException && reason.name === "AbortError")
+          return;
+        setError(
+          reason instanceof Error ? reason.message : "Không thể tải bài viết.",
+        );
+        if (loadedKeyRef.current === requestKey) {
+          setStale(true);
+        } else {
+          setDrafts([]);
+          setRemotePosts([]);
+        }
+      } finally {
+        if (!signal.aborted) setLoadingPosts(false);
+      }
+    },
+    [activeTab, selectedPageId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      void loadPosts(controller.signal);
+    }, 0);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [loadPosts, refreshIndex]);
+
+  async function loadMore() {
+    if (!after || activeTab === "drafts" || !selectedPageId) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const query = new URLSearchParams({
+        pageId: selectedPageId,
+        kind: activeTab,
+        after,
+      });
+      const response = await fetch(`/api/facebook/posts?${query}`, {
+        headers: { accept: "application/json" },
+      });
+      const payload = await readPayload<{
+        posts?: RemotePostDto[];
+        after?: string | null;
+        fetchedAt?: string;
+      }>(response);
+      setRemotePosts((current) => mergePosts(current, payload.posts ?? []));
+      setAfter(payload.after ?? null);
+      setFetchedAt(payload.fetchedAt ?? new Date().toISOString());
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Không thể tải thêm bài viết.",
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const isRemoteTab = activeTab !== "drafts";
+  const empty =
+    activeTab === "drafts" ? drafts.length === 0 : remotePosts.length === 0;
+
+  return (
+    <div className="pageStack postWorkspaceStack">
+      <section className="postControlBar" aria-label="Bộ lọc bài viết">
+        <div className="pagePickerField">
+          <PagePicker
+            disabled={loadingPages || pages.length === 0}
+            onChange={setSelectedPageId}
+            pages={pages}
+            value={selectedPageId}
+          />
+        </div>
+        <div className="postControlMeta">
+          <span className="readOnlyPill">
+            <span /> Chỉ đọc từ Facebook
+          </span>
+          <button
+            className="refreshPostsButton"
+            disabled={!selectedPageId || loadingPosts}
+            onClick={() => setRefreshIndex((current) => current + 1)}
+            type="button"
+          >
+            <span aria-hidden="true">↻</span>
+            {loadingPosts ? "Đang tải..." : "Làm mới"}
+          </button>
+        </div>
+      </section>
+
+      <section className="surfaceCard postLibraryCard">
+        <div className="postLibraryToolbar">
+          <div
+            className="contentTabs"
+            role="tablist"
+            aria-label="Trạng thái bài viết"
+          >
+            <button
+              aria-selected={activeTab === "drafts"}
+              className={activeTab === "drafts" ? "isActive" : ""}
+              onClick={() => setActiveTab("drafts")}
+              role="tab"
+              type="button"
+            >
+              Bản nháp
+            </button>
+            <button
+              aria-selected={activeTab === "scheduled"}
+              className={activeTab === "scheduled" ? "isActive" : ""}
+              onClick={() => setActiveTab("scheduled")}
+              role="tab"
+              type="button"
+            >
+              Đã hẹn giờ
+            </button>
+            <button
+              aria-selected={activeTab === "published"}
+              className={activeTab === "published" ? "isActive" : ""}
+              onClick={() => setActiveTab("published")}
+              role="tab"
+              type="button"
+            >
+              Đã đăng
+            </button>
+          </div>
+
+          {isRemoteTab ? (
+            <div className="viewModeSwitch" aria-label="Kiểu hiển thị">
+              {(["table", "timeline"] as const).map((mode) => (
+                <button
+                  aria-label={
+                    mode === "table"
+                      ? "Hiển thị dạng bảng"
+                      : "Hiển thị timeline"
+                  }
+                  aria-pressed={viewMode === mode}
+                  className={viewMode === mode ? "isActive" : ""}
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  type="button"
+                >
+                  <ViewIcon mode={mode} />
+                  {mode === "table" ? "Bảng" : "Timeline"}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="postReadSummary">
+          <div>
+            <strong>{selectedPage?.name ?? "Chưa chọn Page"}</strong>
+            <span>
+              {isRemoteTab
+                ? "Dữ liệu đọc trực tiếp từ Facebook"
+                : "Draft lưu trong Supabase"}
+            </span>
+          </div>
+          {fetchedAt ? (
+            <small className={stale ? "isStale" : ""}>
+              {stale ? "Dữ liệu cũ · " : "Cập nhật "}
+              {formatDateTime(fetchedAt)}
+            </small>
+          ) : null}
+        </div>
+
+        {error ? <div className="feedback feedbackError">{error}</div> : null}
+        {!loadingPages && pages.length === 0 ? (
+          <div className="emptyState">
+            <strong>Chưa có Facebook Page</strong>
+            <p>Thêm Page bằng ID trước khi đọc danh sách bài viết.</p>
+            <Link className="button" href="/pages">
+              Quản lý Pages
+            </Link>
+          </div>
+        ) : null}
+        {loadingPosts ? (
+          <div className="postLoadingState" role="status">
+            <span /> Đang đọc dữ liệu{" "}
+            {activeTab === "drafts" ? "nội bộ" : "từ Facebook"}...
+          </div>
+        ) : null}
+        {!loadingPosts && selectedPageId && empty && !error ? (
+          <div className="emptyState">
+            <strong>
+              {activeTab === "drafts"
+                ? "Chưa có bản nháp"
+                : activeTab === "published"
+                  ? "Facebook chưa trả về bài đã đăng"
+                  : "Facebook chưa trả về bài hẹn giờ"}
+            </strong>
+            <p>Không có dữ liệu giả được thêm vào màn hình này.</p>
+          </div>
+        ) : null}
+
+        {!loadingPosts && activeTab === "drafts" && drafts.length > 0 ? (
+          <DraftList drafts={drafts} />
+        ) : null}
+        {!loadingPosts &&
+        isRemoteTab &&
+        remotePosts.length > 0 &&
+        viewMode === "table" ? (
+          <RemotePostTable posts={remotePosts} />
+        ) : null}
+        {!loadingPosts &&
+        isRemoteTab &&
+        remotePosts.length > 0 &&
+        viewMode === "timeline" ? (
+          <RemotePostTimeline
+            onWeekChange={setWeekStart}
+            onPostSelect={setSelectedPost}
+            posts={remotePosts}
+            weekStart={weekStart}
+          />
+        ) : null}
+
+        {!loadingPosts && isRemoteTab && after ? (
+          <div className="loadMoreRow">
+            <button
+              className="button buttonSecondary"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              type="button"
+            >
+              {loadingMore ? "Đang tải thêm..." : "Tải thêm từ Facebook"}
+            </button>
+          </div>
+        ) : null}
+      </section>
+      {selectedPost ? (
+        <PostDetailDialog
+          onClose={() => setSelectedPost(null)}
+          pageName={selectedPage?.name ?? "Facebook Page"}
+          post={selectedPost}
+        />
+      ) : null}
+    </div>
+  );
+}
