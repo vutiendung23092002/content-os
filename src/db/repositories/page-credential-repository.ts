@@ -11,6 +11,7 @@ export class PageCredentialRepository {
   async upsert(
     pageId: string,
     encrypted: EncryptedToken,
+    expiresAt?: Date,
   ): Promise<PageCredentialRecord> {
     const now = new Date();
     const [record] = await this.database
@@ -22,6 +23,7 @@ export class PageCredentialRepository {
         authTag: encrypted.authTag,
         keyVersion: encrypted.keyVersion,
         tokenFingerprint: encrypted.fingerprint,
+        expiresAt,
         lastValidatedAt: now,
       })
       .onConflictDoUpdate({
@@ -32,6 +34,7 @@ export class PageCredentialRepository {
           authTag: encrypted.authTag,
           keyVersion: encrypted.keyVersion,
           tokenFingerprint: encrypted.fingerprint,
+          expiresAt,
           lastValidatedAt: now,
           revokedAt: null,
           updatedAt: now,

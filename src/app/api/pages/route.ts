@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       id: page.id,
       externalPageId: page.externalPageId,
       name: page.name,
+      avatarUrl: page.avatarUrl,
       category: page.category,
       timezone: page.timezone,
       connectionStatus: page.connectionStatus,

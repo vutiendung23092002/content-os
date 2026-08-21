@@ -8,10 +8,14 @@ export class FacebookConnectionRepository {
   async markActive(input: {
     externalUserId?: string;
     grantedScopes?: string[];
+    tokenExpiresAt?: Date | null;
     providerMetadata?: Record<string, unknown>;
   }) {
     const [existing] = await this.database
-      .select({ id: facebookConnection.id })
+      .select({
+        id: facebookConnection.id,
+        providerMetadata: facebookConnection.providerMetadata,
+      })
       .from(facebookConnection)
       .orderBy(asc(facebookConnection.createdAt))
       .limit(1);
@@ -24,7 +28,11 @@ export class FacebookConnectionRepository {
           externalUserId: input.externalUserId,
           status: "active",
           grantedScopes: input.grantedScopes ?? [],
-          providerMetadata: input.providerMetadata ?? {},
+          tokenExpiresAt: input.tokenExpiresAt,
+          providerMetadata: {
+            ...existing.providerMetadata,
+            ...(input.providerMetadata ?? {}),
+          },
           lastValidatedAt: now,
           updatedAt: now,
         })
@@ -39,6 +47,7 @@ export class FacebookConnectionRepository {
         externalUserId: input.externalUserId,
         status: "active",
         grantedScopes: input.grantedScopes ?? [],
+        tokenExpiresAt: input.tokenExpiresAt,
         providerMetadata: input.providerMetadata ?? {},
         lastValidatedAt: now,
       })

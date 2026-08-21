@@ -29,6 +29,50 @@ const managedPagesSchema = z.object({
     .optional(),
 });
 
+const graphIdSchema = z
+  .union([z.string().min(1), z.number()])
+  .transform((value) => String(value));
+
+const pictureSchema = z
+  .object({
+    data: z.object({
+      url: z.string().url(),
+      is_silhouette: z.boolean().optional(),
+    }),
+  })
+  .optional();
+
+const userProfileSchema = z.object({
+  id: graphIdSchema,
+  name: z.string().min(1),
+  picture: pictureSchema,
+});
+
+const pageCredentialSchema = z.object({
+  id: graphIdSchema,
+  name: z.string().min(1),
+  access_token: z.string().min(1),
+  category: z.string().optional(),
+  picture: pictureSchema,
+});
+
+const tokenInspectionSchema = z.object({
+  data: z.object({
+    app_id: graphIdSchema,
+    is_valid: z.boolean(),
+    type: z.string().optional(),
+    user_id: graphIdSchema.optional(),
+    profile_id: graphIdSchema.optional(),
+    scopes: z.array(z.string()).optional().default([]),
+    expires_at: z.number().optional(),
+    data_access_expires_at: z.number().optional(),
+  }),
+});
+
+const readProbeSchema = z.object({
+  data: z.array(z.object({ id: z.string().min(1) })),
+});
+
 const postMutationSchema = z.object({ id: z.string().min(1) });
 const updateMutationSchema = z.union([
   z.object({ success: z.literal(true) }),
@@ -79,6 +123,36 @@ export type ManagedPageCredential = {
   tasks: string[];
 };
 
+export type MetaUserProfile = {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+};
+
+export type MetaPageCredential = {
+  externalPageId: string;
+  name: string;
+  accessToken: string;
+  avatarUrl?: string;
+  category?: string;
+};
+
+export type MetaTokenInspection = {
+  appId: string;
+  isValid: boolean;
+  type?: string;
+  userId?: string;
+  profileId?: string;
+  scopes: string[];
+  expiresAt?: number;
+  dataAccessExpiresAt?: number;
+};
+
+export type MetaPageReadAccess = {
+  publishedPosts: boolean;
+  scheduledPosts: boolean;
+};
+
 export type MetaClientOptions = {
   graphVersion: string;
   accessToken: string;
@@ -125,6 +199,75 @@ export class MetaGraphClient {
         tasks: page.tasks,
       })),
       after: result.paging?.cursors?.after,
+    };
+  }
+
+  async getCurrentUser(): Promise<MetaUserProfile> {
+    const query = new URLSearchParams({
+      fields: "id,name,picture.type(small)",
+    });
+    const result = userProfileSchema.parse(await this.request("me", { query }));
+
+    return {
+      id: result.id,
+      name: result.name,
+      avatarUrl: result.picture?.data.url,
+    };
+  }
+
+  async getPageCredential(pageId: string): Promise<MetaPageCredential> {
+    const query = new URLSearchParams({
+      fields: "id,name,access_token,category,picture.type(small)",
+    });
+    const result = pageCredentialSchema.parse(
+      await this.request(encodeURIComponent(pageId), { query }),
+    );
+
+    return {
+      externalPageId: result.id,
+      name: result.name,
+      accessToken: result.access_token,
+      avatarUrl: result.picture?.data.url,
+      category: result.category,
+    };
+  }
+
+  async inspectCurrentToken(input: {
+    appId: string;
+    appSecret: string;
+  }): Promise<MetaTokenInspection> {
+    const query = new URLSearchParams({ input_token: this.accessToken });
+    const result = tokenInspectionSchema.parse(
+      await this.request("debug_token", {
+        query,
+        authorizationToken: `${input.appId}|${input.appSecret}`,
+      }),
+    ).data;
+
+    return {
+      appId: result.app_id,
+      isValid: result.is_valid,
+      type: result.type,
+      userId: result.user_id,
+      profileId: result.profile_id,
+      scopes: result.scopes,
+      expiresAt: result.expires_at,
+      dataAccessExpiresAt: result.data_access_expires_at,
+    };
+  }
+
+  async probePageReadAccess(pageId: string): Promise<MetaPageReadAccess> {
+    const query = new URLSearchParams({ fields: "id", limit: "1" });
+
+    return {
+      publishedPosts: await this.probeReadEdge(
+        `${encodeURIComponent(pageId)}/posts`,
+        query,
+      ),
+      scheduledPosts: await this.probeReadEdge(
+        `${encodeURIComponent(pageId)}/scheduled_posts`,
+        query,
+      ),
     };
   }
 
@@ -230,6 +373,7 @@ export class MetaGraphClient {
       method?: "GET" | "POST" | "DELETE";
       query?: URLSearchParams;
       body?: URLSearchParams;
+      authorizationToken?: string;
     },
   ): Promise<unknown> {
     const url = new URL(`${this.baseUrl}/${this.graphVersion}/${path}`);
@@ -240,7 +384,7 @@ export class MetaGraphClient {
       response = await this.fetchImplementation(url, {
         method: options.method ?? "GET",
         headers: {
-          authorization: `Bearer ${this.accessToken}`,
+          authorization: `Bearer ${options.authorizationToken ?? this.accessToken}`,
           ...(options.body
             ? {
                 "content-type":
@@ -280,5 +424,23 @@ export class MetaGraphClient {
     }
 
     return payload;
+  }
+
+  private async probeReadEdge(
+    path: string,
+    query: URLSearchParams,
+  ): Promise<boolean> {
+    try {
+      readProbeSchema.parse(await this.request(path, { query }));
+      return true;
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        error.code === "FACEBOOK_PERMISSION_DENIED"
+      ) {
+        return false;
+      }
+      throw error;
+    }
   }
 }

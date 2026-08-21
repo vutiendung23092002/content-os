@@ -7,6 +7,7 @@ export type PageRecord = typeof pages.$inferSelect;
 export type ManagedPageInput = {
   externalPageId: string;
   name: string;
+  avatarUrl?: string;
   category?: string;
   timezone?: string;
   remoteMetadata?: Record<string, unknown>;
@@ -22,6 +23,7 @@ export class PageRepository {
       .values({
         externalPageId: input.externalPageId,
         name: input.name,
+        avatarUrl: input.avatarUrl,
         category: input.category,
         timezone: input.timezone,
         connectionStatus: "active",
@@ -33,6 +35,7 @@ export class PageRepository {
         target: pages.externalPageId,
         set: {
           name: input.name,
+          avatarUrl: input.avatarUrl,
           category: input.category,
           timezone: input.timezone,
           connectionStatus: "active",

@@ -24,6 +24,16 @@ describe("internal access guard", () => {
     ).not.toThrow();
   });
 
+  it("allows the local browser in development without exposing the secret", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("APP_ACCESS_SECRET", "a-long-internal-secret");
+    __testing.reset();
+
+    expect(() =>
+      assertInternalAccess(new Request("http://localhost/api/test")),
+    ).not.toThrow();
+  });
+
   it("requires the configured secret", () => {
     vi.stubEnv("NODE_ENV", "production");
     process.env.APP_ACCESS_SECRET = "a-long-internal-secret";

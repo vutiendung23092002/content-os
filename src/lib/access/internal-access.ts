@@ -19,9 +19,24 @@ function secretsMatch(expected: string, received: string | null): boolean {
   );
 }
 
+function isLoopbackDevelopmentRequest(request: Request): boolean {
+  if (getServerEnv().NODE_ENV === "production") {
+    return false;
+  }
+
+  const hostname = new URL(request.url).hostname;
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]"
+  );
+}
+
 export function assertInternalAccess(request: Request): void {
   const env = getServerEnv();
   const expected = env.APP_ACCESS_SECRET;
+
+  if (isLoopbackDevelopmentRequest(request)) {
+    return;
+  }
 
   if (!expected && env.NODE_ENV !== "production") {
     return;
