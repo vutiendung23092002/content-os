@@ -35,7 +35,7 @@ body {
   color: var(--ink);
   background: var(--workspace);
   font-family:
-    Inter,
+    var(--font-be-vietnam-pro),
     ui-sans-serif,
     system-ui,
     -apple-system,
@@ -98,7 +98,6 @@ a {
   background: linear-gradient(135deg, var(--purple), var(--pink));
   border-radius: 0.75rem 0.75rem 0.75rem 0.25rem;
   box-shadow: 0 8px 20px rgb(109 49 231 / 25%);
-  font-family: Georgia, "Times New Roman", serif;
   font-size: 1.3rem;
   font-weight: 800;
 }
