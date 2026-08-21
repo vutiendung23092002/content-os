@@ -21,6 +21,13 @@ type Account = {
   avatarUrl?: string;
 };
 
+type SessionViewer = {
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  role: "super_admin" | "admin" | "member";
+};
+
 const navGroups: Array<{
   label: string;
   items: Array<{
@@ -44,7 +51,10 @@ const navGroups: Array<{
   },
   {
     label: "Quản trị",
-    items: [{ href: "/pages", label: "Facebook Pages", icon: "pages" }],
+    items: [
+      { href: "/pages", label: "Facebook Pages", icon: "pages" },
+      { href: "/admin", label: "Nhân sự", icon: "settings" },
+    ],
   },
   {
     label: "Hỗ trợ",
@@ -64,6 +74,7 @@ const pageTitles: Record<string, { eyebrow: string; title: string }> = {
   "/pages": { eyebrow: "Quản trị", title: "Facebook Pages" },
   "/posts": { eyebrow: "Nội dung", title: "Bài viết" },
   "/posts/new": { eyebrow: "Nội dung", title: "Soạn bài mới" },
+  "/admin": { eyebrow: "Quản trị", title: "Nhân sự" },
 };
 
 function Icon({ name }: { name: IconName }) {
@@ -149,9 +160,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [account, setAccount] = useState<Account | null>(null);
   const [accountReady, setAccountReady] = useState(false);
+  const [viewer, setViewer] = useState<SessionViewer | null>(null);
+  const isBarePage = pathname === "/login" || pathname === "/access-pending";
   const heading = pageTitles[pathname] ?? pageTitles["/"]!;
 
   useEffect(() => {
+    if (isBarePage) return;
+
     let active = true;
 
     void fetch("/api/facebook/status", {
@@ -172,10 +187,21 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         if (active) setAccountReady(true);
       });
 
+    void fetch("/api/auth/session", { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const payload = (await response.json()) as { viewer?: SessionViewer };
+        if (active && response.ok) setViewer(payload.viewer ?? null);
+      })
+      .catch(() => {
+        if (active) setViewer(null);
+      });
+
     return () => {
       active = false;
     };
-  }, []);
+  }, [isBarePage]);
+
+  if (isBarePage) return <>{children}</>;
 
   return (
     <div className="dashboardFrame">
@@ -213,21 +239,25 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           {navGroups.map((group) => (
             <div className="navGroup" key={group.label}>
               <p>{group.label}</p>
-              {group.items.map((item) => {
-                const active = isItemActive(pathname, item);
-                return (
-                  <Link
-                    aria-current={active ? "page" : undefined}
-                    className={`navItem ${active ? "isActive" : ""}`}
-                    href={item.href}
-                    key={`${group.label}-${item.label}`}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
+              {group.items
+                .filter(
+                  (item) => item.href !== "/admin" || viewer?.role !== "member",
+                )
+                .map((item) => {
+                  const active = isItemActive(pathname, item);
+                  return (
+                    <Link
+                      aria-current={active ? "page" : undefined}
+                      className={`navItem ${active ? "isActive" : ""}`}
+                      href={item.href}
+                      key={`${group.label}-${item.label}`}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <Icon name={item.icon} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
             </div>
           ))}
         </nav>
@@ -242,6 +272,9 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 ? "Đã kết nối"
                 : "Cần kiểm tra"}
           </strong>
+          <form action="/api/auth/logout" method="post">
+            <button type="submit">Đăng xuất</button>
+          </form>
         </div>
       </aside>
 
@@ -262,22 +295,21 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <Link className="topAccount" href="/pages">
-            {account?.avatarUrl ? (
+          <Link
+            className="topAccount"
+            href={viewer?.role === "member" ? "/" : "/admin"}
+          >
+            {viewer?.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img alt="" src={account.avatarUrl} />
+              <img alt="" src={viewer.avatarUrl} />
             ) : (
               <span className="topAccountAvatar" aria-hidden="true">
-                {account?.name.slice(0, 1).toUpperCase() ?? "F"}
+                {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
               </span>
             )}
             <span className="topAccountText">
-              <small>Tài khoản Facebook</small>
-              <strong>
-                {!accountReady
-                  ? "Đang kiểm tra..."
-                  : (account?.name ?? "Chưa kết nối")}
-              </strong>
+              <small>Tài khoản Google</small>
+              <strong>{viewer?.name ?? "Đang xác thực..."}</strong>
             </span>
             <Icon name="chevron" />
           </Link>

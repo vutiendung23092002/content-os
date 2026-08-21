@@ -19,6 +19,10 @@ const serverEnvSchema = z.object({
   FACEBOOK_USER_ACCESS_TOKEN: optionalSecret,
   TOKEN_ENCRYPTION_KEY: optionalSecret,
   APP_ACCESS_SECRET: optionalSecret,
+  INITIAL_ADMIN_EMAIL: optionalSecret,
+  NEXT_PUBLIC_SITE_URL: optionalSecret,
+  NEXT_PUBLIC_SUPABASE_URL: optionalSecret,
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: optionalSecret,
   AI_PROVIDER_API_KEY: optionalSecret,
 });
 

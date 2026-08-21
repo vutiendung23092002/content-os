@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const records = await new PageRepository(getDatabase()).listActive();
     const pages = records.map((page) => ({
       id: page.id,

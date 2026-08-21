@@ -7,6 +7,7 @@ loadEnvConfig(process.cwd());
 const databaseUrl = process.env.DIRECT_DATABASE_URL;
 const expectedTables = [
   "ai_generations",
+  "app_users",
   "assets",
   "facebook_connection",
   "facebook_operations",
@@ -15,6 +16,11 @@ const expectedTables = [
   "post_assets",
   "posts",
   "sync_cursors",
+];
+const knownLegacyTables = [
+  "app_sessions",
+  "user_credentials",
+  "user_page_access",
 ];
 
 if (!databaseUrl) {
@@ -44,7 +50,11 @@ try {
     (table) => !actualTables.includes(table),
   );
   const unexpectedTables = actualTables.filter(
-    (table) => !expectedTables.includes(table),
+    (table) =>
+      !expectedTables.includes(table) && !knownLegacyTables.includes(table),
+  );
+  const legacyTables = actualTables.filter((table) =>
+    knownLegacyTables.includes(table),
   );
 
   const [metadata] = await sql`
@@ -66,6 +76,7 @@ try {
       checkConstraints: metadata?.check_constraints ?? 0,
       missingTables,
       unexpectedTables,
+      legacyTables,
     }),
   );
 

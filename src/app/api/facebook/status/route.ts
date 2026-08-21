@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const env = getServerEnv();
 
     const configured = {

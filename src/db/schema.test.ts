@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applicationSchema,
+  appRoleEnum,
   connectionStatusEnum,
   generationTypeEnum,
   operationStatusEnum,
@@ -8,6 +9,7 @@ import {
   postStatusEnum,
   postTypeEnum,
   schema,
+  userApprovalStatusEnum,
 } from "./schema";
 
 describe("database schema", () => {
@@ -19,6 +21,7 @@ describe("database schema", () => {
     expect(Object.keys(schema)).toEqual(
       expect.arrayContaining([
         "facebookConnection",
+        "appUsers",
         "pages",
         "pageCredentials",
         "posts",
@@ -36,5 +39,7 @@ describe("database schema", () => {
     expect(operationTypeEnum.enumValues).toContain("schedule");
     expect(operationStatusEnum.enumValues).toContain("uncertain");
     expect(generationTypeEnum.enumValues).toContain("rewrite");
+    expect(appRoleEnum.enumValues).toEqual(["super_admin", "admin", "member"]);
+    expect(userApprovalStatusEnum.enumValues).toContain("suspended");
   });
 });

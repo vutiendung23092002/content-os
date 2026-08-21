@@ -10,7 +10,7 @@ export async function POST(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const { postId } = await context.params;
     const result = await new SubmitPostService().publish(postId);
     return NextResponse.json({ operation: result, requestId });

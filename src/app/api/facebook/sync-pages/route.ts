@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const client = new MetaGraphClient({
       graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
       accessToken: requireServerEnv("FACEBOOK_USER_ACCESS_TOKEN"),

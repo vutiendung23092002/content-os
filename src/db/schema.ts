@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -36,6 +37,17 @@ const timestamps = {
 export const connectionStatusEnum = applicationSchema.enum(
   "connection_status",
   ["active", "expired", "revoked", "permission_missing", "error"],
+);
+
+export const appRoleEnum = applicationSchema.enum("app_role", [
+  "super_admin",
+  "admin",
+  "member",
+]);
+
+export const userApprovalStatusEnum = applicationSchema.enum(
+  "user_approval_status",
+  ["pending", "approved", "rejected", "suspended"],
 );
 
 export const postStatusEnum = applicationSchema.enum("post_status", [
@@ -76,6 +88,39 @@ export const generationTypeEnum = applicationSchema.enum("generation_type", [
   "rewrite",
   "idea",
 ]);
+
+export const appUsers = applicationSchema.table(
+  "app_users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    externalUserId: text("external_user_id"),
+    email: text("email").notNull(),
+    name: text("name").notNull(),
+    avatarUrl: text("avatar_url"),
+    role: appRoleEnum("role").notNull().default("member"),
+    approvalStatus: userApprovalStatusEnum("approval_status")
+      .notNull()
+      .default("pending"),
+    approvedByUserId: uuid("approved_by_user_id").references(
+      (): AnyPgColumn => appUsers.id,
+      { onDelete: "set null" },
+    ),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    isBootstrapSuperAdmin: boolean("is_bootstrap_super_admin")
+      .notNull()
+      .default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("app_users_external_user_id_unique").on(table.externalUserId),
+    uniqueIndex("app_users_email_unique").on(table.email),
+    uniqueIndex("app_users_single_bootstrap_super_admin")
+      .on(table.isBootstrapSuperAdmin)
+      .where(sql`${table.isBootstrapSuperAdmin} = true`),
+    index("app_users_approval_role_idx").on(table.approvalStatus, table.role),
+  ],
+);
 
 export const facebookConnection = applicationSchema.table(
   "facebook_connection",
@@ -344,6 +389,7 @@ export const syncCursors = applicationSchema.table(
 );
 
 export const schema = {
+  appUsers,
   facebookConnection,
   pages,
   pageCredentials,

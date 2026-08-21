@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const input = requestSchema.parse(await request.json());
     const verification = await verifyManualPage({
       pageId: input.pageId,

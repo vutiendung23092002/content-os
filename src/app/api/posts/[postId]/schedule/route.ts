@@ -13,7 +13,7 @@ export async function POST(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const { postId } = await context.params;
     const body = scheduleRequestSchema.parse(await request.json());
     const result = await new SubmitPostService().schedule(

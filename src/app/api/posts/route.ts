@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const url = new URL(request.url);
     const pageId = url.searchParams.get("pageId") ?? undefined;
     const drafts = await createDraftService().list(pageId);
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const draft = await createDraftService().create(await request.json());
     return NextResponse.json(
       { draft: toDraftDto(draft), requestId },

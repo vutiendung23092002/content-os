@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { __testing } from "@/lib/env/server";
 import {
   assertInternalAccess,
+  hasConfiguredSecretAccess,
   INTERNAL_ACCESS_HEADER,
 } from "./internal-access";
 
@@ -14,39 +15,32 @@ afterEach(() => {
 });
 
 describe("internal access guard", () => {
-  it("allows local development when no secret is configured", () => {
-    vi.stubEnv("NODE_ENV", "development");
+  it("does not treat an unconfigured request as secret access", () => {
     delete process.env.APP_ACCESS_SECRET;
     __testing.reset();
-
-    expect(() =>
-      assertInternalAccess(new Request("http://localhost/api/test")),
-    ).not.toThrow();
+    expect(
+      hasConfiguredSecretAccess(new Request("https://example.com/api/test")),
+    ).toBe(false);
   });
 
-  it("allows the local browser in development without exposing the secret", () => {
-    vi.stubEnv("NODE_ENV", "development");
+  it("accepts the optional server automation header", async () => {
     vi.stubEnv("APP_ACCESS_SECRET", "a-long-internal-secret");
     __testing.reset();
-
-    expect(() =>
-      assertInternalAccess(new Request("http://localhost/api/test")),
-    ).not.toThrow();
-  });
-
-  it("requires the configured secret", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    process.env.APP_ACCESS_SECRET = "a-long-internal-secret";
-    __testing.reset();
-
-    const deniedRequest = new Request("https://example.com/api/test");
-    expect(() => assertInternalAccess(deniedRequest)).toThrow(
-      "Không có quyền truy cập",
-    );
-
-    const allowedRequest = new Request("https://example.com/api/test", {
+    const request = new Request("https://example.com/api/test", {
       headers: { [INTERNAL_ACCESS_HEADER]: "a-long-internal-secret" },
     });
-    expect(() => assertInternalAccess(allowedRequest)).not.toThrow();
+    await expect(assertInternalAccess(request)).resolves.toBeUndefined();
+  });
+
+  it("rejects an invalid automation secret without a Google session", async () => {
+    vi.stubEnv("APP_ACCESS_SECRET", "a-long-internal-secret");
+    __testing.reset();
+    const request = new Request("https://example.com/api/test", {
+      headers: { [INTERNAL_ACCESS_HEADER]: "wrong" },
+    });
+    await expect(assertInternalAccess(request)).rejects.toMatchObject({
+      code: "AUTHENTICATION_REQUIRED",
+      status: 401,
+    });
   });
 });

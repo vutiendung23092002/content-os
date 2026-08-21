@@ -13,7 +13,7 @@ export async function GET(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const { postId } = await context.params;
     const draft = await createDraftService().get(postId);
     return NextResponse.json({ draft: toDraftDto(draft), requestId });
@@ -26,7 +26,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const { postId } = await context.params;
     const draft = await createDraftService().update(
       postId,
@@ -42,7 +42,7 @@ export async function DELETE(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    assertInternalAccess(request);
+    await assertInternalAccess(request);
     const { postId } = await context.params;
     await createDraftService().delete(postId);
     return new NextResponse(null, {
