@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type FormEvent, useEffect, useState } from "react";
 
 type PageDto = {
@@ -76,60 +75,80 @@ export default function NewDraftPage() {
   }
 
   return (
-    <main className="appShell">
-      <header className="topbar">
-        <Link className="brand" href="/">
-          HAN CONTENT OS
-        </Link>
-        <Link className="button buttonSecondary" href="/posts">
-          Quay lại drafts
-        </Link>
+    <div className="pageStack">
+      <header className="pageIntro">
+        <div>
+          <span className="pageKicker">CONTENT COMPOSER</span>
+          <h1>Soạn bài mới</h1>
+          <p>
+            Lưu thành draft trước. Chưa có nội dung nào được gửi lên Facebook.
+          </p>
+        </div>
       </header>
-      <section className="panel">
-        <p className="eyebrow">NEW CONTENT</p>
-        <h1 className="pageTitle">Tạo draft</h1>
-        <form className="stack" onSubmit={submit}>
-          <div className="field">
-            <label htmlFor="page">Facebook Page</label>
-            <select
-              disabled={pages.length === 0 || submitting}
-              id="page"
-              onChange={(event) => setPageId(event.target.value)}
-              required
-              value={pageId}
+      <div className="composerGrid">
+        <section className="surfaceCard">
+          <div className="sectionHeading">
+            <div>
+              <span className="stepLabel">BƯỚC 1</span>
+              <h2>Chọn Page và viết nội dung</h2>
+            </div>
+          </div>
+          <form className="stack" onSubmit={submit}>
+            <div className="field">
+              <label htmlFor="page">Facebook Page</label>
+              <select
+                disabled={pages.length === 0 || submitting}
+                id="page"
+                onChange={(event) => setPageId(event.target.value)}
+                required
+                value={pageId}
+              >
+                {pages.map((page) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                    {page.category ? ` — ${page.category}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="message">Nội dung</label>
+              <textarea
+                disabled={pages.length === 0 || submitting}
+                id="message"
+                maxLength={100_000}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Viết caption..."
+                required
+                value={message}
+              />
+            </div>
+            <button
+              className="button"
+              disabled={
+                pages.length === 0 || submitting || message.trim().length === 0
+              }
+              type="submit"
             >
-              {pages.map((page) => (
-                <option key={page.id} value={page.id}>
-                  {page.name}
-                  {page.category ? ` — ${page.category}` : ""}
-                </option>
-              ))}
-            </select>
+              {submitting ? "Đang lưu..." : "Lưu draft"}
+            </button>
+            {status ? <p className="status">{status}</p> : null}
+          </form>
+        </section>
+        <aside className="surfaceCard composerAside">
+          <span className="stepLabel">TRẠNG THÁI</span>
+          <h2>Chỉ lưu nội bộ</h2>
+          <p>
+            Nút “Lưu draft” chỉ ghi nội dung vào Supabase. Không gọi API đăng
+            bài hoặc hẹn giờ của Meta.
+          </p>
+          <div className="composerChecklist">
+            <span>✓ Chọn Page quản lý</span>
+            <span>✓ Soạn caption</span>
+            <span>— Duyệt và đăng sau</span>
           </div>
-          <div className="field">
-            <label htmlFor="message">Nội dung</label>
-            <textarea
-              disabled={pages.length === 0 || submitting}
-              id="message"
-              maxLength={100_000}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder="Viết caption..."
-              required
-              value={message}
-            />
-          </div>
-          <button
-            className="button"
-            disabled={
-              pages.length === 0 || submitting || message.trim().length === 0
-            }
-            type="submit"
-          >
-            {submitting ? "Đang lưu..." : "Lưu draft"}
-          </button>
-          {status ? <p className="status">{status}</p> : null}
-        </form>
-      </section>
-    </main>
+        </aside>
+      </div>
+    </div>
   );
 }

@@ -43,18 +43,33 @@ export default function DraftsPage() {
   }, []);
 
   return (
-    <main className="appShell">
-      <header className="topbar">
-        <Link className="brand" href="/">
-          HAN CONTENT OS
-        </Link>
+    <div className="pageStack">
+      <header className="pageIntro">
+        <div>
+          <span className="pageKicker">CONTENT LIBRARY</span>
+          <h1>Bài viết</h1>
+          <p>Quản lý nội dung đang soạn trước khi gửi lên Facebook.</p>
+        </div>
         <Link className="button" href="/posts/new">
-          Tạo draft
+          Viết bài mới
         </Link>
       </header>
-      <section className="panel">
-        <p className="eyebrow">CONTENT</p>
-        <h1 className="pageTitle">Drafts</h1>
+      <section className="surfaceCard">
+        <div
+          className="contentTabs"
+          role="tablist"
+          aria-label="Trạng thái bài viết"
+        >
+          <button className="isActive" role="tab" type="button">
+            Bản nháp
+          </button>
+          <button disabled role="tab" type="button">
+            Đã hẹn giờ
+          </button>
+          <button disabled role="tab" type="button">
+            Đã đăng
+          </button>
+        </div>
         {status ? <p className="status">{status}</p> : null}
         {!status && drafts.length === 0 ? (
           <p className="muted">
@@ -76,6 +91,6 @@ export default function DraftsPage() {
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }
