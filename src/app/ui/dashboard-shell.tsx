@@ -40,11 +40,6 @@ const navGroups: Array<{
         icon: "posts",
         match: (pathname) => pathname === "/posts",
       },
-      {
-        href: "/posts/new",
-        label: "Soạn bài",
-        icon: "write",
-      },
     ],
   },
   {

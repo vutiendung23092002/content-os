@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type DraftDto = {
@@ -44,16 +43,6 @@ export default function DraftsPage() {
 
   return (
     <div className="pageStack">
-      <header className="pageIntro">
-        <div>
-          <span className="pageKicker">CONTENT LIBRARY</span>
-          <h1>Bài viết</h1>
-          <p>Quản lý nội dung đang soạn trước khi gửi lên Facebook.</p>
-        </div>
-        <Link className="button" href="/posts/new">
-          Viết bài mới
-        </Link>
-      </header>
       <section className="surfaceCard">
         <div
           className="contentTabs"
