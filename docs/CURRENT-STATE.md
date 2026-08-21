@@ -1,6 +1,6 @@
 # CURRENT STATE
 
-**Kiểm tra tại:** 2026-08-20  
+**Kiểm tra tại:** 2026-08-21
 **Workspace:** `C:\Users\Dung\Documents\Project\han-content-os`
 
 ## Kết luận
@@ -27,18 +27,21 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 - GitHub Actions CI không cần production secret.
 - Typed server environment và `.env.example` placeholder.
 - Safe API error contract, request ID và structured logger redaction.
-- Internal access guard: local dev được phép khi chưa có secret; production fail closed.
+- Supabase Google OAuth SSR với PKCE callback, cookie phiên do Supabase quản lý và logout cùng origin.
+- Allowlist email trong `app_users`; API kiểm tra lại trạng thái duyệt trong database ở mỗi request nên khóa tài khoản có hiệu lực ngay.
+- `INITIAL_ADMIN_EMAIL` bootstrap Super Admin được bảo vệ; Super Admin bổ nhiệm thêm Admin, còn Admin duyệt hoặc tạm khóa nhân viên.
+- `APP_ACCESS_SECRET` không còn xuất hiện trên màn hình đăng nhập; chỉ giữ tùy chọn cho automation/break-glass server-to-server.
 
 ### Database
 
 - Cả pooled `DATABASE_URL` và migration `DIRECT_DATABASE_URL` đã kết nối thành công.
-- Drizzle schema `hancontent_os` cho 9 bảng MVP.
+- Drizzle schema `hancontent_os` cho 10 bảng hiện hành, gồm `app_users` phục vụ allowlist.
 - Enum, foreign key, unique/index và check constraint cốt lõi.
 - Supabase-compatible runtime client dùng pooled URL với prepared statement tắt.
 - Drizzle config dùng direct URL cho migration.
-- Migration đầu tiên: `drizzle/0000_empty_human_cannonball.sql`.
+- Migration nền và migration Google allowlist: `0000_empty_human_cannonball.sql`, `0001_whole_stepford_cuckoos.sql`.
 - Migration đã áp dụng thành công lên Supabase.
-- Catalog verification xác nhận 9 bảng, 10 foreign key và 5 check constraint trong `hancontent_os`.
+- Catalog verification xác nhận đủ bảng hiện hành; ba bảng OAuth thử nghiệm cũ được giữ nguyên, không dùng và không xóa để tránh thao tác phá hủy dữ liệu.
 
 Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migration; toàn bộ application table/enum nằm trong `hancontent_os`, không nằm trong `public`.
 
@@ -70,6 +73,7 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
 - Meta thành công nhưng local commit lỗi được giữ cho reconciliation, không đổi thành remote failure.
 - Local UI `/posts` và `/posts/new`.
+- UI `/posts` đọc trực tiếp bài đã đăng/hẹn giờ theo Page, hỗ trợ phân trang, làm mới và chuyển đổi giữa dạng bảng với timeline tuần.
 
 Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0` đã thành công: 6 Page được đồng bộ, Page token mã hóa trong Supabase và response không chứa credential. Năm Page có `CREATE_CONTENT`/`MANAGE`; một Page chỉ có `ANALYZE`/`ADVERTISE` nên không được dùng để test đăng bài.
 
@@ -78,9 +82,10 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 31 unit tests pass; database integration test riêng pass trên Supabase.
+- Vitest: 44 unit tests pass, 1 database integration test được tách riêng.
 - Next.js production build: pass.
-- Local API smoke: `/api/pages`, `/api/posts`, `/api/facebook/status` đều trả 200.
+- Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
+- Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
 - Routes build được: health/config, Page sync/list, draft CRUD, publish và schedule.
 - Secret exposure scan trên client bundle/source/docs/scripts: pass.
 
@@ -90,7 +95,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Meta write capability smoke test với Page được người vận hành chọn.
 - Remote list/reschedule/cancel services và reconciliation.
 - UI xác nhận publish/lên lịch.
-- Access gateway production thực tế.
+- Credential riêng cho reconciliation cron tương lai; Cloudflare Access vẫn là lớp hardening tùy chọn.
 - AI content assistant và single-image support.
 
 ## Secret cần cấu hình tiếp theo
@@ -101,8 +106,13 @@ Tạo `.env.local` từ `.env.example`, sau đó tự điền:
 DATABASE_URL
 DIRECT_DATABASE_URL
 TOKEN_ENCRYPTION_KEY
-APP_ACCESS_SECRET
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+NEXT_PUBLIC_SITE_URL
+INITIAL_ADMIN_EMAIL
 ```
+
+`APP_ACCESS_SECRET` là tùy chọn server-to-server, không cung cấp cho nhân sự.
 
 Đã đến capability gate. Trước lần gọi Meta thật cần cấu hình:
 

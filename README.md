@@ -1,6 +1,6 @@
 # Han Content OS
 
-Công cụ nội bộ, single-operator để soạn, đăng và hẹn giờ bài viết Facebook Page bằng Meta Graph API chính thức.
+Công cụ nội bộ cho nhóm nhỏ để soạn, đăng và hẹn giờ bài viết Facebook Page bằng Meta Graph API chính thức. Nhân sự đăng nhập Google qua Supabase; Facebook token chỉ nằm ở server.
 
 ## Trạng thái
 

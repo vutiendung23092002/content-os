@@ -1,6 +1,6 @@
 # HAN CONTENT OS — MVP BACKLOG
 
-Backlog này chỉ bao phủ công cụ nội bộ một người vận hành. Facebook native scheduling là cơ chế đăng đúng giờ; cron của ứng dụng chỉ đồng bộ và đối soát. Mỗi task phải giữ token ngoài client, log, Git và AI prompt.
+Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google allowlist. Facebook native scheduling là cơ chế đăng đúng giờ; cron của ứng dụng chỉ đồng bộ và đối soát. Mỗi task phải giữ token ngoài client, log, Git và AI prompt.
 
 ## Foundation
 
@@ -46,11 +46,16 @@ Backlog này chỉ bao phủ công cụ nội bộ một người vận hành. F
 
 - [ ] FOUND-006 — Protect internal application access
   - Priority: P0
-  - Goal: Đảm bảo tool single-operator không public dù không có auth nhiều người dùng.
+  - Goal: Đảm bảo chỉ tài khoản Google được duyệt mới truy cập UI/API nội bộ.
   - Depends on: FOUND-002, FOUND-004.
   - Files/modules expected: middleware/access adapter, cron secret guard, deployment config.
   - Acceptance criteria: UI/API mutation bị chặn khi chưa qua access layer; cron dùng credential riêng.
   - Tests: Unauthorized UI/API/cron requests bị từ chối; authorized request pass.
+  - [x] Supabase Google OAuth SSR, logout và proxy bảo vệ UI.
+  - [x] Allowlist email trong `app_users`; trạng thái pending/approved/rejected/suspended được kiểm tra lại ở mọi API.
+  - [x] Super Admin lấy từ `INITIAL_ADMIN_EMAIL`; Super Admin có thể bổ nhiệm Admin, Admin có thể duyệt/tạm khóa nhân viên.
+  - [x] `APP_ACCESS_SECRET` không còn là mật khẩu nhân viên; chỉ còn tùy chọn cho automation/break-glass qua server header.
+  - [ ] Bổ sung credential riêng cho cron khi triển khai FB-011, rồi mới đóng task FOUND-006.
 
 ## Database
 
@@ -227,6 +232,15 @@ Backlog này chỉ bao phủ công cụ nội bộ một người vận hành. F
   - Files/modules expected: Page post screens, filters, pagination, refresh controls.
   - Acceptance criteria: Phân biệt local/external post, stale/error state và permalink; không hiển thị số liệu giả.
   - Tests: Empty/loading/stale/error/paginated UI và manual refresh E2E.
+  - [x] Khôi phục bộ lọc Page, refresh, pagination, xem chi tiết và chuyển đổi Bảng/Timeline bằng dữ liệu GET trực tiếp từ Facebook.
+  - [x] Đặt Timeline làm mặc định, highlight toàn cột hôm nay, mở rộng layout màn hình lớn và áp dụng liquid-glass/bento visual system.
+  - [x] Tự ẩn khung giờ 00:00–07:00 khi tuần không có bài sáng sớm và tự mở lại khi có dữ liệu.
+  - [x] Thay select Page mặc định bằng Page picker có avatar, category, trạng thái kết nối và điều hướng bàn phím.
+  - [x] Đồng bộ avatar Page từ Meta và thu gọn Page picker cho màn hình desktop.
+  - [x] Hiển thị tổng Reaction, Comment và Share trên Bảng/Timeline từ dữ liệu đọc trực tiếp của Meta.
+  - [x] Hiển thị gallery đầy đủ từ Facebook attachments trong popup chi tiết bài viết.
+  - [x] Tự giãn chiều cao từng khung giờ Timeline để các card đăng gần nhau không chồng lấn.
+  - [ ] Hoàn thiện persisted sync/mirror và E2E đầy đủ sau FB-006/FB-007 trước khi đóng task POST-003.
 
 - [ ] POST-004 — Publish and schedule controls
   - Priority: P0

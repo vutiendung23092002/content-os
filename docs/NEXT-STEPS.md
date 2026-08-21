@@ -6,7 +6,7 @@ Supabase connection/migration `DB-001`, `DB-002`, repository `DB-003` và draft 
 
 ## 1. FOUND-006 — Hoàn thiện internal access
 
-Chọn access gateway cho staging/production; giữ local mode thuận tiện nhưng production fail closed.
+Google OAuth + allowlist đã được triển khai bằng Supabase Auth. Việc còn lại trước khi test thật là bật Google provider trong Supabase, cấu hình public URL/callback và điền `INITIAL_ADMIN_EMAIL`. Khi triển khai FB-011, bổ sung credential riêng cho cron; Cloudflare Access vẫn là lớp hardening tùy chọn ở edge.
 
 ## 2. SEC-002 — Hoàn thiện Page token lifecycle
 

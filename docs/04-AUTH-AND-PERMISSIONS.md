@@ -1,56 +1,65 @@
-# Access protection
+# Authentication and permissions
 
-## Scope decision
+## Hai lớp danh tính tách biệt
 
-MVP là single-operator. Không xây users, teams, roles, invites hoặc Facebook OAuth login.
+- Google OAuth qua Supabase Auth xác định ai đang dùng HanContent.
+- Facebook User/Page token cố định ở server xác định Page nào backend có thể đọc hoặc quản lý.
 
-Tuy nhiên ứng dụng không được public không bảo vệ vì backend có khả năng đăng bài bằng Page token.
+Đăng nhập Google không cấp thêm quyền Facebook. Nhân sự không nhìn thấy và không cần nhập `FACEBOOK_USER_ACCESS_TOKEN`, Page token hoặc `APP_ACCESS_SECRET`.
 
-## Allowed deployment modes
+## Luồng đăng nhập
 
-Chọn đúng một mode:
+1. Người dùng chọn **Tiếp tục với Google**.
+2. Supabase chạy OAuth PKCE và trả về `/auth/callback`.
+3. Callback lấy user đã được Supabase xác minh, chuẩn hóa email và upsert `hancontent_os.app_users`.
+4. Email trùng `INITIAL_ADMIN_EMAIL` trở thành Super Admin đã duyệt.
+5. Email đã có trong allowlist được vào tool; email mới ở trạng thái `pending` và chỉ thấy màn chờ duyệt.
+6. Mỗi API đọc lại vai trò/trạng thái từ database. Tạm khóa có hiệu lực mà không cần chờ cookie hết hạn.
 
-1. **Local-only:** bind localhost, phù hợp tool cá nhân.
-2. **Private network/VPN:** chỉ thiết bị nội bộ truy cập.
-3. **Access gateway:** Cloudflare Access, Vercel protection hoặc reverse-proxy authentication.
-4. **Single admin secret:** signed `HttpOnly` session sau khi nhập một mật khẩu dài; chỉ dùng nếu gateway không khả dụng.
+## Vai trò
 
-Khuyến nghị production: access gateway. Không dùng Facebook token làm mật khẩu đăng nhập tool.
+- `super_admin`: chủ hệ thống bootstrap; duyệt user, thêm email và bổ nhiệm/hạ quyền Admin.
+- `admin`: thêm/duyệt/tạm khóa nhân viên; không thay đổi Super Admin hoặc Admin khác.
+- `member`: sử dụng chức năng nội dung/Page đã được hệ thống cho phép.
 
-## Server checks
+Trạng thái gồm `pending`, `approved`, `rejected`, `suspended`. Chỉ `approved` được gọi API nghiệp vụ.
 
-- Mọi `/api/*` route trừ health nội bộ phải qua access guard.
-- Cron endpoint dùng dedicated secret/signature và không dùng browser session.
-- CSRF protection áp dụng cho mutation nếu dùng cookie session.
-- Rate limit các action publish/schedule/update/delete/AI.
-- UI confirmation bắt buộc cho publish now và cancel/delete remote post.
+## Cấu hình Supabase và Google
 
-## Facebook authorization
-
-Facebook authorization không được quyết định bởi UI user roles. Backend chỉ thao tác Page đã sync từ `/me/accounts`, có encrypted Page token và capability phù hợp.
+Trong ứng dụng:
 
 ```text
-private operator access
-AND configured Meta App/User token
-AND Page returned/validated by Meta
-AND required Page task/scope
-= operation allowed
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
+NEXT_PUBLIC_SITE_URL=https://content.battletoadserc20.xyz
+INITIAL_ADMIN_EMAIL=<email-chủ-hệ-thống>
 ```
 
-## Token configuration
+Trong Google Cloud Console, Authorized redirect URI của OAuth client là callback do Supabase cung cấp:
 
-Default MVP:
+```text
+https://<project-ref>.supabase.co/auth/v1/callback
+```
 
-- User Access Token nằm trong hosting secret `FACEBOOK_USER_ACCESS_TOKEN`.
-- Page tokens lấy từ sync và được mã hóa vào `page_credentials`.
-- Token rotation: cập nhật hosting secret, chạy Validate + Sync Pages, thay Page credentials sau khi xác minh.
+Trong Supabase Dashboard:
 
-Nếu sau này có Settings UI để nhập token, route phải sau access gateway, HTTPS, không echo token, không log body và mã hóa trước khi persist.
+- Auth > Providers > Google: bật provider và nhập Google Client ID/Secret.
+- Auth > URL Configuration > Site URL: `https://content.battletoadserc20.xyz`.
+- Redirect URLs: thêm `https://content.battletoadserc20.xyz/auth/callback` và, khi dev, `http://localhost:3000/auth/callback`.
 
-## Tests
+## Kiểm soát server
 
-- Public/unauthenticated request không gọi service Meta.
-- Cron secret sai bị từ chối.
-- CSRF/replay với mutation cookie mode.
-- Token không xuất hiện trong HTML, JSON, localStorage, logs hoặc error reporting.
-- Page ID giả không lấy được credential.
+- Proxy chỉ làm redirect trải nghiệm; từng API vẫn tự xác minh Supabase user và allowlist.
+- Mutation quản trị yêu cầu cùng origin để giảm CSRF.
+- API nghiệp vụ chấp nhận Google session đã duyệt hoặc `x-han-access-secret` đúng cho automation server-to-server.
+- Cron tương lai phải có credential riêng, không dùng browser session.
+- Publish/schedule/update/delete vẫn phải qua Page capability và confirmation riêng; quyền Google không tự tạo quyền Facebook.
+
+## Kiểm thử bắt buộc
+
+- User chưa đăng nhập bị đưa về `/login`; API trả 401.
+- User pending/rejected/suspended không gọi được service Meta.
+- Admin không thể sửa Super Admin hoặc Admin khác.
+- Member không vào được `/admin` và admin API.
+- Token/secret không xuất hiện trong HTML, JSON, client bundle, logs hoặc localStorage.
+- Không gọi API ghi Facebook khi chưa có Page test do người vận hành chỉ định.

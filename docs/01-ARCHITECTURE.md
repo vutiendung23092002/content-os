@@ -2,7 +2,7 @@
 
 ## Kiến trúc mục tiêu
 
-Ứng dụng là single-operator modular monolith. Facebook thực hiện native scheduling; không có publish worker chờ đến giờ.
+Ứng dụng là modular monolith cho một nhóm nội bộ nhỏ. Supabase Google OAuth + allowlist bảo vệ người dùng; Facebook dùng một credential server-side chung và thực hiện native scheduling, không có publish worker chờ đến giờ.
 
 ```text
 ┌────────────────┐       ┌─────────────────────────────┐

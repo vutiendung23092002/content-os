@@ -1,13 +1,13 @@
 # ARCHITECTURE DECISION RECORDS
 
-## ADR-001 — Công cụ nội bộ một người vận hành
+## ADR-001 — Công cụ nội bộ cho nhóm nhỏ
 
 - **Status:** Accepted
 - **Context:** Chủ hệ thống dùng chính token Facebook của mình để quản lý các Page có quyền.
-- **Decision:** MVP là single-operator, không có tài khoản khách hàng, team, role hay approval workflow.
-- **Alternatives:** OAuth đa tenant; hệ thống nhiều người dùng ngay từ đầu.
-- **Consequences:** Phạm vi nhỏ và nhanh kiểm chứng; production vẫn cần access gateway hoặc admin protection.
-- **Revisit when:** Có người thứ hai cần quyền độc lập hoặc khách hàng cần tự kết nối Page.
+- **Decision:** Google OAuth qua Supabase xác thực người dùng; allowlist có Super Admin/Admin/member và approval status. Facebook vẫn dùng credential server-side chung, không phải OAuth Facebook đa tenant.
+- **Alternatives:** Mật khẩu nội bộ dùng chung; OAuth Facebook đa tenant; access gateway duy nhất.
+- **Consequences:** Nhân sự không nhận secret; Admin khóa quyền tập trung; cần cấu hình Google/Supabase và kiểm tra database ở mỗi API.
+- **Revisit when:** Khách hàng cần tự kết nối Facebook hoặc cần tenant/workspace độc lập.
 
 ## ADR-002 — Token được cấu hình server-side
 

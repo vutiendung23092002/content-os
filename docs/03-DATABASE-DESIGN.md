@@ -2,7 +2,7 @@
 
 ## Principles
 
-- Keep schema small and single-operator.
+- Keep schema small; only add the minimal user/role/approval model needed for an internal allowlist.
 - Store application tables and enums in PostgreSQL schema `hancontent_os`, not `public`.
 - Meta remote IDs are first-class and unique per Page/platform.
 - Meta is authority for scheduled/published state; DB stores drafts, mapping and last synchronized snapshot.
@@ -18,7 +18,26 @@ post_type: text, image
 operation_type: sync_pages, publish_now, schedule, update, reschedule, cancel, sync_posts
 operation_status: pending, succeeded, failed, uncertain
 generation_type: caption, rewrite, idea
+app_role: super_admin, admin, member
+user_approval_status: pending, approved, rejected, suspended
 ```
+
+## `app_users`
+
+Allowlist người dùng Google. Supabase `auth.users` xác thực danh tính; bảng này là nguồn sự thật cho quyền trong ứng dụng.
+
+| Field                          | Type                 |  Null | Constraint                                                            |
+| ------------------------------ | -------------------- | ----: | --------------------------------------------------------------------- |
+| `id`                           | uuid                 |    no | PK                                                                    |
+| `external_user_id`             | text                 |   yes | unique Supabase user ID; null khi email được thêm trước lần login đầu |
+| `email`                        | text                 |    no | normalized, unique                                                    |
+| `name`, `avatar_url`           | text                 | mixed | profile hiển thị                                                      |
+| `role`                         | app_role             |    no | default `member`                                                      |
+| `approval_status`              | user_approval_status |    no | default `pending`                                                     |
+| `approved_by_user_id`          | uuid                 |   yes | self FK, SET NULL                                                     |
+| `approved_at`, `last_login_at` | timestamptz          |   yes | audit metadata                                                        |
+| `is_bootstrap_super_admin`     | boolean              |    no | chỉ một row được true                                                 |
+| timestamps                     | timestamptz          |    no |                                                                       |
 
 ## `facebook_connection`
 

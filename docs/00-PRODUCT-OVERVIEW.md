@@ -2,13 +2,13 @@
 
 ## Mục đích
 
-Han Content OS là tool nội bộ, single-operator, dùng để quản lý các Facebook Page mà chủ tool có quyền quản trị. Tool tập trung vào đăng bài, dùng chức năng hẹn giờ native của Facebook, xem bài đã đăng/bài đang hẹn giờ và dùng AI hỗ trợ viết content.
+Han Content OS là tool nội bộ cho một nhóm nhỏ, dùng token Facebook cố định của chủ hệ thống để quản lý các Page mà token có quyền. Tool tập trung vào đăng bài, dùng chức năng hẹn giờ native của Facebook, xem bài đã đăng/bài đang hẹn giờ và dùng AI hỗ trợ viết content.
 
-Đây không phải SaaS. Không có public signup, team management, approval workflow, billing hoặc customer tenant.
+Đây không phải SaaS. Không có public signup, billing, customer tenant hoặc luồng mỗi khách hàng tự kết nối Facebook. Chỉ email Google được Admin duyệt mới dùng được tool.
 
 ## Người sử dụng
 
-MVP phục vụ một operator. Không xây hệ thống user/role phức tạp. Ứng dụng phải chạy local/private network hoặc sau một access gateway đơn giản; “không có Facebook Login” không có nghĩa là URL được phép public không bảo vệ.
+MVP phục vụ Super Admin, một số Admin tùy chọn và vài nhân viên. Supabase Google OAuth xác thực danh tính; allowlist trong database quyết định quyền truy cập. “Không có Facebook Login cho nhân sự” không có nghĩa URL được phép public không bảo vệ.
 
 ## Core features
 

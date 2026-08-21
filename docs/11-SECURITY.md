@@ -2,9 +2,11 @@
 
 ## 1. Mô hình sử dụng
 
-Đây là công cụ nội bộ cho một người vận hành, dùng Facebook token của chính chủ sở hữu hệ thống để quản lý các Page mà tài khoản đó có quyền. MVP không cung cấp kết nối Facebook cho khách hàng và không xây hệ thống nhiều người dùng.
+Đây là công cụ nội bộ cho một nhóm nhỏ, dùng Facebook token cố định phía server để quản lý các Page mà tài khoản Facebook đó có quyền. Google chỉ xác thực người dùng công cụ; nhân sự không kết nối Facebook riêng và không nhận token Facebook.
 
 "Không có đăng nhập phức tạp" không đồng nghĩa ứng dụng được public. Production phải nằm sau ít nhất một lớp bảo vệ như Cloudflare Access, VPN, private network hoặc một admin secret/session đơn giản.
+
+Public hostname dùng Supabase Google OAuth. Email phải có trạng thái `approved` trong allowlist; UI và API đều fail closed. `INITIAL_ADMIN_EMAIL` là Super Admin đầu tiên và có thể bổ nhiệm thêm Admin. `APP_ACCESS_SECRET` không phải mật khẩu nhân sự, chỉ là credential server-to-server tùy chọn. Không dùng Facebook token làm mật khẩu đăng nhập tool.
 
 ## 2. Nguyên tắc tuân thủ Meta
 
