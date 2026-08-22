@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 type IconName =
   | "home"
@@ -26,6 +26,12 @@ type SessionViewer = {
   email: string;
   avatarUrl?: string;
   role: "super_admin" | "admin" | "member";
+};
+
+const roleLabels: Record<SessionViewer["role"], string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  member: "Nhân viên",
 };
 
 const navGroups: Array<{
@@ -161,6 +167,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [accountReady, setAccountReady] = useState(false);
   const [viewer, setViewer] = useState<SessionViewer | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
   const isBarePage = pathname === "/login" || pathname === "/access-pending";
   const heading = pageTitles[pathname] ?? pageTitles["/"]!;
 
@@ -200,6 +208,27 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       active = false;
     };
   }, [isBarePage]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [accountMenuOpen]);
 
   if (isBarePage) return <>{children}</>;
 
@@ -272,9 +301,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 ? "Đã kết nối"
                 : "Cần kiểm tra"}
           </strong>
-          <form action="/api/auth/logout" method="post">
-            <button type="submit">Đăng xuất</button>
-          </form>
         </div>
       </aside>
 
@@ -295,24 +321,95 @@ export function DashboardShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <Link
-            className="topAccount"
-            href={viewer?.role === "member" ? "/" : "/admin"}
-          >
-            {viewer?.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img alt="" src={viewer.avatarUrl} />
-            ) : (
-              <span className="topAccountAvatar" aria-hidden="true">
-                {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
+          <div className="topAccountShell" ref={accountMenuRef}>
+            <button
+              aria-controls="account-menu"
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              className={`topAccount ${accountMenuOpen ? "isOpen" : ""}`}
+              onClick={() => setAccountMenuOpen((current) => !current)}
+              type="button"
+            >
+              {viewer?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img alt="" src={viewer.avatarUrl} />
+              ) : (
+                <span className="topAccountAvatar" aria-hidden="true">
+                  {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
+                </span>
+              )}
+              <span className="topAccountText">
+                <small>Tài khoản Google</small>
+                <strong>{viewer?.name ?? "Đang xác thực..."}</strong>
               </span>
-            )}
-            <span className="topAccountText">
-              <small>Tài khoản Google</small>
-              <strong>{viewer?.name ?? "Đang xác thực..."}</strong>
-            </span>
-            <Icon name="chevron" />
-          </Link>
+              <Icon name="chevron" />
+            </button>
+
+            {accountMenuOpen ? (
+              <div className="accountMenu" id="account-menu" role="menu">
+                <div className="accountMenuIdentity">
+                  {viewer?.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img alt="" src={viewer.avatarUrl} />
+                  ) : (
+                    <span aria-hidden="true">
+                      {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
+                    </span>
+                  )}
+                  <div>
+                    <strong>{viewer?.name ?? "Tài khoản Google"}</strong>
+                    <small>{viewer?.email ?? "Đang tải thông tin..."}</small>
+                    {viewer ? <b>{roleLabels[viewer.role]}</b> : null}
+                  </div>
+                </div>
+
+                {viewer?.role !== "member" ? (
+                  <Link
+                    className="accountMenuItem"
+                    href="/admin"
+                    onClick={() => setAccountMenuOpen(false)}
+                    role="menuitem"
+                  >
+                    <Icon name="settings" />
+                    <span>
+                      <strong>Nhân sự & phân quyền</strong>
+                      <small>Quản lý tài khoản được phép truy cập</small>
+                    </span>
+                  </Link>
+                ) : null}
+
+                <form
+                  action="/api/auth/logout"
+                  method="post"
+                  onSubmit={(event) => {
+                    const draftMessage =
+                      pathname === "/posts/new"
+                        ? document.querySelector<HTMLTextAreaElement>(
+                            "#message",
+                          )?.value
+                        : "";
+                    if (
+                      draftMessage?.trim() &&
+                      !window.confirm(
+                        "Bạn có nội dung chưa lưu. Vẫn đăng xuất?",
+                      )
+                    ) {
+                      event.preventDefault();
+                    }
+                  }}
+                >
+                  <button
+                    className="accountLogoutButton"
+                    role="menuitem"
+                    type="submit"
+                  >
+                    <span aria-hidden="true">↪</span>
+                    Đăng xuất
+                  </button>
+                </form>
+              </div>
+            ) : null}
+          </div>
         </header>
         <div className="workspaceContent">{children}</div>
       </div>
