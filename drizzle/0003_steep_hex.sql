@@ -1,0 +1,2 @@
+ALTER TABLE "hancontent_os"."assets" ADD COLUMN "cleanup_claimed_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "assets_cleanup_idx" ON "hancontent_os"."assets" USING btree ("deleted_at","cleanup_claimed_at","created_at");

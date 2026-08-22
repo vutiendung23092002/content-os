@@ -23,6 +23,7 @@ describe("database schema", () => {
         "facebookConnection",
         "appUsers",
         "pages",
+        "userPageAssignments",
         "pageCredentials",
         "posts",
         "facebookOperations",

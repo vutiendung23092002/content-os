@@ -172,6 +172,31 @@ export const pages = applicationSchema.table(
   ],
 );
 
+export const userPageAssignments = applicationSchema.table(
+  "user_page_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    pageId: uuid("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    assignedByUserId: uuid("assigned_by_user_id").references(
+      () => appUsers.id,
+      { onDelete: "set null" },
+    ),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("user_page_assignments_user_page_unique").on(
+      table.userId,
+      table.pageId,
+    ),
+    index("user_page_assignments_page_user_idx").on(table.pageId, table.userId),
+  ],
+);
+
 export const pageCredentials = applicationSchema.table(
   "page_credentials",
   {
@@ -209,10 +234,16 @@ export const assets = applicationSchema.table(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    cleanupClaimedAt: timestamp("cleanup_claimed_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("assets_storage_key_unique").on(table.storageKey),
+    index("assets_cleanup_idx").on(
+      table.deletedAt,
+      table.cleanupClaimedAt,
+      table.createdAt,
+    ),
     check("assets_file_size_positive", sql`${table.fileSize} > 0`),
   ],
 );
@@ -392,6 +423,7 @@ export const schema = {
   appUsers,
   facebookConnection,
   pages,
+  userPageAssignments,
   pageCredentials,
   assets,
   posts,

@@ -15,6 +15,20 @@
       "when": 1787302215307,
       "tag": "0001_whole_stepford_cuckoos",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787363785605,
+      "tag": "0002_curious_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787384169625,
+      "tag": "0003_steep_hex",
+      "breakpoints": true
     }
   ]
 }

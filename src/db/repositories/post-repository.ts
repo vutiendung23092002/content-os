@@ -1,17 +1,29 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
-import { posts } from "@/db/schema";
+import { postAssets, posts } from "@/db/schema";
 
 export type PostRecord = typeof posts.$inferSelect;
 
 export type CreateDraftInput = {
   pageId: string;
   message: string;
+  assetIds?: string[];
 };
 
 export type UpdateDraftInput = {
   message: string;
   expectedUpdatedAt?: Date;
+};
+
+export type RemotePostCacheInput = {
+  pageId: string;
+  remotePostId: string;
+  kind: "published" | "scheduled";
+  message: string;
+  effectiveAt: Date | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  snapshot: Record<string, unknown>;
 };
 
 export class PostRepository {
@@ -23,13 +35,23 @@ export class PostRepository {
       .values({
         pageId: input.pageId,
         message: input.message,
-        type: "text",
+        type: input.assetIds?.length ? "image" : "text",
         status: "draft",
       })
       .returning();
 
     if (!record) {
       throw new Error("Failed to create draft");
+    }
+
+    if (input.assetIds?.length) {
+      await this.database.insert(postAssets).values(
+        input.assetIds.map((assetId, sortOrder) => ({
+          postId: record.id,
+          assetId,
+          sortOrder,
+        })),
+      );
     }
 
     return record;
@@ -78,6 +100,69 @@ export class PostRepository {
       .where(and(eq(posts.id, id), eq(posts.status, "draft")))
       .returning({ id: posts.id });
     return deleted.length === 1;
+  }
+
+  async upsertRemotePosts(inputs: RemotePostCacheInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    const syncedAt = new Date();
+
+    await this.database
+      .insert(posts)
+      .values(
+        inputs.map((input) => ({
+          pageId: input.pageId,
+          remotePostId: input.remotePostId,
+          type: input.snapshot.imageUrl
+            ? ("image" as const)
+            : ("text" as const),
+          message: input.message,
+          status: input.kind,
+          scheduledAt: input.kind === "scheduled" ? input.effectiveAt : null,
+          publishedAt: input.kind === "published" ? input.effectiveAt : null,
+          remoteCreatedAt: input.createdAt,
+          remoteUpdatedAt: input.updatedAt,
+          lastSyncedAt: syncedAt,
+          remoteSnapshot: input.snapshot,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [posts.pageId, posts.remotePostId],
+        targetWhere: sql`${posts.remotePostId} is not null`,
+        set: {
+          type: sql`excluded.type`,
+          message: sql`excluded.message`,
+          status: sql`excluded.status`,
+          scheduledAt: sql`excluded.scheduled_at`,
+          publishedAt: sql`excluded.published_at`,
+          remoteCreatedAt: sql`excluded.remote_created_at`,
+          remoteUpdatedAt: sql`excluded.remote_updated_at`,
+          lastSyncedAt: syncedAt,
+          remoteSnapshot: sql`excluded.remote_snapshot`,
+          updatedAt: syncedAt,
+        },
+      });
+  }
+
+  async listRemoteWindow(
+    pageId: string,
+    kind: "published" | "scheduled",
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<PostRecord[]> {
+    const effectiveAt =
+      kind === "scheduled" ? posts.scheduledAt : posts.publishedAt;
+    return this.database
+      .select()
+      .from(posts)
+      .where(
+        and(
+          eq(posts.pageId, pageId),
+          eq(posts.status, kind),
+          gte(effectiveAt, windowStart),
+          lt(effectiveAt, windowEnd),
+        ),
+      )
+      .orderBy(desc(effectiveAt));
   }
 
   async claimDraftForSubmission(id: string): Promise<PostRecord | undefined> {

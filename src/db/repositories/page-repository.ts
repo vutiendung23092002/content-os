@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
 import { pages } from "@/db/schema";
 
@@ -38,6 +38,7 @@ export class PageRepository {
           avatarUrl: input.avatarUrl,
           category: input.category,
           timezone: input.timezone,
+          isActive: true,
           connectionStatus: "active",
           lastSyncedAt: now,
           remoteMetadata: input.remoteMetadata ?? {},
@@ -79,5 +80,14 @@ export class PageRepository {
       .from(pages)
       .where(eq(pages.isActive, true))
       .orderBy(asc(pages.name));
+  }
+
+  async deactivate(id: string): Promise<PageRecord | undefined> {
+    const [record] = await this.database
+      .update(pages)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(and(eq(pages.id, id), eq(pages.isActive, true)))
+      .returning();
+    return record;
   }
 }

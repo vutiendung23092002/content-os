@@ -16,6 +16,7 @@ const expectedTables = [
   "post_assets",
   "posts",
   "sync_cursors",
+  "user_page_assignments",
 ];
 const knownLegacyTables = [
   "app_sessions",
