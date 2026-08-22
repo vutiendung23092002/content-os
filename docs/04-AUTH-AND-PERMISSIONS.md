@@ -22,6 +22,15 @@
 - `admin`: thêm/duyệt/tạm khóa nhân viên; không thay đổi Super Admin hoặc Admin khác.
 - `member`: sử dụng chức năng nội dung/Page đã được hệ thống cho phép.
 
+## Phân quyền Page
+
+- Super Admin sử dụng toàn bộ Page active trong hệ thống.
+- Admin và nhân viên chỉ xem nội dung, tạo/sửa/xóa draft, đăng hoặc hẹn giờ trên Page được gán trong `user_page_assignments`.
+- Admin chỉ được gán cho nhân viên những Page chính Admin đó đang được quản lý; Super Admin có thể gán mọi Page.
+- Danh sách chọn Page vẫn hiển thị Page chưa được cấp ở trạng thái mờ, khóa và không thể chọn.
+- Backend kiểm tra lại `page_id` hoặc Page của `post_id` tại từng API. Ẩn/khóa trên UI không phải lớp bảo mật.
+- Thu hồi assignment có hiệu lực ở request tiếp theo. Facebook token dùng chung ở server không làm phát sinh quyền ứng dụng cho người dùng.
+
 Trạng thái gồm `pending`, `approved`, `rejected`, `suspended`. Chỉ `approved` được gọi API nghiệp vụ.
 
 ## Cấu hình Supabase và Google
@@ -60,6 +69,8 @@ Trong Supabase Dashboard:
 - User chưa đăng nhập bị đưa về `/login`; API trả 401.
 - User pending/rejected/suspended không gọi được service Meta.
 - Admin không thể sửa Super Admin hoặc Admin khác.
+- User không thể đọc hoặc thao tác Page chưa được gán bằng cách gọi API trực tiếp.
+- Admin không thể cấp một Page nằm ngoài phạm vi của chính mình.
 - Member không vào được `/admin` và admin API.
 - Token/secret không xuất hiện trong HTML, JSON, client bundle, logs hoặc localStorage.
 - Không gọi API ghi Facebook khi chưa có Page test do người vận hành chỉ định.

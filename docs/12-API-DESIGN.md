@@ -24,17 +24,34 @@ Response lỗi chuẩn:
 
 ## 2. Facebook connection và Page
 
-| Method  | Route                                | Mục đích                                        |
-| ------- | ------------------------------------ | ----------------------------------------------- |
-| `GET`   | `/api/facebook/status`               | Kiểm tra connection đã cấu hình, không lộ token |
-| `POST`  | `/api/facebook/sync-pages`           | Gọi Page discovery và cập nhật Page/Page token  |
-| `GET`   | `/api/pages`                         | Liệt kê Page đang quản lý                       |
-| `PATCH` | `/api/pages/:pageId`                 | Bật/tắt Page và cập nhật cấu hình hiển thị      |
-| `POST`  | `/api/pages/:pageId/refresh`         | Đồng bộ published và scheduled posts            |
-| `GET`   | `/api/pages/:pageId/posts/published` | Danh sách bài remote đã đăng                    |
-| `GET`   | `/api/pages/:pageId/posts/scheduled` | Danh sách bài remote đang được Facebook hẹn giờ |
+| Method   | Route                                | Mục đích                                        |
+| -------- | ------------------------------------ | ----------------------------------------------- |
+| `GET`    | `/api/facebook/status`               | Kiểm tra connection đã cấu hình, không lộ token |
+| `POST`   | `/api/facebook/sync-pages`           | Gọi Page discovery và cập nhật Page/Page token  |
+| `POST`   | `/api/facebook/pages/check`          | Tài khoản đã duyệt kiểm tra Page ID/quyền đọc   |
+| `POST`   | `/api/facebook/pages`                | Tài khoản đã duyệt thêm Page vào danh mục       |
+| `GET`    | `/api/pages`                         | Liệt kê Page đang quản lý                       |
+| `PATCH`  | `/api/pages/:pageId`                 | Bật/tắt Page và cập nhật cấu hình hiển thị      |
+| `DELETE` | `/api/pages/:pageId`                 | Admin gỡ Page khỏi ứng dụng                     |
+| `POST`   | `/api/pages/:pageId/refresh`         | Đồng bộ published và scheduled posts            |
+| `GET`    | `/api/pages/:pageId/posts/published` | Danh sách bài remote đã đăng                    |
+| `GET`    | `/api/pages/:pageId/posts/scheduled` | Danh sách bài remote đang được Facebook hẹn giờ |
 
 `sync-pages` chỉ dùng user access token từ secret manager. Client không gửi token trong body.
+
+`GET /api/pages` trả cả Page được cấp và chưa được cấp cùng `canAccess`; Page chưa được cấp chỉ phục vụ trạng thái khóa trên UI. Mọi API nhận `pageId`/`postId` vẫn kiểm tra assignment ở server.
+
+Thêm Page vào danh mục không đồng nghĩa tự cấp quyền cho người thêm. `DELETE /api/pages/:pageId` là soft-delete nội bộ: đặt Page inactive và thu hồi assignment trong cùng transaction; không gọi API xóa Page/bài viết của Facebook. Page inactive bị chặn với cả Super Admin và không xuất hiện trong selector/danh sách ứng dụng.
+
+## 2.1. Quản trị nhân sự và Page
+
+| Method | Route                            | Mục đích                             |
+| ------ | -------------------------------- | ------------------------------------ |
+| `GET`  | `/api/admin/users`               | Danh sách user và số Page được cấp   |
+| `GET`  | `/api/admin/users/:userId/pages` | Mở dữ liệu phân quyền Page           |
+| `PUT`  | `/api/admin/users/:userId/pages` | Thay phạm vi Page được phép của user |
+
+Mutation yêu cầu same-origin. Super Admin cấp mọi Page; Admin chỉ cấp Page thuộc phạm vi của mình và không quản lý Admin khác.
 
 ## 3. Draft và publish
 
@@ -62,11 +79,10 @@ Backend chuyển về UTC, kiểm tra capability/range đã xác nhận và gử
 
 ## 4. Asset
 
-| Method   | Route                           | Mục đích                    |
-| -------- | ------------------------------- | --------------------------- |
-| `POST`   | `/api/assets/upload-intent`     | Cấp signed URL cho một ảnh  |
-| `POST`   | `/api/assets/:assetId/complete` | Xác nhận upload và metadata |
-| `DELETE` | `/api/assets/:assetId`          | Xóa asset chưa được dùng    |
+| Method   | Route                  | Mục đích                                       |
+| -------- | ---------------------- | ---------------------------------------------- |
+| `POST`   | `/api/assets`          | Validate và upload một ảnh vào private Storage |
+| `DELETE` | `/api/assets/:assetId` | Xóa asset chưa được gắn vào draft              |
 
 Các route này chỉ xuất hiện sau khi text post ổn định.
 
@@ -102,4 +118,10 @@ Cron endpoint dùng secret riêng, rate limit và lock để tránh chạy chồ
 - Danh sách remote giữ cursor Meta ở server; client nhận cursor opaque của ứng dụng.
 - Không để Graph cursor chứa dữ liệu nhạy cảm trong log.
 - Cache danh sách Page ngắn hạn; mutation luôn invalidate cache liên quan.
-- UI luôn hiển thị `lastSyncedAt` để người vận hành biết độ mới của mirror.
+- Timeline gửi `weekStart`; backend giới hạn published posts bằng `since/until`, phân trang tối đa 100 bản ghi mỗi request và mirror kết quả vào `posts`.
+- `POST /api/posts` nhận `assetIds` có thứ tự, tối đa 10 phần tử; mỗi asset phải thuộc đúng Page, chưa bị xóa và chưa gắn vào bài khác.
+- Publish/schedule bài nhiều ảnh dùng signed URL ngắn hạn để Meta tạo unpublished photo, sau đó tạo một feed post bằng `attached_media`.
+- `sync_cursors` ghi nhận cửa sổ Page/kind/tuần đã đồng bộ, kể cả tuần không có bài, để tránh gọi Meta lặp lại.
+- Cache tuần có TTL 5 phút. Dữ liệu cũ được trả ngay rồi client refresh nền; `refresh=1` buộc đồng bộ Meta.
+- Client giữ cache theo `pageId + tab + view + weekStart`; đổi tab hoặc quay lại tuần vừa xem không gọi lại API trong TTL.
+- Các request đồng bộ cùng Page/kind/tuần dùng chung một promise trên server để tránh gọi Meta trùng.

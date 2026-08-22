@@ -18,7 +18,8 @@ Foundation và local application slice đã được triển khai. Repository c�
 corepack enable
 pnpm install
 cp .env.example .env.local
-pnpm dev
+# corepack pnpm dev
+corepack pnpm exec next start -H 127.0.0.1
 ```
 
 Trên máy Windows không có quyền tạo Corepack shim toàn cục, dùng `corepack pnpm` thay cho `pnpm`.
@@ -45,6 +46,12 @@ pnpm db:migrate
 ```
 
 Không commit `.env.local`. Không đưa database URL, Meta token, App Secret hoặc encryption key vào issue, log hay AI prompt.
+
+## Private image storage
+
+Tạo bucket private `post-assets` trong Supabase Storage, sau đó đặt `SUPABASE_SERVICE_ROLE_KEY` và `SUPABASE_STORAGE_BUCKET=post-assets` trong `.env.local`. Service-role key chỉ được đọc ở server, tuyệt đối không dùng tiền tố `NEXT_PUBLIC_` hoặc gửi key này cho nhân sự.
+
+Ảnh của draft được giữ tới khi draft bị xóa. Ảnh của bài đã đăng được giữ 7 ngày kể từ thời điểm Facebook xác nhận bài ở trạng thái `published`; bài `scheduled`, `failed` và `uncertain` không bị dọn. Endpoint `GET/POST /api/cron/assets/cleanup` chạy batch tối đa 50 ảnh và yêu cầu `Authorization: Bearer <ASSET_CLEANUP_SECRET>`. Đặt một secret ngẫu nhiên tối thiểu 32 ký tự trong `.env.local`, rồi cấu hình scheduler gọi endpoint mỗi ngày một lần.
 
 ## Tài liệu
 

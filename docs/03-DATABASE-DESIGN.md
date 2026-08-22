@@ -86,11 +86,27 @@ Encrypted Page Access Token. Generic Page queries must not select this table.
 | `expires_at`, `last_validated_at`, `revoked_at` | timestamptz |  yes |                            |
 | timestamps                                      | timestamptz |   no |                            |
 
+## `user_page_assignments`
+
+Phạm vi Page mà một tài khoản Google được phép sử dụng trong tool. Super Admin có quyền ngầm trên toàn bộ Page nên không cần tạo assignment.
+
+| Field                 | Type        | Null | Constraint            |
+| --------------------- | ----------- | ---: | --------------------- |
+| `id`                  | uuid        |   no | PK                    |
+| `user_id`             | uuid        |   no | FK app_users CASCADE  |
+| `page_id`             | uuid        |   no | FK pages CASCADE      |
+| `assigned_by_user_id` | uuid        |  yes | FK app_users SET NULL |
+| timestamps            | timestamptz |   no |                       |
+
+Unique `(user_id,page_id)`; index `(page_id,user_id)`.
+
 ## `assets`
 
-Optional image metadata. Private bytes live in S3/R2.
+Image metadata. Private bytes live in Supabase Storage.
 
-Fields: `id uuid PK`; `page_id uuid NULL FK pages SET NULL`; `storage_key text UNIQUE NOT NULL`; `mime_type text NOT NULL`; `file_size bigint NOT NULL`; `width`, `height integer NULL`; `checksum text NOT NULL`; `original_filename text NOT NULL`; `created_at`; `deleted_at NULL`. No permanent public URL. Uploaded original is immutable.
+Fields: `id uuid PK`; `page_id uuid NULL FK pages SET NULL`; `storage_key text UNIQUE NOT NULL`; `mime_type text NOT NULL`; `file_size bigint NOT NULL`; `width`, `height integer NULL`; `checksum text NOT NULL`; `original_filename text NOT NULL`; `created_at`; `cleanup_claimed_at NULL`; `deleted_at NULL`. No permanent public URL. Uploaded original is immutable.
+
+`cleanup_claimed_at` là lease ngắn hạn để hai cleanup run không xóa chồng. `deleted_at` chỉ được chốt sau khi Supabase Storage đã xóa object thành công; lease quá 15 phút được phép retry.
 
 ## `posts`
 
@@ -138,7 +154,7 @@ Fields: `id uuid PK`; `page_id uuid FK pages CASCADE`; `sync_type text NOT NULL`
 
 ```text
 facebook_connection
-pages ──1 page_credentials
+app_users ──< user_page_assignments >── pages ──1 page_credentials
   ├──< posts ──< post_assets >── assets
   ├──< facebook_operations
   ├──< ai_generations
@@ -152,7 +168,8 @@ pages ──1 page_credentials
 - A timeout after sending schedule sets operation `uncertain`; reconcile before retry.
 - Missing remote scheduled post becomes `published`, `canceled` or `deleted_remote` only after querying Meta evidence.
 - Page credential is decrypted only inside the Meta adapter.
+- Admin/member chỉ đọc hoặc thao tác Page có assignment; Super Admin có quyền ngầm trên mọi Page active.
 
 ## Removed schemas
 
-No `users`, `teams`, `brands`, `products`, `campaigns`, `page_members`, assignments, comments, approvals, notifications, job outbox, publish worker schedules, pgvector or analytics snapshots in MVP.
+No teams, brands, products, campaigns, comments, content approvals, notifications, job outbox, publish worker schedules, pgvector or analytics snapshots in MVP.

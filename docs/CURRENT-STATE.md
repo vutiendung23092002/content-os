@@ -1,6 +1,6 @@
 # CURRENT STATE
 
-**Kiểm tra tại:** 2026-08-21
+**Kiểm tra tại:** 2026-08-22
 **Workspace:** `C:\Users\Dung\Documents\Project\han-content-os`
 
 ## Kết luận
@@ -31,15 +31,19 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 - Allowlist email trong `app_users`; API kiểm tra lại trạng thái duyệt trong database ở mỗi request nên khóa tài khoản có hiệu lực ngay.
 - `INITIAL_ADMIN_EMAIL` bootstrap Super Admin được bảo vệ; Super Admin bổ nhiệm thêm Admin, còn Admin duyệt hoặc tạm khóa nhân viên.
 - `APP_ACCESS_SECRET` không còn xuất hiện trên màn hình đăng nhập; chỉ giữ tùy chọn cho automation/break-glass server-to-server.
+- Phân quyền Page theo tài khoản Google; Super Admin có toàn bộ Page, Admin/Nhân viên chỉ dùng Page được gán và API chặn truy cập chéo Page.
+- Màn Nhân sự có thống kê, directory tài khoản và drawer tìm/gán Page với Liquid Glass nền đục.
+- Design system Liquid Glass đã được áp dụng toàn bộ giao diện, gồm sidebar/topbar, dashboard, form, bảng, timeline, dropdown và modal; lớp kính giữ độ đục cao để không nhìn xuyên dữ liệu.
+- Mọi tài khoản đã duyệt có thể kiểm tra/thêm Page bằng ID nhưng không tự nhận quyền sử dụng; Admin/Super Admin có thể gỡ Page khỏi danh mục bằng soft-delete nội bộ, thu hồi assignment và không tác động Facebook.
 
 ### Database
 
 - Cả pooled `DATABASE_URL` và migration `DIRECT_DATABASE_URL` đã kết nối thành công.
-- Drizzle schema `hancontent_os` cho 10 bảng hiện hành, gồm `app_users` phục vụ allowlist.
+- Drizzle schema `hancontent_os` cho 11 bảng hiện hành, gồm `app_users` và `user_page_assignments` phục vụ allowlist/phạm vi Page.
 - Enum, foreign key, unique/index và check constraint cốt lõi.
 - Supabase-compatible runtime client dùng pooled URL với prepared statement tắt.
 - Drizzle config dùng direct URL cho migration.
-- Migration nền và migration Google allowlist: `0000_empty_human_cannonball.sql`, `0001_whole_stepford_cuckoos.sql`.
+- Migration nền, Google allowlist và Page assignment: `0000_empty_human_cannonball.sql`, `0001_whole_stepford_cuckoos.sql`, `0002_curious_kitty_pryde.sql`.
 - Migration đã áp dụng thành công lên Supabase.
 - Catalog verification xác nhận đủ bảng hiện hành; ba bảng OAuth thử nghiệm cũ được giữ nguyên, không dùng và không xóa để tránh thao tác phá hủy dữ liệu.
 
@@ -73,7 +77,11 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
 - Meta thành công nhưng local commit lỗi được giữ cho reconciliation, không đổi thành remote failure.
 - Local UI `/posts` và `/posts/new`.
+- Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh, kéo thả card để sắp xếp, preview bố cục, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
+- Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.
+- Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy: orphan quá 1 giờ hoặc bài published quá 7 ngày; scheduled/failed/uncertain được giữ nguyên. Migration `0003_steep_hex.sql` đã áp dụng trên Supabase.
 - UI `/posts` đọc trực tiếp bài đã đăng/hẹn giờ theo Page, hỗ trợ phân trang, làm mới và chuyển đổi giữa dạng bảng với timeline tuần.
+- Timeline cache theo Page/tab/tuần ở client và mirror bài remote vào Supabase; published sync dùng `since/until`, request trùng được hợp nhất và dữ liệu stale hiển thị trước khi refresh nền.
 
 Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0` đã thành công: 6 Page được đồng bộ, Page token mã hóa trong Supabase và response không chứa credential. Năm Page có `CREATE_CONTENT`/`MANAGE`; một Page chỉ có `ANALYZE`/`ADVERTISE` nên không được dùng để test đăng bài.
 
@@ -82,21 +90,24 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 44 unit tests pass, 1 database integration test được tách riêng.
+- Vitest: 66 unit tests pass; 2 database integration tests pass và rollback sạch dữ liệu test.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
+- Read-only week-window smoke trên Graph API `v26.0`: Hân Korea trả 81 bài đúng tuần trong một request `limit=100`, không có trang tiếp theo và toàn bộ timestamp nằm trong `since/until`.
+- Live cache smoke với cùng 81 bài: refresh từ Meta khoảng 5,5 giây; đọc lại snapshot tuần từ Supabase khoảng 0,43 giây.
+- Private Supabase Storage bucket `post-assets` đã được tạo với giới hạn 10 MB cho JPEG/PNG/WebP; upload và cleanup smoke thành công qua localhost lẫn Cloudflare Tunnel.
+- Live write smoke trên Page test Nero Team thành công với một bài có ảnh; operation local ở trạng thái `succeeded` và remote post ID đã được lưu để đối soát.
 - Routes build được: health/config, Page sync/list, draft CRUD, publish và schedule.
 - Secret exposure scan trên client bundle/source/docs/scripts: pass.
 
 ## Chưa implement hoặc chưa xác minh
 
 - Token rotation utility hoàn chỉnh.
-- Meta write capability smoke test với Page được người vận hành chọn.
+- Phần còn lại của Meta capability smoke: native schedule, reschedule và cancel trên Page test.
 - Remote list/reschedule/cancel services và reconciliation.
-- UI xác nhận publish/lên lịch.
 - Credential riêng cho reconciliation cron tương lai; Cloudflare Access vẫn là lớp hardening tùy chọn.
-- AI content assistant và single-image support.
+- AI content assistant; multi-image và native schedule vẫn cần capability smoke đầy đủ trên Page test.
 
 ## Secret cần cấu hình tiếp theo
 
@@ -108,6 +119,9 @@ DIRECT_DATABASE_URL
 TOKEN_ENCRYPTION_KEY
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_STORAGE_BUCKET
+ASSET_CLEANUP_SECRET
 NEXT_PUBLIC_SITE_URL
 INITIAL_ADMIN_EMAIL
 ```

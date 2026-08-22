@@ -38,6 +38,16 @@ MVP background work is reconciliation only and may use Vercel Cron or host cron.
 - Work: search exact Page/time/fingerprint evidence; resolve scheduled/published/not-found/ambiguous.
 - Safety: never creates another post.
 
+### `assets.cleanup`
+
+- Trigger: mỗi ngày một lần qua `GET` hoặc `POST /api/cron/assets/cleanup`.
+- Authentication: dedicated `ASSET_CLEANUP_SECRET` bearer token, tối thiểu 32 ký tự.
+- Batch: tối đa 50 asset mỗi lần; run tiếp theo xử lý phần còn lại.
+- Eligible: asset mồ côi quá 1 giờ hoặc toàn bộ post liên kết đều `published` quá 7 ngày.
+- Protected: `draft`, `submitting`, `scheduled`, `failed` và `uncertain` không đủ điều kiện.
+- Concurrency: claim lease 15 phút; kiểm tra lại eligibility ngay lúc claim; lỗi Storage sẽ bỏ claim để retry.
+- Scope: chỉ Supabase Storage và metadata nội bộ, không gọi mutation Facebook.
+
 ### `ai.generate-content`
 
 - Trigger: operator request.
@@ -57,6 +67,7 @@ MVP background work is reconciliation only and may use Vercel Cron or host cron.
 - Scheduled posts: every 5–15 minutes while schedules exist, configurable.
 - Published posts: every 15–60 minutes, plus manual refresh.
 - Pages/token health: daily or before write when last validation is stale.
+- Image cleanup: daily.
 
 Exact cadence depends on rate limits and number of Pages.
 

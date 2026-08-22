@@ -55,6 +55,9 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Allowlist email trong `app_users`; trạng thái pending/approved/rejected/suspended được kiểm tra lại ở mọi API.
   - [x] Super Admin lấy từ `INITIAL_ADMIN_EMAIL`; Super Admin có thể bổ nhiệm Admin, Admin có thể duyệt/tạm khóa nhân viên.
   - [x] `APP_ACCESS_SECRET` không còn là mật khẩu nhân viên; chỉ còn tùy chọn cho automation/break-glass qua server header.
+  - [x] Đưa đăng xuất vào menu tài khoản và cảnh báo khi còn nội dung soạn chưa lưu.
+  - [x] Phân quyền Page theo từng tài khoản; Super Admin có toàn bộ Page, Admin/Nhân viên chỉ dùng Page được gán và API kiểm tra quyền ở server.
+  - [x] Làm lại màn Nhân sự và panel gán Page theo Liquid Glass nền đục, không nhìn xuyên nội dung.
   - [ ] Bổ sung credential riêng cho cron khi triển khai FB-011, rồi mới đóng task FOUND-006.
 
 ## Database
@@ -142,6 +145,8 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: Facebook connection service, Page repositories, `/api/facebook/sync-pages`.
   - Acceptance criteria: Upsert Page ổn định; Page bị mất quyền được đánh dấu; response không chứa credential.
   - Tests: First sync, repeat sync, renamed Page, removed Page, partial API failure và ciphertext assertion.
+  - [x] Cho mọi tài khoản đã duyệt kiểm tra quyền và thêm Page bằng ID; thêm Page không tự cấp quyền sử dụng cho người thêm.
+  - [x] Chỉ Admin/Super Admin được gỡ Page khỏi hệ thống; soft-delete thu hồi assignment, ẩn Page với mọi tài khoản và không gọi thao tác xóa lên Facebook.
 
 - [ ] FB-004 — Publish text now
   - Priority: P0
@@ -217,13 +222,14 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Draft tách remote mirror; submitted content không bị sửa im lặng; Page inactive bị từ chối.
   - Tests: CRUD, validation, state transition, concurrent update và Page boundary tests.
 
-- [ ] POST-002 — Draft editor UI
+- [x] POST-002 — Draft editor UI
   - Priority: P0
   - Goal: Cho operator chọn Page, soạn caption và lưu draft.
   - Depends on: POST-001.
   - Files/modules expected: editor page/components, form state, server actions/API client.
   - Acceptance criteria: Có unsaved/error/loading state; timezone hiển thị rõ; không có token field.
   - Tests: Component/form tests và draft creation E2E.
+  - [x] Composer Liquid Glass có Page picker kèm avatar, caption editor, vùng AI dự kiến, upload tối đa 10 ảnh, kéo thả đổi thứ tự và preview bố cục.
 
 - [ ] POST-003 — Published and scheduled list UI
   - Priority: P0
@@ -234,12 +240,15 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Tests: Empty/loading/stale/error/paginated UI và manual refresh E2E.
   - [x] Khôi phục bộ lọc Page, refresh, pagination, xem chi tiết và chuyển đổi Bảng/Timeline bằng dữ liệu GET trực tiếp từ Facebook.
   - [x] Đặt Timeline làm mặc định, highlight toàn cột hôm nay, mở rộng layout màn hình lớn và áp dụng liquid-glass/bento visual system.
+  - [x] Đồng bộ Liquid Glass toàn ứng dụng: shell, dashboard, form, bảng, timeline, dropdown và modal dùng nền kính đục, viền sáng và chiều sâu thống nhất.
   - [x] Tự ẩn khung giờ 00:00–07:00 khi tuần không có bài sáng sớm và tự mở lại khi có dữ liệu.
   - [x] Thay select Page mặc định bằng Page picker có avatar, category, trạng thái kết nối và điều hướng bàn phím.
   - [x] Đồng bộ avatar Page từ Meta và thu gọn Page picker cho màn hình desktop.
   - [x] Hiển thị tổng Reaction, Comment và Share trên Bảng/Timeline từ dữ liệu đọc trực tiếp của Meta.
   - [x] Hiển thị gallery đầy đủ từ Facebook attachments trong popup chi tiết bài viết.
   - [x] Tự giãn chiều cao từng khung giờ Timeline để các card đăng gần nhau không chồng lấn.
+  - [x] Tự phân trang để tải đủ dữ liệu của tuần đang xem trên Timeline; bỏ nút tải thêm thủ công khỏi chế độ này.
+  - [x] Cache theo Page/tab/tuần ở trình duyệt, mirror tuần trong Supabase, lọc Meta bằng `since/until` và stale-while-refresh để quay lại tab không phải tải lại.
   - [ ] Hoàn thiện persisted sync/mirror và E2E đầy đủ sau FB-006/FB-007 trước khi đóng task POST-003.
 
 - [ ] POST-004 — Publish and schedule controls
@@ -249,6 +258,10 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: confirmation dialogs, schedule picker, operation feedback.
   - Acceptance criteria: Double click an toàn; timezone/range rõ; operation `uncertain` không được báo thất bại chắc chắn.
   - Tests: Publish/schedule happy path, double submit, invalid time và uncertain-state UI E2E.
+  - [x] Có lựa chọn đăng ngay/native schedule, giới hạn lịch 20 phút–29 ngày và confirmation cuối trước mọi thao tác Meta.
+  - [x] UI gọi draft trước rồi mới submit, giữ operation ledger và không tự retry khi kết quả remote không chắc chắn.
+  - [x] Live publish một bài có ảnh trên Page test Nero Team; operation thành công và lưu remote post ID để đối soát.
+  - [ ] Chạy capability smoke trên Page test và E2E thật trước khi đóng task.
 
 - [ ] POST-005 — Reschedule, cancel and attention UI
   - Priority: P0
@@ -300,7 +313,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Budget/rate limit cấu hình được; xóa history không xóa draft; prompt/log không có secret.
   - Tests: Budget exceeded, warning categories, deletion integrity và credential scan.
 
-## Single-image extension
+## Image publishing extension
 
 - [ ] ASSET-001 — Private object storage
   - Priority: P2
@@ -309,22 +322,38 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: storage adapter, `assets`/`post_assets` migration, upload intent API.
   - Acceptance criteria: Object private mặc định; URL ngắn hạn; key không do client tùy ý quyết định.
   - Tests: Signature expiry, unauthorized access, object-key validation và cleanup protection.
+  - [x] Adapter private Supabase Storage, upload server-only, signed URL ngắn hạn và metadata/checksum trong `assets`.
+  - [x] Tạo bucket private `post-assets`, giới hạn 10 MB cho JPEG/PNG/WebP và smoke upload/cleanup thành công qua localhost lẫn Cloudflare Tunnel.
 
-- [ ] ASSET-002 — Single-image upload and preview
+- [ ] ASSET-002 — Multi-image upload and preview
   - Priority: P2
-  - Goal: Upload/validate một JPEG/PNG/WebP và gắn vào draft.
+  - Goal: Upload/validate tối đa 10 JPEG/PNG/WebP, sắp xếp thứ tự và gắn vào draft.
   - Depends on: ASSET-001, POST-002.
   - Files/modules expected: asset service, completion API, uploader/preview UI.
   - Acceptance criteria: MIME/dung lượng/kích thước hợp lệ; asset lỗi không được publish; remove an toàn.
   - Tests: Valid formats, spoofed MIME, oversized/corrupt file, retry và detach tests.
+  - [x] Composer có chọn/kéo thả file, preview, kéo card để đổi thứ tự, xóa ảnh và cleanup asset chưa gắn khi luồng tạo draft lỗi.
+  - [ ] Bổ sung kiểm tra magic bytes/dimension phía server và storage integration test trước khi đóng task.
 
-- [ ] ASSET-003 — Publish and schedule one image
+- [ ] ASSET-003 — Publish and schedule multiple images
   - Priority: P2
-  - Goal: Mở rộng Meta adapter cho single-image post sau khi text flow ổn định.
+  - Goal: Mở rộng Meta adapter cho bài có tối đa 10 ảnh theo đúng thứ tự sau khi text flow ổn định.
   - Depends on: ASSET-002, FB-004, FB-005, FB-010.
   - Files/modules expected: Meta photo adapter/use-cases, operation metadata.
   - Acceptance criteria: Publish/schedule/lists đối soát được remote ID; URL không chứa token; không hỗ trợ carousel/video ngầm.
   - Tests: Publish, schedule, Meta media-fetch failure, timeout reconciliation và app-offline scenario.
+  - [x] Meta adapter upload ảnh với `published=false`, gom `media_fbid` vào `attached_media`, rồi đăng ngay hoặc tạo lịch native trên Page feed.
+  - [ ] Xác minh contract nhiều ảnh và lịch native trên Page test trước khi đóng task.
+
+- [ ] ASSET-004 — Private image lifecycle cleanup
+  - Priority: P1
+  - Goal: Không giữ ảnh vô hạn nhưng không làm mất dữ liệu cần retry hoặc đối soát.
+  - Depends on: ASSET-001, ASSET-002, FB-007.
+  - [x] Cleanup service giữ draft/scheduled/failed/uncertain, dọn orphan quá 1 giờ và published quá 7 ngày.
+  - [x] Claim lease 15 phút, rollback claim khi Storage lỗi, soft-delete metadata sau khi object đã xóa.
+  - [x] Endpoint `GET/POST /api/cron/assets/cleanup` dùng dedicated bearer secret; không gọi mutation Facebook.
+  - [x] Unit test và Supabase transaction integration test cho published/recent/scheduled/failed/uncertain/draft/orphan.
+  - [ ] Cấu hình `ASSET_CLEANUP_SECRET`, scheduler chạy hằng ngày và storage integration smoke trước khi đóng task.
 
 ## Operations and release
 
@@ -362,4 +391,4 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
 
 ## Explicitly deferred
 
-Không tạo task triển khai cho multi-user, OAuth khách hàng, team/role, approval workflow, full analytics, AI image, video/carousel/Reels, pgvector hoặc Trigger.dev cho đến khi có nhu cầu mới được xác nhận. Nếu phạm vi thay đổi, cập nhật ADR và product docs trước khi thêm backlog.
+Không tạo task triển khai cho OAuth Facebook đa tenant, team/workflow duyệt nội dung, full analytics, AI image, video/carousel/Reels, pgvector hoặc Trigger.dev cho đến khi có nhu cầu mới được xác nhận. Google allowlist, role và phân quyền Page cho nhóm nội bộ đã được xác nhận và triển khai.
