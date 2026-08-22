@@ -63,6 +63,45 @@ describe("MetaGraphClient", () => {
     expect(body.get("scheduled_publish_time")).toBe("1787277600");
   });
 
+  it("uploads photos without publishing and preserves their order in one feed post", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ id: "photo-1" }))
+      .mockResolvedValueOnce(Response.json({ id: "photo-2" }))
+      .mockResolvedValueOnce(Response.json({ id: "post-1" }));
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    const remoteId = await client.publishPost({
+      pageId: "page-1",
+      message: "Gallery caption",
+      mediaUrls: ["https://signed/one.jpg", "https://signed/two.jpg"],
+    });
+
+    expect(remoteId).toBe("post-1");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [firstUrl, firstInit] = fetchMock.mock.calls[0] ?? [];
+    const [secondUrl, secondInit] = fetchMock.mock.calls[1] ?? [];
+    const [feedUrl, feedInit] = fetchMock.mock.calls[2] ?? [];
+    expect(String(firstUrl)).toContain("page-1/photos");
+    expect((firstInit?.body as URLSearchParams).get("published")).toBe("false");
+    expect((firstInit?.body as URLSearchParams).get("url")).toBe(
+      "https://signed/one.jpg",
+    );
+    expect(String(secondUrl)).toContain("page-1/photos");
+    expect((secondInit?.body as URLSearchParams).get("url")).toBe(
+      "https://signed/two.jpg",
+    );
+    expect(String(feedUrl)).toContain("page-1/feed");
+    expect((feedInit?.body as URLSearchParams).get("attached_media")).toBe(
+      JSON.stringify([{ media_fbid: "photo-1" }, { media_fbid: "photo-2" }]),
+    );
+  });
+
   it("normalizes token errors without returning the provider message", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(
@@ -162,6 +201,28 @@ describe("MetaGraphClient", () => {
     );
     expect(init?.method ?? "GET").toBe("GET");
     expect(init?.body).toBeUndefined();
+  });
+
+  it("bounds published posts to a requested time window", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ data: [] }));
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+    const since = new Date("2026-08-17T00:00:00+07:00");
+    const until = new Date("2026-08-24T00:00:00+07:00");
+
+    await client.getPublishedPosts("page-1", undefined, 100, { since, until });
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    const query = new URL(String(url)).searchParams;
+
+    expect(query.get("limit")).toBe("100");
+    expect(query.get("since")).toBe(String(Math.floor(since.getTime() / 1000)));
+    expect(query.get("until")).toBe(String(Math.floor(until.getTime() / 1000)));
   });
 
   it("reads scheduled posts with GET and a bounded page size", async () => {

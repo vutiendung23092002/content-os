@@ -29,6 +29,8 @@ type PageDto = {
   avatarUrl: string | null;
   category: string | null;
   connectionStatus: string;
+  canAccess: boolean;
+  accessReason: string | null;
 };
 
 type DraftDto = {
@@ -123,6 +125,24 @@ function mergePosts(
       : 0;
     return secondTime - firstTime;
   });
+}
+
+type RemoteMemoryCacheEntry = {
+  posts: RemotePostDto[];
+  after: string | null;
+  storedAt: number;
+};
+
+const REMOTE_MEMORY_TTL_MS = 5 * 60 * 1000;
+const remoteMemoryCache = new Map<string, RemoteMemoryCacheEntry>();
+
+function remoteCacheKey(
+  pageId: string,
+  tab: Exclude<PostTab, "drafts">,
+  mode: ViewMode,
+  weekStart: Date,
+): string {
+  return `${pageId}:${tab}:${mode}:${mode === "timeline" ? weekStart.toISOString() : "latest"}`;
 }
 
 function ViewIcon({ mode }: { mode: ViewMode }) {
@@ -229,7 +249,7 @@ function PagePicker({
   const shellRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const selectedPage = pages.find((page) => page.id === value) ?? pages[0];
+  const selectedPage = pages.find((page) => page.id === value);
 
   useEffect(() => {
     function closeWhenClickingOutside(event: MouseEvent) {
@@ -274,7 +294,7 @@ function PagePicker({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={`pagePickerTrigger ${open ? "isOpen" : ""}`}
-        disabled={disabled || !selectedPage}
+        disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -329,7 +349,8 @@ function PagePicker({
               return (
                 <button
                   aria-selected={selected}
-                  className={`pagePickerOption ${selected ? "isSelected" : ""}`}
+                  className={`pagePickerOption ${selected ? "isSelected" : ""} ${!page.canAccess ? "isLocked" : ""}`}
+                  disabled={!page.canAccess}
                   key={page.id}
                   onClick={() => {
                     onChange(page.id);
@@ -339,6 +360,7 @@ function PagePicker({
                     optionRefs.current[index] = node;
                   }}
                   role="option"
+                  title={page.accessReason ?? undefined}
                   type="button"
                 >
                   <PageAvatar page={page} />
@@ -351,7 +373,9 @@ function PagePicker({
                       page.connectionStatus === "active" ? "isActive" : ""
                     }
                   />
-                  <b aria-hidden="true">{selected ? "✓" : ""}</b>
+                  <b aria-hidden="true">
+                    {!page.canAccess ? "🔒" : selected ? "✓" : ""}
+                  </b>
                 </button>
               );
             })}
@@ -761,6 +785,12 @@ function RemotePostTimeline({
               />
             ))}
           </div>
+          {visibleCount === 0 ? (
+            <div className="timelineEmptyState" role="status">
+              <strong>Tuần này chưa có bài viết</strong>
+              <span>Dùng nút tuần trước hoặc tuần sau để tiếp tục xem.</span>
+            </div>
+          ) : null}
           {weekDays.map((day, dayIndex) => (
             <div
               aria-label={
@@ -829,16 +859,16 @@ export function PostWorkspace() {
   const [drafts, setDrafts] = useState<DraftDto[]>([]);
   const [remotePosts, setRemotePosts] = useState<RemotePostDto[]>([]);
   const [after, setAfter] = useState<string | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [loadingPages, setLoadingPages] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [refreshingPosts, setRefreshingPosts] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
-  const [stale, setStale] = useState(false);
   const [refreshIndex, setRefreshIndex] = useState(0);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedPost, setSelectedPost] = useState<RemotePostDto | null>(null);
   const loadedKeyRef = useRef("");
+  const forceRefreshRef = useRef(false);
   const selectedPage = pages.find((page) => page.id === selectedPageId);
 
   useEffect(() => {
@@ -849,7 +879,10 @@ export function PostWorkspace() {
         if (!active) return;
         const loadedPages = payload.pages ?? [];
         setPages(loadedPages);
-        setSelectedPageId((current) => current || loadedPages[0]?.id || "");
+        setSelectedPageId(
+          (current) =>
+            current || loadedPages.find((page) => page.canAccess)?.id || "",
+        );
       })
       .catch((reason: unknown) => {
         if (active) {
@@ -874,21 +907,49 @@ export function PostWorkspace() {
         setDrafts([]);
         setRemotePosts([]);
         setAfter(null);
+        setLoadingPosts(false);
+        setRefreshingPosts(false);
         return;
       }
 
       await Promise.resolve();
       if (signal.aborted) return;
-      const requestKey = `${selectedPageId}:${activeTab}`;
-      setLoadingPosts(true);
+      const timelineKey =
+        viewMode === "timeline" ? `:${weekStart.toISOString()}` : "";
+      const requestKey = `${selectedPageId}:${activeTab}:${viewMode}${timelineKey}`;
+      const forceRefresh = forceRefreshRef.current;
+      forceRefreshRef.current = false;
       setError("");
-      setAfter(null);
-      if (loadedKeyRef.current !== requestKey) {
+      const cacheKey =
+        activeTab === "drafts"
+          ? null
+          : remoteCacheKey(selectedPageId, activeTab, viewMode, weekStart);
+      const memoryEntry = cacheKey
+        ? remoteMemoryCache.get(cacheKey)
+        : undefined;
+      const memoryIsFresh =
+        memoryEntry &&
+        Date.now() - memoryEntry.storedAt <= REMOTE_MEMORY_TTL_MS;
+
+      if (memoryEntry) {
+        setDrafts([]);
+        setRemotePosts(memoryEntry.posts);
+        setAfter(memoryEntry.after);
+        loadedKeyRef.current = requestKey;
+      } else if (loadedKeyRef.current !== requestKey) {
         setDrafts([]);
         setRemotePosts([]);
-        setFetchedAt(null);
-        setStale(false);
+        setAfter(null);
       }
+
+      if (memoryIsFresh && !forceRefresh) {
+        setLoadingPosts(false);
+        setRefreshingPosts(false);
+        return;
+      }
+
+      setLoadingPosts(!memoryEntry);
+      setRefreshingPosts(Boolean(memoryEntry));
 
       try {
         if (activeTab === "drafts") {
@@ -899,9 +960,7 @@ export function PostWorkspace() {
           const payload = await readPayload<{ drafts?: DraftDto[] }>(response);
           setDrafts(payload.drafts ?? []);
           setRemotePosts([]);
-          setFetchedAt(new Date().toISOString());
           loadedKeyRef.current = requestKey;
-          setStale(false);
           return;
         }
 
@@ -909,6 +968,10 @@ export function PostWorkspace() {
           pageId: selectedPageId,
           kind: activeTab,
         });
+        if (viewMode === "timeline") {
+          query.set("weekStart", weekStart.toISOString());
+          if (forceRefresh) query.set("refresh", "1");
+        }
         const response = await fetch(`/api/facebook/posts?${query}`, {
           headers: { accept: "application/json" },
           signal,
@@ -916,31 +979,62 @@ export function PostWorkspace() {
         const payload = await readPayload<{
           posts?: RemotePostDto[];
           after?: string | null;
-          fetchedAt?: string;
+          stale?: boolean;
         }>(response);
-        setRemotePosts(mergePosts([], payload.posts ?? []));
+        const loadedPosts = mergePosts([], payload.posts ?? []);
+        const nextAfter = payload.after ?? null;
+
+        setRemotePosts(loadedPosts);
         setDrafts([]);
-        setAfter(payload.after ?? null);
-        setFetchedAt(payload.fetchedAt ?? new Date().toISOString());
+        setAfter(nextAfter);
         loadedKeyRef.current = requestKey;
-        setStale(false);
+        if (cacheKey) {
+          remoteMemoryCache.set(cacheKey, {
+            posts: loadedPosts,
+            after: nextAfter,
+            storedAt: payload.stale ? 0 : Date.now(),
+          });
+        }
+
+        if (viewMode === "timeline" && payload.stale && !forceRefresh) {
+          setLoadingPosts(false);
+          setRefreshingPosts(true);
+          query.set("refresh", "1");
+          const refreshedResponse = await fetch(
+            `/api/facebook/posts?${query}`,
+            { headers: { accept: "application/json" }, signal },
+          );
+          const refreshedPayload = await readPayload<{
+            posts?: RemotePostDto[];
+          }>(refreshedResponse);
+          const refreshedPosts = mergePosts([], refreshedPayload.posts ?? []);
+          setRemotePosts(refreshedPosts);
+          if (cacheKey) {
+            remoteMemoryCache.set(cacheKey, {
+              posts: refreshedPosts,
+              after: null,
+              storedAt: Date.now(),
+            });
+          }
+        }
       } catch (reason) {
         if (reason instanceof DOMException && reason.name === "AbortError")
           return;
         setError(
           reason instanceof Error ? reason.message : "Không thể tải bài viết.",
         );
-        if (loadedKeyRef.current === requestKey) {
-          setStale(true);
-        } else {
+        if (loadedKeyRef.current !== requestKey) {
           setDrafts([]);
           setRemotePosts([]);
         }
       } finally {
-        if (!signal.aborted) setLoadingPosts(false);
+        if (!signal.aborted) {
+          setLoadingPosts(false);
+          setRefreshingPosts(false);
+        }
       }
     },
-    [activeTab, selectedPageId],
+    [activeTab, selectedPageId, viewMode, weekStart],
   );
 
   useEffect(() => {
@@ -972,9 +1066,16 @@ export function PostWorkspace() {
         after?: string | null;
         fetchedAt?: string;
       }>(response);
-      setRemotePosts((current) => mergePosts(current, payload.posts ?? []));
-      setAfter(payload.after ?? null);
-      setFetchedAt(payload.fetchedAt ?? new Date().toISOString());
+      const nextAfter = payload.after ?? null;
+      setRemotePosts((current) => {
+        const merged = mergePosts(current, payload.posts ?? []);
+        remoteMemoryCache.set(
+          remoteCacheKey(selectedPageId, activeTab, "table", weekStart),
+          { posts: merged, after: nextAfter, storedAt: Date.now() },
+        );
+        return merged;
+      });
+      setAfter(nextAfter);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -987,6 +1088,7 @@ export function PostWorkspace() {
   }
 
   const isRemoteTab = activeTab !== "drafts";
+  const hasAccessiblePage = pages.some((page) => page.canAccess);
   const empty =
     activeTab === "drafts" ? drafts.length === 0 : remotePosts.length === 0;
 
@@ -1002,17 +1104,31 @@ export function PostWorkspace() {
           />
         </div>
         <div className="postControlMeta">
-          <span className="readOnlyPill">
-            <span /> Chỉ đọc từ Facebook
-          </span>
           <button
-            className="refreshPostsButton"
-            disabled={!selectedPageId || loadingPosts}
-            onClick={() => setRefreshIndex((current) => current + 1)}
+            aria-label={
+              loadingPosts || refreshingPosts
+                ? "Đang làm mới bài viết"
+                : "Làm mới bài viết"
+            }
+            className={`refreshPostsButton ${
+              loadingPosts || refreshingPosts ? "isLoading" : ""
+            }`}
+            disabled={!selectedPageId || loadingPosts || refreshingPosts}
+            onClick={() => {
+              forceRefreshRef.current = true;
+              setRefreshIndex((current) => current + 1);
+            }}
+            title={
+              loadingPosts || refreshingPosts
+                ? "Đang làm mới"
+                : "Làm mới bài viết"
+            }
             type="button"
           >
-            <span aria-hidden="true">↻</span>
-            {loadingPosts ? "Đang tải..." : "Làm mới"}
+            <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
+              <path d="M20 12a8 8 0 1 1-2.34-5.66L20 8" />
+              <path d="M20 3v5h-5" />
+            </svg>
           </button>
         </div>
       </section>
@@ -1076,23 +1192,6 @@ export function PostWorkspace() {
           ) : null}
         </div>
 
-        <div className="postReadSummary">
-          <div>
-            <strong>{selectedPage?.name ?? "Chưa chọn Page"}</strong>
-            <span>
-              {isRemoteTab
-                ? "Dữ liệu đọc trực tiếp từ Facebook"
-                : "Draft lưu trong Supabase"}
-            </span>
-          </div>
-          {fetchedAt ? (
-            <small className={stale ? "isStale" : ""}>
-              {stale ? "Dữ liệu cũ · " : "Cập nhật "}
-              {formatDateTime(fetchedAt)}
-            </small>
-          ) : null}
-        </div>
-
         {error ? <div className="feedback feedbackError">{error}</div> : null}
         {!loadingPages && pages.length === 0 ? (
           <div className="emptyState">
@@ -1103,13 +1202,23 @@ export function PostWorkspace() {
             </Link>
           </div>
         ) : null}
+        {!loadingPages && pages.length > 0 && !hasAccessiblePage ? (
+          <div className="emptyState">
+            <strong>Bạn chưa được cấp Page</strong>
+            <p>Liên hệ Admin để được gán Page trước khi xem hoặc soạn bài.</p>
+          </div>
+        ) : null}
         {loadingPosts ? (
           <div className="postLoadingState" role="status">
             <span /> Đang đọc dữ liệu{" "}
             {activeTab === "drafts" ? "nội bộ" : "từ Facebook"}...
           </div>
         ) : null}
-        {!loadingPosts && selectedPageId && empty && !error ? (
+        {!loadingPosts &&
+        selectedPageId &&
+        empty &&
+        !error &&
+        !(isRemoteTab && viewMode === "timeline") ? (
           <div className="emptyState">
             <strong>
               {activeTab === "drafts"
@@ -1131,10 +1240,7 @@ export function PostWorkspace() {
         viewMode === "table" ? (
           <RemotePostTable posts={remotePosts} />
         ) : null}
-        {!loadingPosts &&
-        isRemoteTab &&
-        remotePosts.length > 0 &&
-        viewMode === "timeline" ? (
+        {!loadingPosts && isRemoteTab && viewMode === "timeline" ? (
           <RemotePostTimeline
             onWeekChange={setWeekStart}
             onPostSelect={setSelectedPost}
@@ -1143,7 +1249,7 @@ export function PostWorkspace() {
           />
         ) : null}
 
-        {!loadingPosts && isRemoteTab && after ? (
+        {!loadingPosts && isRemoteTab && viewMode === "table" && after ? (
           <div className="loadMoreRow">
             <button
               className="button buttonSecondary"

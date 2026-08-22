@@ -75,6 +75,7 @@ const readProbeSchema = z.object({
 });
 
 const postMutationSchema = z.object({ id: z.string().min(1) });
+const photoMutationSchema = z.object({ id: z.string().min(1) });
 const updateMutationSchema = z.union([
   z.object({ success: z.literal(true) }),
   z.object({ id: z.string().min(1) }),
@@ -194,6 +195,11 @@ export type MetaTokenInspection = {
 export type MetaPageReadAccess = {
   publishedPosts: boolean;
   scheduledPosts: boolean;
+};
+
+export type MetaPostTimeWindow = {
+  since: Date;
+  until: Date;
 };
 
 export type MetaClientOptions = {
@@ -325,6 +331,25 @@ export class MetaGraphClient {
     return result.id;
   }
 
+  async publishPost(input: {
+    pageId: string;
+    message: string;
+    mediaUrls?: string[];
+  }): Promise<string> {
+    const mediaIds = await this.uploadUnpublishedPhotos(
+      input.pageId,
+      input.mediaUrls ?? [],
+    );
+    if (mediaIds.length === 0) {
+      return this.publishText(input.pageId, input.message);
+    }
+    return this.createFeedPost({
+      pageId: input.pageId,
+      message: input.message,
+      mediaIds,
+    });
+  }
+
   async scheduleText(
     pageId: string,
     message: string,
@@ -343,6 +368,27 @@ export class MetaGraphClient {
       }),
     );
     return result.id;
+  }
+
+  async schedulePost(input: {
+    pageId: string;
+    message: string;
+    scheduledFor: Date;
+    mediaUrls?: string[];
+  }): Promise<string> {
+    const mediaIds = await this.uploadUnpublishedPhotos(
+      input.pageId,
+      input.mediaUrls ?? [],
+    );
+    if (mediaIds.length === 0) {
+      return this.scheduleText(input.pageId, input.message, input.scheduledFor);
+    }
+    return this.createFeedPost({
+      pageId: input.pageId,
+      message: input.message,
+      mediaIds,
+      scheduledFor: input.scheduledFor,
+    });
   }
 
   async getScheduledPosts(pageId: string, after?: string, limit = 50) {
@@ -365,13 +411,22 @@ export class MetaGraphClient {
     };
   }
 
-  async getPublishedPosts(pageId: string, after?: string, limit = 50) {
+  async getPublishedPosts(
+    pageId: string,
+    after?: string,
+    limit = 50,
+    window?: MetaPostTimeWindow,
+  ) {
     const query = new URLSearchParams({
       fields:
         "id,message,created_time,updated_time,permalink_url,is_published,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares,attachments{media_type,media,subattachments.limit(10){media_type,media}}",
       limit: String(Math.min(Math.max(limit, 1), 100)),
     });
     if (after) query.set("after", after);
+    if (window) {
+      query.set("since", String(Math.floor(window.since.getTime() / 1000)));
+      query.set("until", String(Math.floor(window.until.getTime() / 1000)));
+    }
 
     const result = publishedPostsSchema.parse(
       await this.request(`${encodeURIComponent(pageId)}/posts`, { query }),
@@ -413,6 +468,59 @@ export class MetaGraphClient {
         status: 502,
       });
     }
+  }
+
+  private async uploadUnpublishedPhotos(
+    pageId: string,
+    mediaUrls: string[],
+  ): Promise<string[]> {
+    if (mediaUrls.length > 10) {
+      throw new AppError({
+        code: "FACEBOOK_MEDIA_LIMIT_EXCEEDED",
+        message: "Facebook post chỉ hỗ trợ tối đa 10 ảnh trong công cụ này.",
+        status: 400,
+      });
+    }
+
+    return Promise.all(
+      mediaUrls.map(async (url) => {
+        const result = photoMutationSchema.parse(
+          await this.request(`${encodeURIComponent(pageId)}/photos`, {
+            method: "POST",
+            body: new URLSearchParams({ url, published: "false" }),
+          }),
+        );
+        return result.id;
+      }),
+    );
+  }
+
+  private async createFeedPost(input: {
+    pageId: string;
+    message: string;
+    mediaIds: string[];
+    scheduledFor?: Date;
+  }): Promise<string> {
+    const body = new URLSearchParams({
+      message: input.message,
+      attached_media: JSON.stringify(
+        input.mediaIds.map((mediaFbid) => ({ media_fbid: mediaFbid })),
+      ),
+    });
+    if (input.scheduledFor) {
+      body.set("published", "false");
+      body.set(
+        "scheduled_publish_time",
+        String(Math.floor(input.scheduledFor.getTime() / 1000)),
+      );
+    }
+    const result = postMutationSchema.parse(
+      await this.request(`${encodeURIComponent(input.pageId)}/feed`, {
+        method: "POST",
+        body,
+      }),
+    );
+    return result.id;
   }
 
   private async request(

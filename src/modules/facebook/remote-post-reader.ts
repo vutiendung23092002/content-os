@@ -150,6 +150,8 @@ export class RemotePostReader {
     localPageId: string;
     kind: RemotePostKind;
     after?: string;
+    limit?: number;
+    window?: { since: Date; until: Date };
   }): Promise<{
     page: RemotePostPage;
     posts: RemoteFacebookPost[];
@@ -165,10 +167,13 @@ export class RemotePostReader {
     const client = this.clientFactory(context.pageAccessToken);
 
     if (kind === "scheduled") {
-      const result = await client.getScheduledPosts(
-        context.page.externalPageId,
-        after,
-      );
+      const result = input.limit
+        ? await client.getScheduledPosts(
+            context.page.externalPageId,
+            after,
+            input.limit,
+          )
+        : await client.getScheduledPosts(context.page.externalPageId, after);
 
       return {
         page: context.page,
@@ -190,10 +195,15 @@ export class RemotePostReader {
       };
     }
 
-    const result = await client.getPublishedPosts(
-      context.page.externalPageId,
-      after,
-    );
+    const result =
+      input.limit || input.window
+        ? await client.getPublishedPosts(
+            context.page.externalPageId,
+            after,
+            input.limit ?? 50,
+            input.window,
+          )
+        : await client.getPublishedPosts(context.page.externalPageId, after);
 
     return {
       page: context.page,
