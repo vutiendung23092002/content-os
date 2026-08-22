@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { runInTransaction } from "@/db/client";
 import { FacebookOperationRepository } from "@/db/repositories/facebook-operation-repository";
+import { AssetRepository } from "@/db/repositories/asset-repository";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
 import { PostRepository } from "@/db/repositories/post-repository";
@@ -10,6 +11,7 @@ import { decryptToken } from "@/lib/crypto/token-crypto";
 import { requireServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
 import { MetaGraphClient } from "@/modules/facebook/meta-client";
+import { AssetStorage } from "@/modules/assets/asset-storage";
 
 export type SubmissionKind = "publish_now" | "schedule";
 
@@ -20,6 +22,7 @@ export type PreparedSubmission = {
   externalPageId: string;
   message: string;
   pageAccessToken: string;
+  media: Array<{ assetId: string; storageKey: string }>;
 };
 
 export type SubmissionPersistence = {
@@ -45,12 +48,21 @@ export type SubmissionPersistence = {
 };
 
 export type SubmissionMetaClient = {
-  publishText(pageId: string, message: string): Promise<string>;
-  scheduleText(
-    pageId: string,
-    message: string,
-    scheduledFor: Date,
-  ): Promise<string>;
+  publishPost(input: {
+    pageId: string;
+    message: string;
+    mediaUrls?: string[];
+  }): Promise<string>;
+  schedulePost(input: {
+    pageId: string;
+    message: string;
+    scheduledFor: Date;
+    mediaUrls?: string[];
+  }): Promise<string>;
+};
+
+export type SubmissionAssetUrlProvider = {
+  createSignedUrls(storageKeys: string[]): Promise<string[]>;
 };
 
 export type SubmissionResult = {
@@ -74,6 +86,7 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
       const pages = new PageRepository(transaction);
       const credentials = new PageCredentialRepository(transaction);
       const operations = new FacebookOperationRepository(transaction);
+      const assets = new AssetRepository(transaction);
       const post = await posts.claimDraftForSubmission(input.postId);
 
       if (!post) {
@@ -118,6 +131,7 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         },
         encryptionKey,
       );
+      const media = await assets.listForPost(post.id);
 
       return {
         operationId: operation.id,
@@ -126,6 +140,10 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         externalPageId: page.externalPageId,
         message: post.message,
         pageAccessToken,
+        media: media.map((asset) => ({
+          assetId: asset.id,
+          storageKey: asset.storageKey,
+        })),
       };
     });
   }
@@ -213,6 +231,7 @@ export class SubmitPostService {
         accessToken: pageAccessToken,
       }),
     private readonly now: () => Date = () => new Date(),
+    private readonly assetUrls: SubmissionAssetUrlProvider = new AssetStorage(),
   ) {}
 
   async publish(postId: string): Promise<SubmissionResult> {
@@ -228,6 +247,16 @@ export class SubmitPostService {
       throw new AppError({
         code: "SCHEDULE_TIME_INVALID",
         message: "Thời gian hẹn đăng phải ở tương lai.",
+        status: 400,
+      });
+    }
+    const minimum = this.now().getTime() + 20 * 60 * 1000;
+    const maximum = this.now().getTime() + 29 * 24 * 60 * 60 * 1000;
+    if (scheduledFor.getTime() < minimum || scheduledFor.getTime() > maximum) {
+      throw new AppError({
+        code: "SCHEDULE_TIME_OUT_OF_RANGE",
+        message:
+          "Facebook yêu cầu lịch đăng cách hiện tại ít nhất 20 phút và không quá 29 ngày.",
         status: 400,
       });
     }
@@ -253,14 +282,25 @@ export class SubmitPostService {
     let remotePostId: string;
 
     try {
+      const mediaUrls =
+        prepared.media.length > 0
+          ? await this.assetUrls.createSignedUrls(
+              prepared.media.map((asset) => asset.storageKey),
+            )
+          : [];
       remotePostId =
         input.kind === "schedule" && input.scheduledFor
-          ? await client.scheduleText(
-              prepared.externalPageId,
-              prepared.message,
-              input.scheduledFor,
-            )
-          : await client.publishText(prepared.externalPageId, prepared.message);
+          ? await client.schedulePost({
+              pageId: prepared.externalPageId,
+              message: prepared.message,
+              scheduledFor: input.scheduledFor,
+              mediaUrls,
+            })
+          : await client.publishPost({
+              pageId: prepared.externalPageId,
+              message: prepared.message,
+              mediaUrls,
+            });
     } catch (error) {
       const normalized =
         error instanceof AppError

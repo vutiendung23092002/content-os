@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PageRecord } from "@/db/repositories/page-repository";
 import type { PostRecord } from "@/db/repositories/post-repository";
 import {
+  type DraftAssetReader,
   DraftService,
   type DraftStore,
   type PageReader,
@@ -9,6 +10,7 @@ import {
 
 const pageId = "018f0d44-35f0-7b63-99d2-c1b9222cd05c";
 const postId = "018f0d44-35f0-7b63-99d2-c1b9222cd05d";
+const assetId = "018f0d44-35f0-7b63-99d2-c1b9222cd05e";
 
 function activePage(): PageRecord {
   const now = new Date();
@@ -76,6 +78,7 @@ describe("DraftService", () => {
     expect(stores.drafts.createDraft).toHaveBeenCalledWith({
       pageId,
       message: "Draft caption",
+      assetIds: [],
     });
   });
 
@@ -91,6 +94,36 @@ describe("DraftService", () => {
     ).rejects.toMatchObject({
       code: "PAGE_NOT_ACTIVE",
     });
+  });
+
+  it("allows an image-only draft and preserves asset order", async () => {
+    const stores = createStores();
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi.fn().mockResolvedValue([{ id: assetId }]),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await service.create({ pageId, message: "", assetIds: [assetId] });
+
+    expect(assets.findAttachableByIds).toHaveBeenCalledWith(pageId, [assetId]);
+    expect(stores.drafts.createDraft).toHaveBeenCalledWith({
+      pageId,
+      message: "",
+      assetIds: [assetId],
+    });
+  });
+
+  it("rejects media that does not belong to the selected Page", async () => {
+    const stores = createStores();
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi.fn().mockResolvedValue([]),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await expect(
+      service.create({ pageId, message: "Caption", assetIds: [assetId] }),
+    ).rejects.toMatchObject({ code: "DRAFT_ASSET_INVALID" });
+    expect(stores.drafts.createDraft).not.toHaveBeenCalled();
   });
 
   it("rejects whitespace-only content", async () => {

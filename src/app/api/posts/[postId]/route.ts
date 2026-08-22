@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { assertInternalAccess } from "@/lib/access/internal-access";
+import { assertRequestPostAccess } from "@/lib/access/page-access";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { createDraftService } from "@/modules/posts/create-draft-service";
 import { toDraftDto } from "@/modules/posts/draft-service";
@@ -13,8 +13,8 @@ export async function GET(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    await assertInternalAccess(request);
     const { postId } = await context.params;
+    await assertRequestPostAccess(request, postId);
     const draft = await createDraftService().get(postId);
     return NextResponse.json({ draft: toDraftDto(draft), requestId });
   } catch (error) {
@@ -26,8 +26,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    await assertInternalAccess(request);
     const { postId } = await context.params;
+    await assertRequestPostAccess(request, postId);
     const draft = await createDraftService().update(
       postId,
       await request.json(),
@@ -42,8 +42,8 @@ export async function DELETE(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
-    await assertInternalAccess(request);
     const { postId } = await context.params;
+    await assertRequestPostAccess(request, postId);
     await createDraftService().delete(postId);
     return new NextResponse(null, {
       status: 204,

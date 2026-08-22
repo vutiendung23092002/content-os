@@ -23,6 +23,9 @@ const serverEnvSchema = z.object({
   NEXT_PUBLIC_SITE_URL: optionalSecret,
   NEXT_PUBLIC_SUPABASE_URL: optionalSecret,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: optionalSecret,
+  SUPABASE_SERVICE_ROLE_KEY: optionalSecret,
+  SUPABASE_STORAGE_BUCKET: optionalSecret,
+  ASSET_CLEANUP_SECRET: optionalSecret,
   AI_PROVIDER_API_KEY: optionalSecret,
 });
 

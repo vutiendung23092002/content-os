@@ -13,10 +13,28 @@ export const draftMessageSchema = z
     "Nội dung không được chỉ chứa khoảng trắng.",
   );
 
-export const createDraftSchema = z.object({
-  pageId: z.uuid(),
-  message: draftMessageSchema,
-});
+export const createDraftSchema = z
+  .object({
+    pageId: z.uuid(),
+    message: z.string().max(100_000).default(""),
+    assetIds: z.array(z.uuid()).max(10).default([]),
+  })
+  .superRefine((value, context) => {
+    if (value.message.trim().length === 0 && value.assetIds.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Bài viết cần có nội dung hoặc ít nhất một ảnh.",
+        path: ["message"],
+      });
+    }
+    if (new Set(value.assetIds).size !== value.assetIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Danh sách ảnh không được trùng lặp.",
+        path: ["assetIds"],
+      });
+    }
+  });
 
 export const updateDraftSchema = z.object({
   message: draftMessageSchema,
@@ -28,7 +46,11 @@ export type PageReader = {
 };
 
 export type DraftStore = {
-  createDraft(input: { pageId: string; message: string }): Promise<PostRecord>;
+  createDraft(input: {
+    pageId: string;
+    message: string;
+    assetIds?: string[];
+  }): Promise<PostRecord>;
   findById(id: string): Promise<PostRecord | undefined>;
   listDrafts(pageId?: string, limit?: number): Promise<PostRecord[]>;
   updateDraft(
@@ -38,10 +60,18 @@ export type DraftStore = {
   deleteDraft(id: string): Promise<boolean>;
 };
 
+export type DraftAssetReader = {
+  findAttachableByIds(
+    pageId: string,
+    ids: string[],
+  ): Promise<Array<{ id: string }>>;
+};
+
 export class DraftService {
   constructor(
     private readonly pages: PageReader,
     private readonly drafts: DraftStore,
+    private readonly assets?: DraftAssetReader,
   ) {}
 
   async create(input: unknown): Promise<PostRecord> {
@@ -63,7 +93,25 @@ export class DraftService {
       });
     }
 
-    return this.drafts.createDraft(parsed);
+    if (parsed.assetIds.length > 0) {
+      const available = await this.assets?.findAttachableByIds(
+        parsed.pageId,
+        parsed.assetIds,
+      );
+      if (!available || available.length !== parsed.assetIds.length) {
+        throw new AppError({
+          code: "DRAFT_ASSET_INVALID",
+          message: "Một hoặc nhiều ảnh không hợp lệ hoặc đã được sử dụng.",
+          status: 409,
+        });
+      }
+    }
+
+    return this.drafts.createDraft({
+      pageId: parsed.pageId,
+      message: parsed.message.trim(),
+      assetIds: parsed.assetIds,
+    });
   }
 
   async get(id: string): Promise<PostRecord> {
