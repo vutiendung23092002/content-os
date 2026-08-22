@@ -51,7 +51,11 @@ type StoredPageDto = {
   avatarUrl: string | null;
   category: string | null;
   connectionStatus: string;
+  canAccess: boolean;
+  accessReason: string | null;
 };
+
+type ViewerRole = "super_admin" | "admin" | "member";
 
 const capabilityLabels: Array<
   [keyof ManualPageDto["capabilities"], string, string]
@@ -101,6 +105,11 @@ export default function PagesPage() {
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [removingPageId, setRemovingPageId] = useState("");
+  const [removalTarget, setRemovalTarget] = useState<StoredPageDto | null>(
+    null,
+  );
+  const [viewerRole, setViewerRole] = useState<ViewerRole>("member");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -124,11 +133,17 @@ export default function PagesPage() {
       fetch("/api/pages", {
         headers: { accept: "application/json" },
       }).then((response) => readPayload<{ pages?: StoredPageDto[] }>(response)),
+      fetch("/api/auth/session", {
+        headers: { accept: "application/json" },
+      }).then((response) =>
+        readPayload<{ viewer?: { role: ViewerRole } }>(response),
+      ),
     ])
-      .then(([statusPayload, pagesPayload]) => {
+      .then(([statusPayload, pagesPayload, sessionPayload]) => {
         if (!active) return;
         setConnection(statusPayload.connection ?? null);
         setStoredPages(pagesPayload.pages ?? []);
+        setViewerRole(sessionPayload.viewer?.role ?? "member");
       })
       .catch((reason: unknown) => {
         if (active) {
@@ -189,7 +204,7 @@ export default function PagesPage() {
       setPreview(payload.page);
       await loadStoredPages();
       setStatus(
-        "Đã lưu Page vào hệ thống. Facebook không bị thay đổi dữ liệu.",
+        "Đã thêm Page vào hệ thống. Admin cần phân quyền Page cho từng tài khoản trước khi sử dụng.",
       );
     } catch (reason) {
       setError(
@@ -200,21 +215,39 @@ export default function PagesPage() {
     }
   }
 
+  async function removePage() {
+    if (!removalTarget) return;
+    setRemovingPageId(removalTarget.id);
+    setStatus("");
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/pages/${encodeURIComponent(removalTarget.id)}`,
+        { method: "DELETE", headers: { accept: "application/json" } },
+      );
+      await readPayload<{ removedPage: { id: string } }>(response);
+      await loadStoredPages();
+      if (preview?.page.localId === removalTarget.id) setPreview(null);
+      setStatus(
+        `Đã gỡ ${removalTarget.name} khỏi hệ thống. Facebook Page không bị thay đổi.`,
+      );
+      setRemovalTarget(null);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Không thể gỡ Page khỏi hệ thống.",
+      );
+    } finally {
+      setRemovingPageId("");
+    }
+  }
+
+  const canRemovePages = viewerRole === "admin" || viewerRole === "super_admin";
+
   return (
     <div className="pageStack">
-      <header className="pageIntro pageIntroWide">
-        <div>
-          <span className="pageKicker">FACEBOOK CONNECTION</span>
-          <h1>Quản lý Facebook Pages</h1>
-          <p>
-            Thêm Page bằng ID, kiểm tra quyền trước rồi mới lưu vào hệ thống.
-          </p>
-        </div>
-        <span className="readOnlyPill">
-          <span /> Kiểm tra chỉ đọc
-        </span>
-      </header>
-
       <div className="pageManagementGrid">
         <div className="pageManagementMain">
           <section className="surfaceCard addPageCard">
@@ -364,12 +397,22 @@ export default function PagesPage() {
               </div>
             ) : (
               <div className="managedPageTable">
-                <div className="managedPageTableHead">
+                <div
+                  className={`managedPageTableHead ${
+                    canRemovePages ? "canManage" : ""
+                  }`}
+                >
                   <span>Page</span>
-                  <span>Trạng thái</span>
+                  <span>Quyền sử dụng</span>
+                  {canRemovePages ? <span>Thao tác</span> : null}
                 </div>
                 {storedPages.map((page) => (
-                  <article className="managedPageTableRow" key={page.id}>
+                  <article
+                    className={`managedPageTableRow ${
+                      canRemovePages ? "canManage" : ""
+                    }`}
+                    key={page.id}
+                  >
                     <div className="managedPageIdentity">
                       <Avatar name={page.name} url={page.avatarUrl} />
                       <div>
@@ -380,9 +423,25 @@ export default function PagesPage() {
                         </small>
                       </div>
                     </div>
-                    <span className="badge badgeSuccess">
-                      <span className="statusDot" /> Hoạt động
+                    <span
+                      className={`badge ${
+                        page.canAccess ? "badgeSuccess" : "badgeNeutral"
+                      }`}
+                      title={page.accessReason ?? undefined}
+                    >
+                      <span className="statusDot" />
+                      {page.canAccess ? "Đã được cấp" : "Chờ phân quyền"}
                     </span>
+                    {canRemovePages ? (
+                      <button
+                        className="removeManagedPageButton"
+                        disabled={Boolean(removingPageId)}
+                        onClick={() => setRemovalTarget(page)}
+                        type="button"
+                      >
+                        Gỡ Page
+                      </button>
+                    ) : null}
                   </article>
                 ))}
               </div>
@@ -453,6 +512,50 @@ export default function PagesPage() {
           </section>
         </aside>
       </div>
+
+      {removalTarget ? (
+        <div
+          className="pageRemovalBackdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !removingPageId) {
+              setRemovalTarget(null);
+            }
+          }}
+        >
+          <section
+            aria-labelledby="remove-page-title"
+            aria-modal="true"
+            className="pageRemovalDialog"
+            role="dialog"
+          >
+            <span className="stepLabel">GỠ KHỎI HỆ THỐNG</span>
+            <h2 id="remove-page-title">Gỡ {removalTarget.name}?</h2>
+            <p>
+              Page sẽ biến mất khỏi HanContent với tất cả tài khoản và mọi phân
+              quyền nhân sự sẽ bị thu hồi. Bài viết và Page trên Facebook không
+              bị xóa hoặc thay đổi.
+            </p>
+            <div className="pageRemovalActions">
+              <button
+                className="button buttonSecondary"
+                disabled={Boolean(removingPageId)}
+                onClick={() => setRemovalTarget(null)}
+                type="button"
+              >
+                Giữ lại
+              </button>
+              <button
+                className="button removePageConfirmButton"
+                disabled={Boolean(removingPageId)}
+                onClick={() => void removePage()}
+                type="button"
+              >
+                {removingPageId ? "Đang gỡ..." : "Gỡ khỏi hệ thống"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

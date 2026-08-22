@@ -15,6 +15,8 @@ import {
   assertCanChangeApproval,
   assertCanChangeRole,
 } from "./admin-policy";
+import { PageRepository } from "@/db/repositories/page-repository";
+import { UserPageAssignmentRepository } from "@/db/repositories/user-page-assignment-repository";
 
 export const allowlistInputSchema = z.object({
   email: z.email().transform(normalizeEmail),
@@ -33,7 +35,22 @@ export class AdminUserService {
   private readonly users = new AppUserRepository(getDatabase());
 
   async list() {
-    return (await this.users.list()).map(toAppUserDto);
+    const [users, assignments, activePages] = await Promise.all([
+      this.users.list(),
+      new UserPageAssignmentRepository(getDatabase()).listAll(),
+      new PageRepository(getDatabase()).listActive(),
+    ]);
+    const counts = new Map<string, number>();
+    for (const assignment of assignments) {
+      counts.set(assignment.userId, (counts.get(assignment.userId) ?? 0) + 1);
+    }
+    return users.map((user) => ({
+      ...toAppUserDto(user),
+      pageAccessCount:
+        user.role === "super_admin"
+          ? activePages.length
+          : (counts.get(user.id) ?? 0),
+    }));
   }
 
   async allowEmail(input: {

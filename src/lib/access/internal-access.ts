@@ -1,6 +1,8 @@
 import "server-only";
 import { timingSafeEqual } from "node:crypto";
 import { requireApprovedViewer } from "@/lib/auth/session";
+import { requireAdmin } from "@/lib/auth/session";
+import type { Viewer } from "@/lib/auth/types";
 import { getServerEnv } from "@/lib/env/server";
 
 export const INTERNAL_ACCESS_HEADER = "x-han-access-secret";
@@ -23,7 +25,16 @@ export function hasConfiguredSecretAccess(request: Request): boolean {
   );
 }
 
-export async function assertInternalAccess(request: Request): Promise<void> {
+export async function assertInternalAccess(
+  request: Request,
+): Promise<Viewer | undefined> {
   if (hasConfiguredSecretAccess(request)) return;
-  await requireApprovedViewer();
+  return requireApprovedViewer();
+}
+
+export async function assertInternalAdminAccess(
+  request: Request,
+): Promise<Viewer | undefined> {
+  if (hasConfiguredSecretAccess(request)) return;
+  return requireAdmin();
 }
