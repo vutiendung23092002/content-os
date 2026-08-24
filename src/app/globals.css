@@ -300,12 +300,12 @@ a {
   position: sticky;
   top: 0;
   z-index: 20;
-  min-height: 4.6rem;
+  min-height: 3.55rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.7rem clamp(1rem, 3vw, 2.25rem);
+  padding: 0.35rem clamp(1rem, 3vw, 2.25rem);
   background: linear-gradient(135deg, #fff 0%, #fcf9ff 100%);
   border-bottom: 1px solid #ebe5f1;
   box-shadow: 0 10px 28px rgb(57 37 98 / 6%);
@@ -347,18 +347,18 @@ a {
 }
 
 .topAccount {
+  width: 2.6rem;
+  height: 2.6rem;
   display: grid;
-  grid-template-columns: auto minmax(0, auto) auto;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.42rem 0.55rem;
+  place-items: center;
+  padding: 0.2rem;
   background: linear-gradient(
     105deg,
     rgb(248 243 255 / 76%),
     rgb(255 242 247 / 72%)
   );
   border: 1px solid rgb(255 255 255 / 82%);
-  border-radius: 1rem;
+  border-radius: 50%;
   box-shadow:
     0 10px 28px rgb(80 48 132 / 9%),
     inset 0 1px 0 rgb(255 255 255 / 88%);
@@ -385,8 +385,8 @@ a {
 
 .topAccount img,
 .topAccountAvatar {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.1rem;
+  height: 2.1rem;
   display: grid;
   place-items: center;
   object-fit: cover;
@@ -2363,8 +2363,44 @@ a {
   padding: 0.45rem 0.15rem;
 }
 
+.postLibraryActions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.postLibraryPagePicker {
+  position: relative;
+  z-index: 20;
+  width: min(15rem, 28vw);
+  flex: 0 1 15rem;
+}
+
+.postLibraryPagePicker .pagePickerTrigger {
+  min-height: 2.2rem;
+  padding-block: 0.22rem;
+}
+
+.postLibraryPagePicker .pagePickerAvatar {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.postLibraryActions .refreshPostsButton {
+  width: 2.2rem;
+  min-height: 2.2rem;
+  flex: 0 0 2.2rem;
+  border-radius: 0.72rem;
+}
+
 .viewModeSwitch {
-  display: inline-flex;
+  position: relative;
+  isolation: isolate;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.15rem;
   padding: 0.2rem;
   background: rgb(236 230 247 / 58%);
   border: 1px solid rgb(255 255 255 / 76%);
@@ -2372,7 +2408,32 @@ a {
   box-shadow: inset 0 1px 1px rgb(74 48 117 / 7%);
 }
 
+.viewModeSwitch::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 0.2rem;
+  width: calc((100% - 0.55rem) / 2);
+  background: linear-gradient(145deg, #fff, #f5eeff);
+  border: 1px solid white;
+  border-radius: 0.48rem;
+  box-shadow:
+    0 8px 18px rgb(71 43 119 / 14%),
+    inset 0 1px 0 white,
+    inset 0 0 0 1px rgb(200 179 236 / 28%);
+  transform: translateX(0);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.viewModeSwitch[data-mode="timeline"]::before {
+  transform: translateX(calc(100% + 0.15rem));
+}
+
 .viewModeSwitch button {
+  position: relative;
+  z-index: 1;
   min-height: 1.8rem;
   display: inline-flex;
   align-items: center;
@@ -2389,14 +2450,8 @@ a {
 
 .viewModeSwitch button.isActive {
   color: var(--purple-dark);
-  background: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 94%),
-    rgb(249 244 255 / 84%)
-  );
-  box-shadow:
-    0 5px 16px rgb(71 43 119 / 12%),
-    inset 0 1px 0 white;
+  background: transparent;
+  box-shadow: none;
 }
 
 .viewModeSwitch svg {
@@ -2678,6 +2733,65 @@ a {
   background:
     radial-gradient(circle at 72% 10%, rgb(109 49 231 / 4%), transparent 28rem),
     rgb(250 249 253 / 72%);
+}
+
+.timelineViewport,
+.remotePostTable,
+.postLibraryCard .draftList {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(124 77 218 / 62%) rgb(243 238 250 / 58%);
+}
+
+.timelineViewport::-webkit-scrollbar,
+.remotePostTable::-webkit-scrollbar,
+.postLibraryCard .draftList::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.timelineViewport::-webkit-scrollbar-track,
+.remotePostTable::-webkit-scrollbar-track,
+.postLibraryCard .draftList::-webkit-scrollbar-track {
+  background: linear-gradient(
+    180deg,
+    rgb(249 246 253 / 78%),
+    rgb(238 231 248 / 64%)
+  );
+  border: 1px solid rgb(255 255 255 / 72%);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 3px rgb(67 42 107 / 8%);
+}
+
+.timelineViewport::-webkit-scrollbar-thumb,
+.remotePostTable::-webkit-scrollbar-thumb,
+.postLibraryCard .draftList::-webkit-scrollbar-thumb {
+  min-height: 3rem;
+  background: linear-gradient(
+    180deg,
+    rgb(154 105 235 / 72%),
+    rgb(105 53 211 / 64%)
+  );
+  border: 2px solid rgb(247 243 252 / 86%);
+  border-radius: 999px;
+  box-shadow:
+    0 4px 12px rgb(86 46 154 / 18%),
+    inset 0 1px 0 rgb(255 255 255 / 58%);
+}
+
+.timelineViewport::-webkit-scrollbar-thumb:hover,
+.remotePostTable::-webkit-scrollbar-thumb:hover,
+.postLibraryCard .draftList::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgb(139 83 229 / 82%),
+    rgb(93 40 199 / 74%)
+  );
+}
+
+.timelineViewport::-webkit-scrollbar-corner,
+.remotePostTable::-webkit-scrollbar-corner,
+.postLibraryCard .draftList::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .timelineWeekHeader,
@@ -3027,7 +3141,8 @@ a {
 
 .postDetailDialog {
   width: min(100%, 56rem);
-  max-height: min(88vh, 52rem);
+  height: min(82dvh, 48rem);
+  max-height: calc(100dvh - 2rem);
   display: flex;
   overflow: hidden;
   flex-direction: column;
@@ -3104,9 +3219,10 @@ a {
 
 .postDetailBody {
   min-height: 0;
+  flex: 1;
   display: grid;
   grid-template-columns: minmax(13rem, 0.75fr) minmax(0, 1.25fr);
-  overflow: auto;
+  overflow: hidden;
   background: #faf8fd;
 }
 
@@ -3116,29 +3232,51 @@ a {
 
 .postDetailGallery {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 11rem;
-  align-content: start;
-  gap: 2px;
-  overflow: hidden;
-  background: #e8e3ed;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(10rem, 1fr);
+  align-content: stretch;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  overflow: auto;
+  background: linear-gradient(145deg, #eee8f4, #f7f3fb);
 }
 
 .postDetailGallery img {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
+  background: linear-gradient(145deg, #faf8fc, #eee8f4);
+  border: 1px solid rgb(255 255 255 / 88%);
+  border-radius: 0.85rem;
+  box-shadow:
+    0 10px 24px rgb(55 36 88 / 9%),
+    inset 0 1px 0 white;
+}
+
+.postDetailGallery[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .postDetailGallery[data-count="1"] img:first-child {
-  min-height: 22rem;
-  grid-column: 1 / -1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  object-fit: contain;
+}
+
+.postDetailGallery[data-count="2"] {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .postDetailGallery[data-count="2"] img {
-  min-height: 22rem;
+  min-height: 0;
 }
 
 .postDetailGallery[data-count="3"] img:first-child {
@@ -3147,11 +3285,43 @@ a {
 
 .postDetailContent {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: grid;
   align-content: start;
   gap: 1.2rem;
   padding: 1.35rem;
+  overflow: auto;
   background: #faf8fd;
+}
+
+.postDetailGallery,
+.postDetailContent {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(126 80 218 / 58%) rgb(241 236 248 / 62%);
+}
+
+.postDetailGallery::-webkit-scrollbar,
+.postDetailContent::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.postDetailGallery::-webkit-scrollbar-track,
+.postDetailContent::-webkit-scrollbar-track {
+  background: rgb(240 234 247 / 58%);
+  border-radius: 999px;
+}
+
+.postDetailGallery::-webkit-scrollbar-thumb,
+.postDetailContent::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgb(151 102 235 / 68%),
+    rgb(104 53 207 / 58%)
+  );
+  border: 2px solid rgb(247 243 251 / 86%);
+  border-radius: 999px;
 }
 
 .postDetailMeta {
@@ -3868,7 +4038,7 @@ a {
 
 @media (max-width: 680px) {
   .workspaceTopbar {
-    min-height: 4.2rem;
+    min-height: 3.4rem;
   }
 
   .topbarHeading > div {
@@ -3890,8 +4060,8 @@ a {
   }
 
   .topAccount {
-    min-width: 0;
-    max-width: calc(100vw - 6rem);
+    width: 2.45rem;
+    height: 2.45rem;
   }
 
   .topAccount > svg {
@@ -3962,20 +4132,24 @@ a {
   }
 
   .postDetailDialog {
-    max-height: 94vh;
+    height: min(94dvh, 48rem);
+    max-height: calc(100dvh - 1.3rem);
   }
 
   .postDetailBody {
     grid-template-columns: 1fr;
+    overflow: auto;
   }
 
   .postDetailGallery {
-    grid-auto-rows: 8rem;
+    height: min(42dvh, 22rem);
+    min-height: 16rem;
+    grid-auto-rows: minmax(8rem, 1fr);
   }
 
-  .postDetailGallery[data-count="1"] img:first-child,
-  .postDetailGallery[data-count="2"] img {
-    min-height: 16rem;
+  .postDetailContent {
+    height: auto;
+    overflow: visible;
   }
 
   .postDetailFooter {
@@ -4077,7 +4251,7 @@ a {
 
 .composerMainGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(19rem, 0.34fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -4951,11 +5125,12 @@ a {
 .composerPreviewCard {
   position: sticky;
   top: 6.2rem;
-  padding: 1rem;
+  padding: 0.85rem;
 }
 
 .composerPreviewDevices {
   position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.15rem;
@@ -4972,7 +5147,39 @@ a {
     0 6px 18px rgb(66 42 107 / 5%);
 }
 
+.composerPreviewDevices::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 0.2rem;
+  width: calc((100% - 0.7rem) / 3);
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 99%),
+    rgb(249 245 255 / 97%)
+  );
+  border: 1px solid white;
+  border-radius: 0.54rem;
+  box-shadow:
+    0 7px 17px rgb(69 41 114 / 9%),
+    inset 0 0 0 1px rgb(205 190 229 / 32%);
+  transform: translateX(0);
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.composerPreviewDevices[data-device="tablet"]::before {
+  transform: translateX(calc(100% + 0.15rem));
+}
+
+.composerPreviewDevices[data-device="mobile"]::before {
+  transform: translateX(calc(200% + 0.3rem));
+}
+
 .composerPreviewDevices button {
+  position: relative;
+  z-index: 1;
   min-width: 2rem;
   min-height: 1.9rem;
   display: flex;
@@ -5003,16 +5210,10 @@ a {
 
 .composerPreviewDevices button.isActive {
   color: var(--purple-dark);
-  background: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 99%),
-    rgb(249 245 255 / 97%)
-  );
-  border-color: white;
-  box-shadow:
-    0 7px 17px rgb(69 41 114 / 9%),
-    inset 0 0 0 1px rgb(205 190 229 / 32%);
-  transform: translateY(-1px);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
 .composerPreviewDevices svg {
@@ -5029,10 +5230,12 @@ a {
   display: flex;
   justify-content: center;
   margin-top: 0.85rem;
+  overflow: hidden;
 }
 
 .composerPreviewDeviceFrame {
   width: 100%;
+  max-width: 100%;
   margin-inline: auto;
   padding: 0;
   border: 1px solid transparent;
@@ -5058,13 +5261,12 @@ a {
 }
 
 .composerPreviewViewport.is-tablet .composerPreviewDeviceFrame {
-  width: 86%;
+  width: 82%;
   border-radius: 1.25rem;
 }
 
 .composerPreviewViewport.is-mobile .composerPreviewDeviceFrame {
-  width: 68%;
-  min-width: 13.5rem;
+  width: 58%;
   border-radius: 1.45rem;
 }
 
@@ -5096,7 +5298,7 @@ a {
 }
 
 .facebookPreviewIdentity .pagePickerAvatar,
-.facebookPreviewIdentity > span {
+.facebookPreviewIdentity .facebookPreviewAvatarFallback {
   width: 2.2rem;
   height: 2.2rem;
   border-radius: 50%;
@@ -5107,27 +5309,36 @@ a {
   gap: 0.12rem;
 }
 
+.facebookPreviewMenu {
+  margin-left: auto;
+  color: #65676b;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08rem;
+}
+
 .facebookPreviewIdentity strong {
-  font-size: 0.72rem;
+  font-size: 0.9rem;
 }
 
 .facebookPreviewIdentity small {
   color: var(--subtle);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
 }
 
 .facebookPostPreview > p {
-  min-height: 3.1rem;
+  min-height: 3.5rem;
   margin: 0;
   padding: 0.45rem 0.8rem 0.75rem;
   color: #393342;
-  font-size: 0.68rem;
-  line-height: 1.55;
+  font-size: 0.86rem;
+  line-height: 1.45;
   white-space: pre-wrap;
 }
 
 .facebookMediaLayout {
-  height: 17rem;
+  width: 100%;
+  aspect-ratio: 1.2;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: repeat(2, 1fr);
@@ -5137,17 +5348,34 @@ a {
 }
 
 .facebookMediaLayout[data-count="1"] {
+  aspect-ratio: auto;
+  display: block;
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
 
+.facebookMediaLayout[data-count="1"] img {
+  height: auto;
+  max-height: 34rem;
+  object-fit: contain;
+}
+
 .facebookMediaLayout[data-count="2"] {
+  aspect-ratio: 2;
   grid-template-columns: repeat(2, 1fr);
   grid-template-rows: 1fr;
 }
 
+.facebookMediaLayout[data-count="3"] {
+  aspect-ratio: 1.5;
+}
+
 .facebookMediaLayout[data-count="3"] > div:first-child {
   grid-row: 1 / 3;
+}
+
+.facebookMediaLayout[data-count="4"] {
+  aspect-ratio: 1;
 }
 
 .facebookMediaLayout > div {
@@ -5174,7 +5402,8 @@ a {
 }
 
 .facebookPreviewEmptyMedia {
-  height: 11rem;
+  width: 100%;
+  aspect-ratio: 2;
   display: grid;
   place-items: center;
   color: #aaa3b3;
@@ -5193,13 +5422,68 @@ a {
 }
 
 .facebookPreviewFooter span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
   color: #6f6878;
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   font-weight: 650;
 }
 
+.facebookPreviewFooter svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.facebookPreviewComment {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.65rem 0.7rem;
+}
+
+.facebookPreviewComment .pagePickerAvatar,
+.facebookPreviewComment > span:first-child {
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.facebookPreviewComment > span:last-child {
+  min-height: 1.8rem;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  color: #65676b;
+  background: #f0f2f5;
+  border-radius: 999px;
+  font-size: 0.7rem;
+}
+
 .composerPreviewViewport.is-tablet .facebookMediaLayout {
-  height: 15rem;
+  aspect-ratio: 1.12;
+}
+
+.composerPreviewViewport.is-tablet .facebookMediaLayout[data-count="2"],
+.composerPreviewViewport.is-mobile .facebookMediaLayout[data-count="2"] {
+  aspect-ratio: 2;
+}
+
+.composerPreviewViewport.is-tablet .facebookMediaLayout[data-count="3"],
+.composerPreviewViewport.is-mobile .facebookMediaLayout[data-count="3"] {
+  aspect-ratio: 1.5;
+}
+
+.composerPreviewViewport.is-tablet .facebookMediaLayout[data-count="4"],
+.composerPreviewViewport.is-mobile .facebookMediaLayout[data-count="4"] {
+  aspect-ratio: 1;
 }
 
 .composerPreviewViewport.is-mobile .facebookPreviewIdentity {
@@ -5208,7 +5492,9 @@ a {
 }
 
 .composerPreviewViewport.is-mobile .facebookPreviewIdentity .pagePickerAvatar,
-.composerPreviewViewport.is-mobile .facebookPreviewIdentity > span {
+.composerPreviewViewport.is-mobile
+  .facebookPreviewIdentity
+  .facebookPreviewAvatarFallback {
   width: 1.85rem;
   height: 1.85rem;
 }
@@ -5220,11 +5506,16 @@ a {
 }
 
 .composerPreviewViewport.is-mobile .facebookMediaLayout {
-  height: 13.5rem;
+  aspect-ratio: 1.02;
+}
+
+.composerPreviewViewport.is-tablet .facebookMediaLayout[data-count="1"],
+.composerPreviewViewport.is-mobile .facebookMediaLayout[data-count="1"] {
+  aspect-ratio: auto;
 }
 
 .composerPreviewViewport.is-mobile .facebookPreviewEmptyMedia {
-  height: 9.5rem;
+  aspect-ratio: 1.7;
 }
 
 .composerPreviewViewport.is-mobile .facebookPreviewFooter {
@@ -5232,7 +5523,15 @@ a {
 }
 
 .composerPreviewViewport.is-mobile .facebookPreviewFooter span {
-  font-size: 0.52rem;
+  font-size: 0.62rem;
+}
+
+.composerPreviewViewport.is-mobile .facebookPreviewComment {
+  padding-inline: 0.5rem;
+}
+
+.composerPreviewViewport.is-mobile .facebookPreviewComment > span:last-child {
+  font-size: 0.62rem;
 }
 
 .composerLayoutNote {
@@ -5339,7 +5638,7 @@ a {
   }
 
   .facebookPostPreview {
-    max-width: 30rem;
+    max-width: none;
   }
 }
 
@@ -5829,12 +6128,17 @@ a {
 }
 
 .viewModeSwitch button.isActive {
-  background: linear-gradient(145deg, #fff, #f5eeff);
-  border: 1px solid white;
-  box-shadow:
-    0 8px 18px rgb(71 43 119 / 14%),
-    inset 0 1px 0 white,
-    inset 0 0 0 1px rgb(200 179 236 / 28%);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composerPreviewDevices::before,
+  .viewModeSwitch::before,
+  .composerPreviewDeviceFrame {
+    transition-duration: 1ms;
+  }
 }
 
 .timelineViewport {
@@ -5849,16 +6153,20 @@ a {
 }
 
 .timelineDayColumn.isToday {
-  background-color: rgb(238 228 255 / 72%);
+  background-color: rgb(246 240 255 / 18%);
   background-image: linear-gradient(
     180deg,
-    rgb(213 193 251 / 62%),
-    rgb(248 235 248 / 48%)
+    rgb(213 193 251 / 14%),
+    rgb(248 235 248 / 5%)
   );
   box-shadow:
-    inset 1px 0 rgb(109 49 231 / 19%),
-    inset -1px 0 rgb(109 49 231 / 19%),
+    inset 1px 0 rgb(109 49 231 / 12%),
+    inset -1px 0 rgb(109 49 231 / 12%),
     inset 0 1px 0 white;
+}
+
+.timelineHourGrid > span {
+  border-bottom-color: rgb(205 199 215 / 88%);
 }
 
 .timelineEvent {
@@ -6086,5 +6394,344 @@ a {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keep the post library inside the viewport; its table/timeline owns scrolling. */
+.dashboardFrame.isPostLibraryFrame {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.isPostLibraryFrame .workspace {
+  min-height: 0;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.isPostLibraryFrame .workspaceContent {
+  min-height: 0;
+  overflow: hidden;
+  padding-block: 1rem;
+}
+
+.isPostLibraryFrame .postWorkspaceStack {
+  min-height: 0;
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+
+.isPostLibraryFrame .postLibraryCard {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.isPostLibraryFrame .postLibraryToolbar {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+  border-radius: var(--glass-radius-lg) var(--glass-radius-lg) 0 0;
+}
+
+.isPostLibraryFrame .timelineSection {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.isPostLibraryFrame .timelineControls {
+  flex: 0 0 auto;
+}
+
+.isPostLibraryFrame .timelineViewport {
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  flex: 1;
+  border-radius: 0 0 var(--glass-radius-lg) var(--glass-radius-lg);
+}
+
+.isPostLibraryFrame .remotePostTable,
+.isPostLibraryFrame .postLibraryCard .draftList {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  border-radius: 0 0 var(--glass-radius-lg) var(--glass-radius-lg);
+}
+
+.isPostLibraryFrame .postLoadingState {
+  min-height: 0;
+  flex: 1;
+}
+
+@media (max-width: 760px) {
+  .postLibraryToolbar {
+    align-items: stretch;
+    flex-direction: column;
+    padding-block: 0.55rem;
+  }
+
+  .postLibraryToolbar .contentTabs {
+    width: 100%;
+    align-self: auto;
+  }
+
+  .postLibraryToolbar .contentTabs button {
+    flex: 1 0 auto;
+  }
+
+  .postLibraryActions {
+    width: 100%;
+  }
+
+  .postLibraryPagePicker {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .postLibraryActions .viewModeSwitch {
+    width: auto;
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .postLibraryActions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .postLibraryActions .viewModeSwitch {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+}
+
+/* Facebook-style post detail preview. */
+.postDetailHeader {
+  align-items: center;
+  padding-block: 0.9rem;
+}
+
+.postDetailHeader h2 {
+  margin-top: 0.42rem;
+}
+
+.postDetailHeaderActions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.postDetailDevices {
+  width: 15.5rem;
+  flex: 0 0 auto;
+}
+
+.postDetailClose {
+  width: 2.35rem;
+  height: 2.35rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  background: linear-gradient(145deg, #fff, #f3edf9);
+  border: 1px solid white;
+  border-radius: 50%;
+  box-shadow:
+    0 8px 20px rgb(59 37 96 / 9%),
+    inset 0 0 0 1px rgb(207 195 226 / 34%);
+  cursor: pointer;
+  font-size: 1.3rem;
+  line-height: 1;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.postDetailClose:hover,
+.postDetailClose:focus-visible {
+  color: var(--purple-dark);
+  border-color: rgb(180 151 233 / 62%);
+  box-shadow:
+    0 12px 25px rgb(59 37 96 / 14%),
+    inset 0 1px 0 white;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.postDetailPreviewBody {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1rem;
+  overflow: auto;
+  background:
+    radial-gradient(circle at 50% 0%, rgb(127 73 230 / 8%), transparent 28rem),
+    linear-gradient(145deg, rgb(246 242 251 / 94%), rgb(239 234 247 / 88%));
+  scrollbar-width: thin;
+  scrollbar-color: rgb(126 80 218 / 58%) rgb(241 236 248 / 62%);
+}
+
+.postDetailPreviewBody::-webkit-scrollbar {
+  width: 9px;
+}
+
+.postDetailPreviewBody::-webkit-scrollbar-track {
+  background: rgb(240 234 247 / 58%);
+  border-radius: 999px;
+}
+
+.postDetailPreviewBody::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgb(151 102 235 / 68%),
+    rgb(104 53 207 / 58%)
+  );
+  border: 2px solid rgb(247 243 251 / 86%);
+  border-radius: 999px;
+}
+
+.postDetailPreviewStage {
+  min-width: 0;
+  padding: 0.85rem;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 72%),
+    rgb(248 243 253 / 62%)
+  );
+  border: 1px solid rgb(255 255 255 / 88%);
+  border-radius: 1.1rem;
+  box-shadow:
+    0 18px 42px rgb(57 37 98 / 8%),
+    inset 0 1px 0 white;
+}
+
+.postDetailPreviewViewport {
+  margin-top: 0;
+  overflow: visible;
+}
+
+.postDetailPreviewViewport .composerPreviewDeviceFrame {
+  width: min(100%, 42rem);
+}
+
+.postDetailPreviewViewport.is-tablet .composerPreviewDeviceFrame {
+  width: min(100%, 34rem);
+}
+
+.postDetailPreviewViewport.is-mobile .composerPreviewDeviceFrame {
+  width: min(100%, 23rem);
+}
+
+.postDetailPreviewViewport .facebookPostPreview > p {
+  min-height: 0;
+}
+
+.postDetailFacebookEngagement {
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.4rem 0.8rem;
+  border-top: 1px solid #eeeaf1;
+}
+
+.postDetailFacebookEngagement:empty {
+  display: none;
+}
+
+.postDetailFacebookEngagement .engagementSummary {
+  gap: 0.65rem;
+  color: #65676b;
+  font-size: 0.67rem;
+}
+
+.postDetailPreviewMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.55fr) minmax(0, 1.65fr);
+  margin: 0;
+  overflow: hidden;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 90%),
+    rgb(248 243 253 / 82%)
+  );
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 0.95rem;
+  box-shadow:
+    0 12px 30px rgb(57 37 98 / 7%),
+    inset 0 0 0 1px rgb(211 198 230 / 28%);
+}
+
+.postDetailPreviewMeta > div {
+  min-width: 0;
+  padding: 0.7rem 0.85rem;
+}
+
+.postDetailPreviewMeta > div + div {
+  border-left: 1px solid rgb(219 211 231 / 72%);
+}
+
+.postDetailPreviewMeta dt {
+  margin-bottom: 0.25rem;
+  color: var(--subtle);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.postDetailPreviewMeta dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #443d50;
+  font-size: 0.68rem;
+}
+
+@media (max-width: 680px) {
+  .postDetailHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .postDetailHeaderActions {
+    justify-content: space-between;
+  }
+
+  .postDetailDevices {
+    width: min(100%, 15.5rem);
+  }
+
+  .postDetailPreviewBody {
+    padding: 0.65rem;
+  }
+
+  .postDetailPreviewStage {
+    padding: 0.55rem;
+  }
+
+  .postDetailPreviewMeta {
+    grid-template-columns: 1fr;
+  }
+
+  .postDetailPreviewMeta > div + div {
+    border-top: 1px solid rgb(219 211 231 / 72%);
+    border-left: 0;
   }
 }

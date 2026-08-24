@@ -232,8 +232,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   if (isBarePage) return <>{children}</>;
 
+  const isPostLibraryPage = pathname === "/posts";
+
   return (
-    <div className="dashboardFrame">
+    <div
+      className={`dashboardFrame ${
+        isPostLibraryPage ? "isPostLibraryFrame" : ""
+      }`}
+    >
       <button
         aria-label="Đóng menu"
         className={`sidebarBackdrop ${sidebarOpen ? "isVisible" : ""}`}
@@ -326,8 +332,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               aria-controls="account-menu"
               aria-expanded={accountMenuOpen}
               aria-haspopup="menu"
+              aria-label={`Mở menu tài khoản ${viewer?.name ?? "Google"}`}
               className={`topAccount ${accountMenuOpen ? "isOpen" : ""}`}
               onClick={() => setAccountMenuOpen((current) => !current)}
+              title={viewer?.name ?? "Tài khoản Google"}
               type="button"
             >
               {viewer?.avatarUrl ? (
@@ -338,11 +346,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                   {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
                 </span>
               )}
-              <span className="topAccountText">
-                <small>Tài khoản Google</small>
-                <strong>{viewer?.name ?? "Đang xác thực..."}</strong>
-              </span>
-              <Icon name="chevron" />
             </button>
 
             {accountMenuOpen ? (

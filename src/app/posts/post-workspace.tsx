@@ -60,6 +60,7 @@ type RemotePostDto = {
 
 type PostTab = "drafts" | "scheduled" | "published";
 type ViewMode = "table" | "timeline";
+type PreviewDevice = "desktop" | "tablet" | "mobile";
 
 const OPERATOR_TIMEZONE = "Asia/Ho_Chi_Minh";
 const weekDayFormatter = new Intl.DateTimeFormat("vi-VN", {
@@ -503,13 +504,15 @@ function TimelineEvent({
 
 function PostDetailDialog({
   post,
-  pageName,
+  page,
   onClose,
 }: {
   post: RemotePostDto;
-  pageName: string;
+  page: PageDto | undefined;
   onClose: () => void;
 }) {
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -542,57 +545,157 @@ function PostDetailDialog({
               {post.kind === "published" ? "Đã đăng" : "Đã hẹn giờ"}
             </span>
             <h2 id="post-detail-title">Chi tiết bài viết</h2>
-            <p>{pageName}</p>
-            <EngagementSummary engagement={post.engagement} showLabels />
+            <p>{page?.name ?? "Facebook Page"}</p>
           </div>
-          <button
-            aria-label="Đóng chi tiết bài viết"
-            autoFocus
-            onClick={onClose}
-            type="button"
-          >
-            ×
-          </button>
-        </header>
-
-        <div
-          className={`postDetailBody ${post.imageUrls.length > 0 ? "" : "withoutImage"}`}
-        >
-          {post.imageUrls.length > 0 ? (
+          <div className="postDetailHeaderActions">
             <div
-              className="postDetailGallery"
-              data-count={Math.min(post.imageUrls.length, 4)}
+              aria-label="Chọn thiết bị xem trước"
+              className="composerPreviewDevices postDetailDevices"
+              data-device={previewDevice}
+              role="group"
             >
-              {post.imageUrls.map((imageUrl, index) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  alt={`Ảnh ${index + 1} của bài viết`}
-                  key={`${imageUrl}-${index}`}
-                  src={imageUrl}
-                />
+              {(
+                [
+                  ["desktop", "Desktop"],
+                  ["tablet", "Tablet"],
+                  ["mobile", "Mobile"],
+                ] as const
+              ).map(([device, label]) => (
+                <button
+                  aria-label={`Xem trên ${label}`}
+                  aria-pressed={previewDevice === device}
+                  className={previewDevice === device ? "isActive" : ""}
+                  key={device}
+                  onClick={() => setPreviewDevice(device)}
+                  title={label}
+                  type="button"
+                >
+                  {device === "desktop" ? (
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                      <rect height="11" rx="1.5" width="16" x="2" y="2.5" />
+                      <path d="M7 17.5h6M10 13.5v4" />
+                    </svg>
+                  ) : device === "tablet" ? (
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                      <rect height="17" rx="2" width="12" x="4" y="1.5" />
+                      <path d="M9 15.8h2" />
+                    </svg>
+                  ) : (
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                      <rect height="17" rx="2" width="9" x="5.5" y="1.5" />
+                      <path d="M9 15.8h2" />
+                    </svg>
+                  )}
+                  <span>{label}</span>
+                </button>
               ))}
             </div>
-          ) : null}
-          <div className="postDetailContent">
-            <dl className="postDetailMeta">
-              <div>
-                <dt>Thời gian</dt>
-                <dd>{formatDateTime(post.effectiveAt)}</dd>
+            <button
+              aria-label="Đóng chi tiết bài viết"
+              autoFocus
+              className="postDetailClose"
+              onClick={onClose}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+        </header>
+
+        <div className="postDetailPreviewBody">
+          <div className="postDetailPreviewStage">
+            <div
+              className={`composerPreviewViewport postDetailPreviewViewport is-${previewDevice}`}
+              data-device={previewDevice}
+            >
+              <div className="composerPreviewDeviceFrame">
+                <article className="facebookPostPreview">
+                  <div className="facebookPreviewIdentity">
+                    {page ? (
+                      <PageAvatar page={page} />
+                    ) : (
+                      <span className="facebookPreviewAvatarFallback" />
+                    )}
+                    <div>
+                      <strong>{page?.name ?? "Facebook Page"}</strong>
+                      <small>
+                        {formatDateTime(post.effectiveAt)} ·{" "}
+                        <span aria-label="Công khai">◉</span>
+                      </small>
+                    </div>
+                    <span aria-hidden="true" className="facebookPreviewMenu">
+                      •••
+                    </span>
+                  </div>
+                  <p>{post.message || "Bài viết không có caption."}</p>
+                  {post.imageUrls.length > 0 ? (
+                    <div
+                      className="facebookMediaLayout"
+                      data-count={Math.min(post.imageUrls.length, 4)}
+                    >
+                      {post.imageUrls.slice(0, 4).map((imageUrl, index) => (
+                        <div key={`${imageUrl}-${index}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            alt={`Ảnh ${index + 1} của bài viết`}
+                            src={imageUrl}
+                          />
+                          {index === 3 && post.imageUrls.length > 4 ? (
+                            <b>+{post.imageUrls.length - 4}</b>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="postDetailFacebookEngagement">
+                    <EngagementSummary
+                      engagement={post.engagement}
+                      showLabels
+                    />
+                  </div>
+                  <div className="facebookPreviewFooter">
+                    <span>
+                      <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                        <path d="M6.5 17H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1h2.5M6.5 17h7.2a2 2 0 0 0 1.9-1.4l1.3-4.2a2 2 0 0 0-1.9-2.6h-3.1l.5-2.4A2.8 2.8 0 0 0 9.7 3L6.5 8.5V17Z" />
+                      </svg>
+                      Thích
+                    </span>
+                    <span>
+                      <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                        <path d="M16.5 9.5a6.5 6.5 0 1 1-3-5.5M7 15.5 4 17l.7-3.4" />
+                      </svg>
+                      Bình luận
+                    </span>
+                    <span>
+                      <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                        <path d="m11.5 5 5 4.5-5 4.5v-2.7c-4.1 0-6.4 1.2-8 3.2.5-4.4 3-7 8-7V5Z" />
+                      </svg>
+                      Chia sẻ
+                    </span>
+                  </div>
+                  <div className="facebookPreviewComment">
+                    {page ? <PageAvatar page={page} /> : <span />}
+                    <span>Viết bình luận...</span>
+                  </div>
+                </article>
               </div>
-              <div>
-                <dt>Nguồn</dt>
-                <dd>Facebook</dd>
-              </div>
-              <div>
-                <dt>Post ID</dt>
-                <dd>{post.remoteId}</dd>
-              </div>
-            </dl>
-            <div className="postDetailCaption">
-              <span>NỘI DUNG</span>
-              <p>{post.message || "Bài viết không có caption."}</p>
             </div>
           </div>
+
+          <dl className="postDetailPreviewMeta">
+            <div>
+              <dt>Thời gian</dt>
+              <dd>{formatDateTime(post.effectiveAt)}</dd>
+            </div>
+            <div>
+              <dt>Nguồn</dt>
+              <dd>Facebook</dd>
+            </div>
+            <div>
+              <dt>Post ID</dt>
+              <dd>{post.remoteId}</dd>
+            </div>
+          </dl>
         </div>
 
         <footer className="postDetailFooter">
@@ -1094,45 +1197,6 @@ export function PostWorkspace() {
 
   return (
     <div className="pageStack postWorkspaceStack">
-      <section className="postControlBar" aria-label="Bộ lọc bài viết">
-        <div className="pagePickerField">
-          <PagePicker
-            disabled={loadingPages || pages.length === 0}
-            onChange={setSelectedPageId}
-            pages={pages}
-            value={selectedPageId}
-          />
-        </div>
-        <div className="postControlMeta">
-          <button
-            aria-label={
-              loadingPosts || refreshingPosts
-                ? "Đang làm mới bài viết"
-                : "Làm mới bài viết"
-            }
-            className={`refreshPostsButton ${
-              loadingPosts || refreshingPosts ? "isLoading" : ""
-            }`}
-            disabled={!selectedPageId || loadingPosts || refreshingPosts}
-            onClick={() => {
-              forceRefreshRef.current = true;
-              setRefreshIndex((current) => current + 1);
-            }}
-            title={
-              loadingPosts || refreshingPosts
-                ? "Đang làm mới"
-                : "Làm mới bài viết"
-            }
-            type="button"
-          >
-            <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
-              <path d="M20 12a8 8 0 1 1-2.34-5.66L20 8" />
-              <path d="M20 3v5h-5" />
-            </svg>
-          </button>
-        </div>
-      </section>
-
       <section className="surfaceCard postLibraryCard">
         <div className="postLibraryToolbar">
           <div
@@ -1169,27 +1233,69 @@ export function PostWorkspace() {
             </button>
           </div>
 
-          {isRemoteTab ? (
-            <div className="viewModeSwitch" aria-label="Kiểu hiển thị">
-              {(["table", "timeline"] as const).map((mode) => (
-                <button
-                  aria-label={
-                    mode === "table"
-                      ? "Hiển thị dạng bảng"
-                      : "Hiển thị timeline"
-                  }
-                  aria-pressed={viewMode === mode}
-                  className={viewMode === mode ? "isActive" : ""}
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  type="button"
-                >
-                  <ViewIcon mode={mode} />
-                  {mode === "table" ? "Bảng" : "Timeline"}
-                </button>
-              ))}
+          <div className="postLibraryActions">
+            <div className="pagePickerField postLibraryPagePicker">
+              <PagePicker
+                disabled={loadingPages || pages.length === 0}
+                onChange={setSelectedPageId}
+                pages={pages}
+                value={selectedPageId}
+              />
             </div>
-          ) : null}
+
+            {isRemoteTab ? (
+              <div
+                className="viewModeSwitch"
+                aria-label="Kiểu hiển thị"
+                data-mode={viewMode}
+              >
+                {(["table", "timeline"] as const).map((mode) => (
+                  <button
+                    aria-label={
+                      mode === "table"
+                        ? "Hiển thị dạng bảng"
+                        : "Hiển thị timeline"
+                    }
+                    aria-pressed={viewMode === mode}
+                    className={viewMode === mode ? "isActive" : ""}
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    type="button"
+                  >
+                    <ViewIcon mode={mode} />
+                    {mode === "table" ? "Bảng" : "Timeline"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <button
+              aria-label={
+                loadingPosts || refreshingPosts
+                  ? "Đang làm mới bài viết"
+                  : "Làm mới bài viết"
+              }
+              className={`refreshPostsButton ${
+                loadingPosts || refreshingPosts ? "isLoading" : ""
+              }`}
+              disabled={!selectedPageId || loadingPosts || refreshingPosts}
+              onClick={() => {
+                forceRefreshRef.current = true;
+                setRefreshIndex((current) => current + 1);
+              }}
+              title={
+                loadingPosts || refreshingPosts
+                  ? "Đang làm mới"
+                  : "Làm mới bài viết"
+              }
+              type="button"
+            >
+              <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
+                <path d="M20 12a8 8 0 1 1-2.34-5.66L20 8" />
+                <path d="M20 3v5h-5" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {error ? <div className="feedback feedbackError">{error}</div> : null}
@@ -1265,7 +1371,7 @@ export function PostWorkspace() {
       {selectedPost ? (
         <PostDetailDialog
           onClose={() => setSelectedPost(null)}
-          pageName={selectedPage?.name ?? "Facebook Page"}
+          page={selectedPage}
           post={selectedPost}
         />
       ) : null}
