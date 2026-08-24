@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useToast } from "@/app/ui/toast-provider";
 import type { Viewer } from "@/lib/auth/types";
 
 type ManagedUser = {
@@ -160,11 +161,11 @@ function RoleSelect({
 }
 
 export function UserPanel({ viewer }: { viewer: Viewer }) {
+  const { showToast, updateToast } = useToast();
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [assignment, setAssignment] = useState<AssignmentEditor | null>(null);
   const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(
@@ -187,12 +188,18 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
         if (active) setUsers(payload.users);
       })
       .catch((error: Error) => {
-        if (active) setMessage(error.message);
+        if (active) {
+          showToast({
+            tone: "error",
+            title: "Không thể tải danh sách nhân sự",
+            description: error.message,
+          });
+        }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [showToast]);
 
   const stats = useMemo(
     () => ({
@@ -208,18 +215,35 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
 
   async function addEmail(event: React.FormEvent) {
     event.preventDefault();
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang thêm email vào allowlist",
+      description: email,
+      duration: null,
+    });
     setBusy(true);
-    setMessage(null);
     try {
       await apiRequest("/api/admin/users", {
         method: "POST",
         body: JSON.stringify({ email, role }),
       });
       setEmail("");
-      setMessage("Đã thêm email vào danh sách truy cập.");
       await load();
+      updateToast(toastId, {
+        tone: "success",
+        title: "Đã thêm email vào allowlist",
+        description:
+          "Tài khoản có thể đăng nhập bằng Google theo vai trò đã chọn.",
+        duration: 5_000,
+      });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Thao tác thất bại.");
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể thêm email",
+        description:
+          error instanceof Error ? error.message : "Thao tác thất bại.",
+        duration: null,
+      });
     } finally {
       setBusy(false);
     }
@@ -230,16 +254,34 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
     kind: "approval" | "role",
     body: object,
   ) {
+    const toastId = showToast({
+      tone: "loading",
+      title: kind === "role" ? "Đang đổi vai trò" : "Đang cập nhật tài khoản",
+      description: "Thay đổi sẽ có hiệu lực ngay sau khi được xác nhận.",
+      duration: null,
+    });
     setBusy(true);
-    setMessage(null);
     try {
       await apiRequest(`/api/admin/users/${userId}/${kind}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       });
       await load();
+      updateToast(toastId, {
+        tone: "success",
+        title:
+          kind === "role" ? "Đã cập nhật vai trò" : "Đã cập nhật tài khoản",
+        description: "Quyền truy cập mới đã có hiệu lực.",
+        duration: 5_000,
+      });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Thao tác thất bại.");
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể cập nhật tài khoản",
+        description:
+          error instanceof Error ? error.message : "Thao tác thất bại.",
+        duration: null,
+      });
     } finally {
       setBusy(false);
     }
@@ -263,9 +305,12 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
         ),
       );
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Không thể tải Page.",
-      );
+      showToast({
+        tone: "error",
+        title: "Không thể tải phạm vi Page",
+        description:
+          error instanceof Error ? error.message : "Không thể tải Page.",
+      });
       setSelectedUserId(null);
     } finally {
       setLoadingAssignment(false);
@@ -274,19 +319,34 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
 
   async function saveAssignments() {
     if (!selectedUserId) return;
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang lưu phân quyền Page",
+      description: `${selectedPageIds.size} Page đang được áp dụng.`,
+      duration: null,
+    });
     setBusy(true);
     try {
       await apiRequest(`/api/admin/users/${selectedUserId}/pages`, {
         method: "PUT",
         body: JSON.stringify({ pageIds: [...selectedPageIds] }),
       });
-      setMessage("Đã cập nhật quyền Page.");
       await load();
       setSelectedUserId(null);
+      updateToast(toastId, {
+        tone: "success",
+        title: "Đã cập nhật quyền Page",
+        description: "Thay đổi có hiệu lực ngay trên giao diện và API.",
+        duration: 5_000,
+      });
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Không thể lưu quyền Page.",
-      );
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể lưu quyền Page",
+        description:
+          error instanceof Error ? error.message : "Không thể lưu quyền Page.",
+        duration: null,
+      });
     } finally {
       setBusy(false);
     }
@@ -325,12 +385,6 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
           <small>Admin & Super Admin</small>
         </article>
       </section>
-
-      {message ? (
-        <div className="adminNotice" role="status">
-          {message}
-        </div>
-      ) : null}
 
       <div className="peopleLayout">
         <section className="opaqueGlassCard inviteCard">

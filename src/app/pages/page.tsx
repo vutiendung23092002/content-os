@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useState } from "react";
+import { useToast } from "@/app/ui/toast-provider";
 
 type ConnectionDto = {
   account: {
@@ -98,6 +99,7 @@ function Avatar({ name, url }: { name: string; url?: string | null }) {
 }
 
 export default function PagesPage() {
+  const { showToast, updateToast } = useToast();
   const [connection, setConnection] = useState<ConnectionDto | null>(null);
   const [storedPages, setStoredPages] = useState<StoredPageDto[]>([]);
   const [pageId, setPageId] = useState("");
@@ -110,8 +112,6 @@ export default function PagesPage() {
     null,
   );
   const [viewerRole, setViewerRole] = useState<ViewerRole>("member");
-  const [status, setStatus] = useState("");
-  const [error, setError] = useState("");
 
   async function loadStoredPages() {
     const response = await fetch("/api/pages", {
@@ -147,11 +147,14 @@ export default function PagesPage() {
       })
       .catch((reason: unknown) => {
         if (active) {
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : "Không thể tải trạng thái Facebook.",
-          );
+          showToast({
+            tone: "error",
+            title: "Không thể tải Facebook Pages",
+            description:
+              reason instanceof Error
+                ? reason.message
+                : "Không thể tải trạng thái Facebook.",
+          });
         }
       })
       .finally(() => {
@@ -161,14 +164,18 @@ export default function PagesPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [showToast]);
 
   async function checkPage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang kiểm tra quyền Page",
+      description: `Đang xác minh Page ID ${pageId.trim()} với Facebook.`,
+      duration: null,
+    });
     setChecking(true);
     setPreview(null);
-    setStatus("");
-    setError("");
 
     try {
       const response = await fetch("/api/facebook/pages/check", {
@@ -178,11 +185,20 @@ export default function PagesPage() {
       });
       const payload = await readPayload<{ page: ManualPageDto }>(response);
       setPreview(payload.page);
-      setStatus("Kiểm tra hoàn tất. Facebook chưa bị thay đổi dữ liệu.");
+      updateToast(toastId, {
+        tone: "success",
+        title: "Đã kiểm tra quyền Page",
+        description: `${payload.page.page.name} hợp lệ. Facebook chưa bị thay đổi dữ liệu.`,
+        duration: 5_000,
+      });
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Không thể kiểm tra Page.",
-      );
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể kiểm tra Page",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại sau.",
+        duration: null,
+      });
     } finally {
       setChecking(false);
     }
@@ -190,9 +206,13 @@ export default function PagesPage() {
 
   async function addPage() {
     if (!preview || preview.page.externalPageId !== pageId.trim()) return;
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang thêm Page vào hệ thống",
+      description: preview.page.name,
+      duration: null,
+    });
     setAdding(true);
-    setStatus("");
-    setError("");
 
     try {
       const response = await fetch("/api/facebook/pages", {
@@ -203,13 +223,21 @@ export default function PagesPage() {
       const payload = await readPayload<{ page: ManualPageDto }>(response);
       setPreview(payload.page);
       await loadStoredPages();
-      setStatus(
-        "Đã thêm Page vào hệ thống. Admin cần phân quyền Page cho từng tài khoản trước khi sử dụng.",
-      );
+      updateToast(toastId, {
+        tone: "success",
+        title: "Đã thêm Page vào hệ thống",
+        description:
+          "Admin có thể phân quyền Page này cho từng tài khoản nhân sự.",
+        duration: 5_000,
+      });
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Không thể thêm Page.",
-      );
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể thêm Page",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại sau.",
+        duration: null,
+      });
     } finally {
       setAdding(false);
     }
@@ -217,9 +245,13 @@ export default function PagesPage() {
 
   async function removePage() {
     if (!removalTarget) return;
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang gỡ Page khỏi hệ thống",
+      description: `${removalTarget.name} chỉ bị gỡ khỏi HanContent.`,
+      duration: null,
+    });
     setRemovingPageId(removalTarget.id);
-    setStatus("");
-    setError("");
 
     try {
       const response = await fetch(
@@ -229,16 +261,23 @@ export default function PagesPage() {
       await readPayload<{ removedPage: { id: string } }>(response);
       await loadStoredPages();
       if (preview?.page.localId === removalTarget.id) setPreview(null);
-      setStatus(
-        `Đã gỡ ${removalTarget.name} khỏi hệ thống. Facebook Page không bị thay đổi.`,
-      );
+      updateToast(toastId, {
+        tone: "success",
+        title: "Đã gỡ Page khỏi hệ thống",
+        description: `${removalTarget.name} đã được ẩn khỏi HanContent. Facebook Page không bị thay đổi.`,
+        duration: 5_000,
+      });
       setRemovalTarget(null);
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Không thể gỡ Page khỏi hệ thống.",
-      );
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể gỡ Page",
+        description:
+          reason instanceof Error
+            ? reason.message
+            : "Không thể gỡ Page khỏi hệ thống.",
+        duration: null,
+      });
     } finally {
       setRemovingPageId("");
     }
@@ -291,8 +330,6 @@ export default function PagesPage() {
                   onChange={(event) => {
                     setPageId(event.target.value.replace(/\D/g, ""));
                     setPreview(null);
-                    setStatus("");
-                    setError("");
                   }}
                   pattern="[0-9]{5,30}"
                   placeholder="Ví dụ: 123456789012345"
@@ -311,13 +348,6 @@ export default function PagesPage() {
                 Bạn có thể lấy ID từ URL Page hoặc workflow cũ.
               </small>
             </form>
-
-            {error ? (
-              <div className="feedback feedbackError">{error}</div>
-            ) : null}
-            {status ? (
-              <div className="feedback feedbackSuccess">{status}</div>
-            ) : null}
 
             {preview ? (
               <article className="verificationResult">

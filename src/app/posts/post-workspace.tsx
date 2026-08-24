@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useToast } from "@/app/ui/toast-provider";
 import {
   addDays,
   getAdaptiveTimelineTop,
@@ -955,6 +956,7 @@ function DraftList({ drafts }: { drafts: DraftDto[] }) {
 }
 
 export function PostWorkspace() {
+  const { showToast, updateToast } = useToast();
   const [pages, setPages] = useState<PageDto[]>([]);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [activeTab, setActiveTab] = useState<PostTab>("published");
@@ -966,12 +968,13 @@ export function PostWorkspace() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [refreshingPosts, setRefreshingPosts] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [refreshIndex, setRefreshIndex] = useState(0);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [selectedPost, setSelectedPost] = useState<RemotePostDto | null>(null);
   const loadedKeyRef = useRef("");
   const forceRefreshRef = useRef(false);
+  const refreshToastRef = useRef<string | null>(null);
   const selectedPage = pages.find((page) => page.id === selectedPageId);
 
   useEffect(() => {
@@ -989,11 +992,14 @@ export function PostWorkspace() {
       })
       .catch((reason: unknown) => {
         if (active) {
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : "Không thể tải danh sách Page.",
-          );
+          showToast({
+            tone: "error",
+            title: "Không thể tải danh sách Page",
+            description:
+              reason instanceof Error
+                ? reason.message
+                : "Vui lòng thử lại sau.",
+          });
         }
       })
       .finally(() => {
@@ -1002,7 +1008,7 @@ export function PostWorkspace() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [showToast]);
 
   const loadPosts = useCallback(
     async (signal: AbortSignal) => {
@@ -1022,7 +1028,7 @@ export function PostWorkspace() {
       const requestKey = `${selectedPageId}:${activeTab}:${viewMode}${timelineKey}`;
       const forceRefresh = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      setError("");
+      setLoadFailed(false);
       const cacheKey =
         activeTab === "drafts"
           ? null
@@ -1064,6 +1070,15 @@ export function PostWorkspace() {
           setDrafts(payload.drafts ?? []);
           setRemotePosts([]);
           loadedKeyRef.current = requestKey;
+          if (refreshToastRef.current) {
+            updateToast(refreshToastRef.current, {
+              tone: "success",
+              title: "Đã làm mới bài viết",
+              description: "Dữ liệu mới nhất đã được tải về.",
+              duration: 4_000,
+            });
+            refreshToastRef.current = null;
+          }
           return;
         }
 
@@ -1120,12 +1135,36 @@ export function PostWorkspace() {
             });
           }
         }
+        if (refreshToastRef.current) {
+          updateToast(refreshToastRef.current, {
+            tone: "success",
+            title: "Đã làm mới bài viết",
+            description: "Dữ liệu mới nhất từ Facebook đã được tải về.",
+            duration: 4_000,
+          });
+          refreshToastRef.current = null;
+        }
       } catch (reason) {
         if (reason instanceof DOMException && reason.name === "AbortError")
           return;
-        setError(
-          reason instanceof Error ? reason.message : "Không thể tải bài viết.",
-        );
+        const description =
+          reason instanceof Error ? reason.message : "Không thể tải bài viết.";
+        setLoadFailed(true);
+        if (refreshToastRef.current) {
+          updateToast(refreshToastRef.current, {
+            tone: "error",
+            title: "Không thể làm mới bài viết",
+            description,
+            duration: null,
+          });
+          refreshToastRef.current = null;
+        } else {
+          showToast({
+            tone: "error",
+            title: "Không thể tải bài viết",
+            description,
+          });
+        }
         if (loadedKeyRef.current !== requestKey) {
           setDrafts([]);
           setRemotePosts([]);
@@ -1137,7 +1176,7 @@ export function PostWorkspace() {
         }
       }
     },
-    [activeTab, selectedPageId, viewMode, weekStart],
+    [activeTab, selectedPageId, showToast, updateToast, viewMode, weekStart],
   );
 
   useEffect(() => {
@@ -1153,8 +1192,13 @@ export function PostWorkspace() {
 
   async function loadMore() {
     if (!after || activeTab === "drafts" || !selectedPageId) return;
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang tải thêm bài viết",
+      description: "Đang đọc trang dữ liệu tiếp theo từ Facebook.",
+      duration: null,
+    });
     setLoadingMore(true);
-    setError("");
     try {
       const query = new URLSearchParams({
         pageId: selectedPageId,
@@ -1179,12 +1223,20 @@ export function PostWorkspace() {
         return merged;
       });
       setAfter(nextAfter);
+      updateToast(toastId, {
+        tone: "success",
+        title: "Đã tải thêm bài viết",
+        description: `${payload.posts?.length ?? 0} bài viết đã được thêm vào bảng.`,
+        duration: 4_000,
+      });
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "Không thể tải thêm bài viết.",
-      );
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể tải thêm bài viết",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại sau.",
+        duration: null,
+      });
     } finally {
       setLoadingMore(false);
     }
@@ -1280,6 +1332,12 @@ export function PostWorkspace() {
               }`}
               disabled={!selectedPageId || loadingPosts || refreshingPosts}
               onClick={() => {
+                refreshToastRef.current = showToast({
+                  tone: "loading",
+                  title: "Đang làm mới bài viết",
+                  description: "Đang lấy dữ liệu mới nhất từ Facebook.",
+                  duration: null,
+                });
                 forceRefreshRef.current = true;
                 setRefreshIndex((current) => current + 1);
               }}
@@ -1298,7 +1356,6 @@ export function PostWorkspace() {
           </div>
         </div>
 
-        {error ? <div className="feedback feedbackError">{error}</div> : null}
         {!loadingPages && pages.length === 0 ? (
           <div className="emptyState">
             <strong>Chưa có Facebook Page</strong>
@@ -1323,7 +1380,7 @@ export function PostWorkspace() {
         {!loadingPosts &&
         selectedPageId &&
         empty &&
-        !error &&
+        !loadFailed &&
         !(isRemoteTab && viewMode === "timeline") ? (
           <div className="emptyState">
             <strong>

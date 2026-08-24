@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Be_Vietnam_Pro } from "next/font/google";
 import type { ReactNode } from "react";
 import { DashboardShell } from "@/app/ui/dashboard-shell";
+import { ToastProvider } from "@/app/ui/toast-provider";
 import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -22,7 +23,9 @@ export default function RootLayout({
   return (
     <html lang="vi" className={beVietnamPro.variable}>
       <body>
-        <DashboardShell>{children}</DashboardShell>
+        <ToastProvider>
+          <DashboardShell>{children}</DashboardShell>
+        </ToastProvider>
       </body>
     </html>
   );

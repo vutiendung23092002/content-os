@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useToast } from "@/app/ui/toast-provider";
 
 type PageDto = {
   id: string;
@@ -541,6 +542,7 @@ function LiquidDateTimePicker({
 }
 
 export function ComposerWorkspace() {
+  const { showToast, updateToast } = useToast();
   const [pages, setPages] = useState<PageDto[]>([]);
   const [pageId, setPageId] = useState("");
   const [message, setMessage] = useState("");
@@ -548,9 +550,8 @@ export function ComposerWorkspace() {
   const [mode, setMode] = useState<PublishMode>("now");
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
   const [scheduledFor, setScheduledFor] = useState("");
-  const [status, setStatus] = useState("Đang tải Pages...");
+  const [pageNotice, setPageNotice] = useState("Đang tải Pages...");
   const [submitting, setSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [dragActive, setDragActive] = useState(false);
   const [draggedMediaId, setDraggedMediaId] = useState<string | null>(null);
@@ -608,7 +609,7 @@ export function ComposerWorkspace() {
         const firstAllowedPage = nextPages.find((page) => page.canAccess);
         setPages(nextPages);
         setPageId(firstAllowedPage?.id ?? "");
-        setStatus(
+        setPageNotice(
           nextPages.length === 0
             ? "Chưa có Page trong hệ thống."
             : firstAllowedPage
@@ -618,7 +619,7 @@ export function ComposerWorkspace() {
       })
       .catch((error: unknown) => {
         if (active) {
-          setStatus(
+          setPageNotice(
             error instanceof Error ? error.message : "Không thể tải Pages.",
           );
         }
@@ -634,7 +635,11 @@ export function ComposerWorkspace() {
         ACCEPTED_IMAGE_TYPES.has(file.type) && file.size <= MAX_FILE_SIZE,
     );
     if (validFiles.length !== files.length) {
-      setStatus("Chỉ nhận JPEG, PNG, WebP và tối đa 10 MB mỗi ảnh.");
+      showToast({
+        tone: "error",
+        title: "Không thể thêm một số ảnh",
+        description: "Chỉ nhận JPEG, PNG, WebP và tối đa 10 MB mỗi ảnh.",
+      });
     }
     setMedia((current) => {
       const slots = Math.max(0, MAX_IMAGES - current.length);
@@ -644,7 +649,11 @@ export function ComposerWorkspace() {
         previewUrl: URL.createObjectURL(file),
       }));
       if (validFiles.length > slots) {
-        setStatus(`Mỗi bài tối đa ${MAX_IMAGES} ảnh.`);
+        showToast({
+          tone: "error",
+          title: "Đã đạt giới hạn ảnh",
+          description: `Mỗi bài tối đa ${MAX_IMAGES} ảnh.`,
+        });
       }
       return [...current, ...additions];
     });
@@ -710,9 +719,13 @@ export function ComposerWorkspace() {
     );
   }
 
-  async function uploadMedia(uploadedIds: string[]) {
+  async function uploadMedia(uploadedIds: string[], toastId: string) {
     for (let index = 0; index < media.length; index += 1) {
-      setUploadProgress(index + 1);
+      updateToast(toastId, {
+        title: "Đang tải ảnh lên",
+        description: `Ảnh ${index + 1}/${media.length} đang được tải lên kho bảo mật.`,
+        progress: ((index + 1) / media.length) * 0.72,
+      });
       const data = new FormData();
       data.set("pageId", pageId);
       data.set("file", media[index]!.file);
@@ -724,15 +737,37 @@ export function ComposerWorkspace() {
   }
 
   async function submit(action: "draft" | "publish" | "schedule") {
+    const actionLabel =
+      action === "draft"
+        ? "Đang lưu bản nháp"
+        : action === "publish"
+          ? "Đang đăng bài lên Facebook"
+          : "Đang hẹn giờ trên Facebook";
+    const toastId = showToast({
+      tone: "loading",
+      title: actionLabel,
+      description:
+        media.length > 0
+          ? `Đang chuẩn bị ${media.length} ảnh theo đúng thứ tự đã chọn.`
+          : "Đang chuẩn bị nội dung bài viết.",
+      duration: null,
+      progress: media.length > 0 ? 0.04 : null,
+    });
     setSubmitting(true);
     setPendingAction(null);
-    setStatus("");
-    setUploadProgress(0);
     const assetIds: string[] = [];
     let draftCreated = false;
 
     try {
-      await uploadMedia(assetIds);
+      await uploadMedia(assetIds, toastId);
+      updateToast(toastId, {
+        title: actionLabel,
+        description:
+          action === "draft"
+            ? "Đang lưu nội dung vào hệ thống."
+            : "Đang gửi nội dung sang Meta Graph API.",
+        progress: media.length > 0 ? 0.82 : null,
+      });
       const draftPayload = await readPayload<{ draft: { id: string } }>(
         await fetch("/api/posts", {
           method: "POST",
@@ -760,21 +795,41 @@ export function ComposerWorkspace() {
       setMedia([]);
       setMessage("");
       setScheduledFor("");
-      setStatus(
-        action === "draft"
-          ? "Đã lưu bản nháp."
-          : action === "publish"
-            ? "Facebook đã nhận yêu cầu đăng bài."
-            : "Facebook đã xác nhận lịch đăng native.",
-      );
+      updateToast(toastId, {
+        tone: "success",
+        title:
+          action === "draft"
+            ? "Đã lưu bản nháp"
+            : action === "publish"
+              ? "Facebook đã xác nhận bài đăng"
+              : "Facebook đã xác nhận lịch đăng",
+        description:
+          action === "schedule"
+            ? `${selectedPage?.name ?? "Page"} sẽ đăng lúc ${new Intl.DateTimeFormat(
+                "vi-VN",
+                {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                },
+              ).format(new Date(scheduledFor))}.`
+            : action === "publish"
+              ? `Bài viết đã được gửi lên ${selectedPage?.name ?? "Page"}.`
+              : "Nội dung và thứ tự ảnh đã được lưu an toàn.",
+        duration: 5_000,
+        progress: 1,
+      });
     } catch (error) {
       if (!draftCreated && assetIds.length > 0) await cleanupAssets(assetIds);
-      setStatus(
-        error instanceof Error ? error.message : "Không thể hoàn tất thao tác.",
-      );
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể hoàn tất thao tác",
+        description:
+          error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+        duration: null,
+        progress: null,
+      });
     } finally {
       setSubmitting(false);
-      setUploadProgress(0);
     }
   }
 
@@ -1004,16 +1059,9 @@ export function ComposerWorkspace() {
 
           <footer className="composerActionBar">
             <div>
-              {submitting ? (
-                <span className="composerSubmitting">
-                  <i />
-                  {media.length > 0 && uploadProgress > 0
-                    ? `Đang tải ảnh ${uploadProgress}/${media.length}`
-                    : "Đang xử lý..."}
-                </span>
-              ) : status ? (
+              {pageNotice ? (
                 <span className="composerStatus" role="status">
-                  {status}
+                  {pageNotice}
                 </span>
               ) : (
                 <span className="composerSafeNote">

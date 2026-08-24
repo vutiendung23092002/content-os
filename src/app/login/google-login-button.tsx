@@ -1,14 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useToast } from "@/app/ui/toast-provider";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export function GoogleLoginButton({ next }: { next: string }) {
-  const [error, setError] = useState<string | null>(null);
+  const { showToast, updateToast } = useToast();
   const [loading, setLoading] = useState(false);
 
   async function login() {
-    setError(null);
+    const toastId = showToast({
+      tone: "loading",
+      title: "Đang mở Google",
+      description: "Bạn sẽ được chuyển tới màn hình chọn tài khoản.",
+      duration: null,
+    });
     setLoading(true);
     try {
       const redirectTo = new URL("/auth/callback", window.location.origin);
@@ -24,7 +30,12 @@ export function GoogleLoginButton({ next }: { next: string }) {
       });
       if (oauthError) throw oauthError;
     } catch {
-      setError("Không thể mở Google. Hãy kiểm tra cấu hình Supabase Auth.");
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể mở Google",
+        description: "Hãy kiểm tra cấu hình Supabase Auth rồi thử lại.",
+        duration: null,
+      });
       setLoading(false);
     }
   }
@@ -40,7 +51,6 @@ export function GoogleLoginButton({ next }: { next: string }) {
         <span aria-hidden="true">G</span>
         {loading ? "Đang chuyển hướng..." : "Tiếp tục với Google"}
       </button>
-      {error ? <p className="loginError">{error}</p> : null}
     </div>
   );
 }
