@@ -32,6 +32,8 @@ type PreviewDevice = "desktop" | "tablet" | "mobile";
 
 const MAX_IMAGES = 10;
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const FACEBOOK_MIN_SCHEDULE_LEAD_MINUTES = 20;
+const SUGGESTED_SCHEDULE_LEAD_MINUTES = 25;
 const ACCEPTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 async function readPayload<ResponseBody>(response: Response) {
@@ -233,9 +235,20 @@ function formatFileSize(bytes: number) {
 function minimumScheduleValue(referenceTime: number) {
   // datetime-local drops seconds, so keep a one-minute UI buffer above
   // Facebook's 20-minute minimum instead of offering an immediately-invalid value.
-  const date = new Date(referenceTime + 21 * 60 * 1000);
+  const date = new Date(
+    referenceTime + (FACEBOOK_MIN_SCHEDULE_LEAD_MINUTES + 1) * 60 * 1000,
+  );
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
+}
+
+function suggestedScheduleValue(referenceTime: number) {
+  const minimumTimestamp =
+    referenceTime + SUGGESTED_SCHEDULE_LEAD_MINUTES * 60 * 1000;
+  const date = new Date(minimumTimestamp);
+  date.setSeconds(0, 0);
+  if (date.getTime() < minimumTimestamp) date.setMinutes(date.getMinutes() + 1);
+  return toLocalDateTimeValue(date);
 }
 
 function maximumScheduleValue(referenceTime: number) {
@@ -266,20 +279,22 @@ function formatScheduleLabel(value: string) {
 function LiquidDateTimePicker({
   value,
   min,
+  suggested,
   max,
   disabled,
   onChange,
 }: {
   value: string;
   min: string;
+  suggested: string;
   max: string;
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [draftValue, setDraftValue] = useState(value || min);
+  const [draftValue, setDraftValue] = useState(value || suggested);
   const [visibleMonth, setVisibleMonth] = useState(() => {
-    const date = new Date(value || min);
+    const date = new Date(value || suggested);
     return new Date(date.getFullYear(), date.getMonth(), 1);
   });
   const shellRef = useRef<HTMLDivElement>(null);
@@ -315,7 +330,7 @@ function LiquidDateTimePicker({
   }
 
   function openPicker() {
-    const nextValue = value || min;
+    const nextValue = value || suggested;
     const nextDate = new Date(nextValue);
     setDraftValue(nextValue);
     setVisibleMonth(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1));
@@ -493,8 +508,8 @@ function LiquidDateTimePicker({
             <button
               className="liquidCalendarSoonest"
               onClick={() => {
-                const next = new Date(min);
-                setDraftValue(min);
+                const next = new Date(suggested);
+                setDraftValue(suggested);
                 setVisibleMonth(
                   new Date(next.getFullYear(), next.getMonth(), 1),
                 );
@@ -555,7 +570,9 @@ export function ComposerWorkspace() {
   const scheduleValid =
     mode === "now" ||
     (Number.isFinite(scheduledTimestamp) &&
-      scheduledTimestamp >= scheduleReferenceTime + 20 * 60 * 1000 &&
+      scheduledTimestamp >=
+        scheduleReferenceTime +
+          FACEBOOK_MIN_SCHEDULE_LEAD_MINUTES * 60 * 1000 &&
       scheduledTimestamp <= scheduleReferenceTime + 29 * 24 * 60 * 60 * 1000);
   const canSubmit =
     Boolean(pageId) &&
@@ -978,6 +995,7 @@ export function ComposerWorkspace() {
                   max={maximumScheduleValue(scheduleReferenceTime)}
                   min={minimumScheduleValue(scheduleReferenceTime)}
                   onChange={setScheduledFor}
+                  suggested={suggestedScheduleValue(scheduleReferenceTime)}
                   value={scheduledFor}
                 />
               </div>

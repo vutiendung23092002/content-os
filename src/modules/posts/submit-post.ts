@@ -13,6 +13,8 @@ import { AppError } from "@/lib/errors/app-error";
 import { MetaGraphClient } from "@/modules/facebook/meta-client";
 import { AssetStorage } from "@/modules/assets/asset-storage";
 
+const MIN_SCHEDULE_LEAD_MINUTES = 20;
+
 export type SubmissionKind = "publish_now" | "schedule";
 
 export type PreparedSubmission = {
@@ -250,7 +252,8 @@ export class SubmitPostService {
         status: 400,
       });
     }
-    const minimum = this.now().getTime() + 20 * 60 * 1000;
+    const minimum =
+      this.now().getTime() + MIN_SCHEDULE_LEAD_MINUTES * 60 * 1000;
     const maximum = this.now().getTime() + 29 * 24 * 60 * 60 * 1000;
     if (scheduledFor.getTime() < minimum || scheduledFor.getTime() > maximum) {
       throw new AppError({

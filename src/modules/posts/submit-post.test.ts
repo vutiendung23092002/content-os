@@ -125,13 +125,22 @@ describe("SubmitPostService", () => {
     expect(setupResult.persistence.prepare).not.toHaveBeenCalled();
   });
 
-  it("rejects a schedule that is too close for Facebook native scheduling", async () => {
+  it("rejects a schedule inside Facebook's 20-minute minimum", async () => {
     const setupResult = setup();
 
     await expect(
-      setupResult.service.schedule(postId, "2026-08-20T00:10:00.000Z"),
+      setupResult.service.schedule(postId, "2026-08-20T00:19:00.000Z"),
     ).rejects.toMatchObject({ code: "SCHEDULE_TIME_OUT_OF_RANGE" });
     expect(setupResult.persistence.prepare).not.toHaveBeenCalled();
+  });
+
+  it("accepts a schedule at Facebook's 20-minute boundary", async () => {
+    const setupResult = setup();
+
+    await expect(
+      setupResult.service.schedule(postId, "2026-08-20T00:20:00.000Z"),
+    ).resolves.toMatchObject({ status: "scheduled" });
+    expect(setupResult.client.schedulePost).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a schedule beyond Facebook's 29-day window", async () => {

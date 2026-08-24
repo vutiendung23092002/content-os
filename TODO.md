@@ -258,7 +258,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: confirmation dialogs, schedule picker, operation feedback.
   - Acceptance criteria: Double click an toàn; timezone/range rõ; operation `uncertain` không được báo thất bại chắc chắn.
   - Tests: Publish/schedule happy path, double submit, invalid time và uncertain-state UI E2E.
-  - [x] Có lựa chọn đăng ngay/native schedule, giới hạn lịch 20 phút–29 ngày và confirmation cuối trước mọi thao tác Meta.
+  - [x] Có lựa chọn đăng ngay/native schedule, API giữ giới hạn 20 phút–29 ngày; nút "Sớm nhất" chủ động chọn sau ít nhất 25 phút để có khoảng đệm tải ảnh, và có confirmation cuối trước mọi thao tác Meta.
   - [x] UI gọi draft trước rồi mới submit, giữ operation ledger và không tự retry khi kết quả remote không chắc chắn.
   - [x] Live publish một bài có ảnh trên Page test Nero Team; operation thành công và lưu remote post ID để đối soát.
   - [ ] Chạy capability smoke trên Page test và E2E thật trước khi đóng task.
