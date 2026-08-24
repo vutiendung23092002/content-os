@@ -1028,13 +1028,11 @@ export function ComposerWorkspace() {
 
         <aside className="surfaceCard composerPreviewCard">
           <header>
-            <div>
-              <span className="stepLabel">XEM TRƯỚC</span>
-              <h2>Bài viết Facebook</h2>
-            </div>
+            <span className="stepLabel">XEM TRƯỚC</span>
             <div
               aria-label="Chọn thiết bị xem trước"
               className="composerPreviewDevices"
+              data-device={previewDevice}
               role="group"
             >
               {(
@@ -1081,11 +1079,20 @@ export function ComposerWorkspace() {
             <div className="composerPreviewDeviceFrame">
               <div className="facebookPostPreview">
                 <div className="facebookPreviewIdentity">
-                  {selectedPage ? <PageAvatar page={selectedPage} /> : <span />}
+                  {selectedPage ? (
+                    <PageAvatar page={selectedPage} />
+                  ) : (
+                    <span className="facebookPreviewAvatarFallback" />
+                  )}
                   <div>
                     <strong>{selectedPage?.name ?? "Facebook Page"}</strong>
-                    <small>Công khai · Vừa xong</small>
+                    <small>
+                      Vừa xong · <span aria-label="Công khai">◉</span>
+                    </small>
                   </div>
+                  <span aria-hidden="true" className="facebookPreviewMenu">
+                    •••
+                  </span>
                 </div>
                 <p>
                   {message.trim() || "Nội dung bài viết sẽ hiển thị tại đây..."}
@@ -1109,9 +1116,28 @@ export function ComposerWorkspace() {
                   <div className="facebookPreviewEmptyMedia">Ảnh xem trước</div>
                 )}
                 <div className="facebookPreviewFooter">
-                  <span>Thích</span>
-                  <span>Bình luận</span>
-                  <span>Chia sẻ</span>
+                  <span>
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                      <path d="M6.5 17H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1h2.5M6.5 17h7.2a2 2 0 0 0 1.9-1.4l1.3-4.2a2 2 0 0 0-1.9-2.6h-3.1l.5-2.4A2.8 2.8 0 0 0 9.7 3L6.5 8.5V17Z" />
+                    </svg>
+                    Thích
+                  </span>
+                  <span>
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                      <path d="M16.5 9.5a6.5 6.5 0 1 1-3-5.5M7 15.5 4 17l.7-3.4" />
+                    </svg>
+                    Bình luận
+                  </span>
+                  <span>
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                      <path d="m11.5 5 5 4.5-5 4.5v-2.7c-4.1 0-6.4 1.2-8 3.2.5-4.4 3-7 8-7V5Z" />
+                    </svg>
+                    Chia sẻ
+                  </span>
+                </div>
+                <div className="facebookPreviewComment">
+                  {selectedPage ? <PageAvatar page={selectedPage} /> : <span />}
+                  <span>Viết bình luận...</span>
                 </div>
               </div>
             </div>
