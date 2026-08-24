@@ -682,35 +682,31 @@ function PostDetailDialog({
               </div>
             </div>
           </div>
-
-          <dl className="postDetailPreviewMeta">
-            <div>
-              <dt>Thời gian</dt>
-              <dd>{formatDateTime(post.effectiveAt)}</dd>
-            </div>
-            <div>
-              <dt>Nguồn</dt>
-              <dd>Facebook</dd>
-            </div>
-            <div>
-              <dt>Post ID</dt>
-              <dd>{post.remoteId}</dd>
-            </div>
-          </dl>
         </div>
 
         <footer className="postDetailFooter">
           <span>Chế độ chỉ đọc — không sửa hoặc xoá bài Facebook.</span>
           {post.permalinkUrl ? (
             <a
-              className="button"
+              aria-label={`Mở bài ${post.remoteId} trên Facebook trong tab mới`}
+              className="postDetailPermalink"
               href={post.permalinkUrl}
               rel="noreferrer"
               target="_blank"
+              title="Mở bài trên Facebook"
             >
-              Mở bài trên Facebook ↗
+              <span>{post.remoteId}</span>
+              <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                <path d="M11 4h5v5" />
+                <path d="m16 4-7 7" />
+                <path d="M8 6H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3" />
+              </svg>
             </a>
-          ) : null}
+          ) : (
+            <span className="postDetailPermalink isUnavailable">
+              {post.remoteId}
+            </span>
+          )}
         </footer>
       </section>
     </div>
