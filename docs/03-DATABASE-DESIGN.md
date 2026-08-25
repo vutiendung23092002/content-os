@@ -13,10 +13,10 @@
 
 ```text
 connection_status: active, expired, revoked, permission_missing, error
-post_status: draft, submitting, scheduled, published, failed, uncertain, canceled, deleted_remote
-post_type: text, image
+post_status: draft, submitting, scheduled, published, failed, uncertain, needs_attention, canceled, deleted_remote
+post_type: text, image, video
 operation_type: sync_pages, publish_now, schedule, update, reschedule, cancel, sync_posts
-operation_status: pending, succeeded, failed, uncertain
+operation_status: pending, succeeded, failed, uncertain, needs_attention
 generation_type: caption, rewrite, idea
 app_role: super_admin, admin, member
 user_approval_status: pending, approved, rejected, suspended
@@ -138,7 +138,7 @@ Fields: `post_id uuid FK posts CASCADE`; `asset_id uuid FK assets RESTRICT`; `so
 
 Append-only safe request/outcome history.
 
-Fields: `id uuid PK`; `page_id uuid FK pages RESTRICT`; `post_id uuid NULL FK posts SET NULL`; `type operation_type NOT NULL`; `status operation_status NOT NULL`; `remote_post_id text NULL`; `request_fingerprint text NULL`; `http_status integer NULL`; `provider_error_code`, `provider_error_message` text NULL`; `provider_request_id text NULL`; `started_at`, `finished_at` timestamptz`; `duration_ms integer NULL`. Never store token, authorization headers or raw sensitive provider body.
+Fields: `id uuid PK`; `page_id uuid FK pages RESTRICT`; `post_id uuid NULL FK posts SET NULL`; `type operation_type NOT NULL`; `status operation_status NOT NULL`; `remote_post_id text NULL`; `request_fingerprint text NULL`; `request_metadata jsonb NOT NULL`; `resolution text NULL`; `resolution_evidence jsonb NOT NULL`; `resolved_by_user_id uuid NULL FK app_users SET NULL`; `resolved_at timestamptz NULL`; `http_status integer NULL`; `provider_error_code`, `provider_error_message` text NULL`; `provider_request_id text NULL`; `started_at`, `finished_at` timestamptz`; `duration_ms integer NULL`. Metadata/evidence chỉ giữ hash nội dung, loại/số lượng media, thời gian dự kiến, remote ID và timestamp; không giữ caption đầy đủ, token, authorization headers, signed URL hoặc raw sensitive provider body.
 
 Indexes `(page_id,started_at DESC)`, `(post_id,started_at DESC)`, `(status,started_at)`.
 
@@ -166,6 +166,7 @@ app_users ──< user_page_assignments >── pages ──1 page_credentials
 - A remote scheduled/published post must have `remote_post_id`.
 - Local schedule is not considered accepted until Meta returns success/remote ID.
 - A timeout after sending schedule sets operation `uncertain`; reconcile before retry.
+- Operation chưa quét đủ dữ liệu remote, còn trong cửa sổ visibility hoặc có nhiều candidate phải ở `needs_attention`; không được kết luận remote absent.
 - Missing remote scheduled post becomes `published`, `canceled` or `deleted_remote` only after querying Meta evidence.
 - Page credential is decrypted only inside the Meta adapter.
 - Admin/member chỉ đọc hoặc thao tác Page có assignment; Super Admin có quyền ngầm trên mọi Page active.

@@ -57,6 +57,7 @@ export const postStatusEnum = applicationSchema.enum("post_status", [
   "published",
   "failed",
   "uncertain",
+  "needs_attention",
   "canceled",
   "deleted_remote",
 ]);
@@ -82,6 +83,7 @@ export const operationStatusEnum = applicationSchema.enum("operation_status", [
   "succeeded",
   "failed",
   "uncertain",
+  "needs_attention",
 ]);
 
 export const generationTypeEnum = applicationSchema.enum("generation_type", [
@@ -333,6 +335,10 @@ export const facebookOperations = applicationSchema.table(
     status: operationStatusEnum("status").notNull().default("pending"),
     remotePostId: text("remote_post_id"),
     requestFingerprint: text("request_fingerprint"),
+    requestMetadata: jsonb("request_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     httpStatus: integer("http_status"),
     providerErrorCode: text("provider_error_code"),
     providerErrorMessage: text("provider_error_message"),
@@ -342,6 +348,16 @@ export const facebookOperations = applicationSchema.table(
       .defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     durationMs: integer("duration_ms"),
+    resolution: text("resolution"),
+    resolutionEvidence: jsonb("resolution_evidence")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    resolvedByUserId: uuid("resolved_by_user_id").references(
+      () => appUsers.id,
+      { onDelete: "set null" },
+    ),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   },
   (table) => [
     index("facebook_operations_page_started_idx").on(

@@ -198,13 +198,17 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Người vận hành thấy kết quả xác nhận; retry không xóa nhầm object khác.
   - Tests: Success, already absent, already published, permission failure, double click và timeout.
 
-- [ ] FB-010 — Reconcile uncertain operations
+- [x] FB-010 — Reconcile uncertain operations
   - Priority: P0
   - Goal: Xác định request timeout/DB failure đã tạo remote object hay chưa trước khi retry.
   - Depends on: FB-004, FB-005, FB-006, FB-007.
   - Files/modules expected: reconciliation service, operation queries, manual retry/resolve API.
   - Acceptance criteria: Không blind retry create; unresolved case hiển thị `needs_attention`; quyết định có evidence.
   - Tests: Remote success + local timeout, remote failure + timeout, ambiguous match, DB write failure và safe manual resolution.
+  - [x] Lưu intent metadata tối thiểu (hash nội dung, loại/số media, lịch UTC) trước khi gọi Meta; không lưu caption/token/signed URL trong evidence.
+  - [x] Chỉ tự chốt khi quét remote đầy đủ và có đúng một candidate; incomplete/no-match/ambiguous/visibility-window chuyển `needs_attention` và không retry create.
+  - [x] API Admin liệt kê, chạy đối soát và resolve thủ công có same-origin guard, actor audit và xác minh lại candidate từ Facebook.
+  - [x] Migration `0005_exotic_shinko_yamashiro.sql` đã áp dụng; unit/API/schema và Supabase transaction integration tests pass.
 
 - [ ] FB-011 — Scheduled sync and reconciliation cron
   - Priority: P1

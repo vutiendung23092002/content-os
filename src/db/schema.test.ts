@@ -36,9 +36,11 @@ describe("database schema", () => {
   it("pins workflow enums used by reconciliation", () => {
     expect(connectionStatusEnum.enumValues).toContain("permission_missing");
     expect(postStatusEnum.enumValues).toContain("uncertain");
+    expect(postStatusEnum.enumValues).toContain("needs_attention");
     expect(postTypeEnum.enumValues).toEqual(["text", "image", "video"]);
     expect(operationTypeEnum.enumValues).toContain("schedule");
     expect(operationStatusEnum.enumValues).toContain("uncertain");
+    expect(operationStatusEnum.enumValues).toContain("needs_attention");
     expect(generationTypeEnum.enumValues).toContain("rewrite");
     expect(appRoleEnum.enumValues).toEqual(["super_admin", "admin", "member"]);
     expect(userApprovalStatusEnum.enumValues).toContain("suspended");

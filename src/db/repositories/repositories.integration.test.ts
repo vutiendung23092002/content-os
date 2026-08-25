@@ -54,6 +54,10 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           pageId: page.id,
           postId: draft.id,
           type: "publish_now",
+          requestMetadata: {
+            version: 1,
+            messageHash: "integration-message-hash",
+          },
         });
         const windowStart = new Date("2026-08-16T17:00:00.000Z");
         const windowEnd = new Date("2026-08-23T17:00:00.000Z");
@@ -81,6 +85,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
             ?.accessTokenCiphertext,
         ).not.toEqual(Buffer.from("integration-page-token"));
         expect(operation.status).toBe("pending");
+        expect(operation.requestMetadata).toMatchObject({ version: 1 });
         expect(
           await postRepository.listRemoteWindow(
             page.id,
@@ -105,6 +110,28 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
             approvalStatus: "approved",
           })
           .returning();
+        await operationRepository.markNeedsAttention(operation.id, {
+          reason: "integration_no_match",
+          candidates: [],
+        });
+        expect(await operationRepository.findById(operation.id)).toMatchObject({
+          status: "needs_attention",
+          resolution: "unresolved",
+          resolutionEvidence: { reason: "integration_no_match" },
+        });
+        await operationRepository.markReconciledFailed({
+          id: operation.id,
+          evidence: {
+            reason: "manual_remote_not_created",
+            candidates: [],
+          },
+          resolvedByUserId: user!.id,
+        });
+        expect(await operationRepository.findById(operation.id)).toMatchObject({
+          status: "failed",
+          resolution: "remote_not_created",
+          resolvedByUserId: user!.id,
+        });
         await transaction.insert(userPageAssignments).values({
           userId: user!.id,
           pageId: page.id,

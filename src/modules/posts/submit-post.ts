@@ -33,6 +33,7 @@ export type SubmissionPersistence = {
     postId: string;
     kind: SubmissionKind;
     requestFingerprint: string;
+    scheduledFor?: Date;
   }): Promise<PreparedSubmission>;
   succeed(input: {
     operationId: string;
@@ -92,6 +93,7 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
     postId: string;
     kind: SubmissionKind;
     requestFingerprint: string;
+    scheduledFor?: Date;
   }): Promise<PreparedSubmission> {
     const encryptionKey = requireServerEnv("TOKEN_ENCRYPTION_KEY");
 
@@ -129,12 +131,6 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         });
       }
 
-      const operation = await operations.createPending({
-        pageId: page.id,
-        postId: post.id,
-        type: input.kind,
-        requestFingerprint: input.requestFingerprint,
-      });
       const pageAccessToken = decryptToken(
         {
           ciphertext: credential.accessTokenCiphertext,
@@ -146,6 +142,19 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         encryptionKey,
       );
       const media = await assets.listForPost(post.id);
+      const operation = await operations.createPending({
+        pageId: page.id,
+        postId: post.id,
+        type: input.kind,
+        requestFingerprint: input.requestFingerprint,
+        requestMetadata: {
+          version: 1,
+          messageHash: createHash("sha256").update(post.message).digest("hex"),
+          postType: post.type,
+          assetCount: media.length,
+          scheduledFor: input.scheduledFor?.toISOString() ?? null,
+        },
+      });
 
       return {
         operationId: operation.id,
@@ -293,6 +302,7 @@ export class SubmitPostService {
       postId: input.postId,
       kind: input.kind,
       requestFingerprint: fingerprint(input),
+      scheduledFor: input.scheduledFor,
     });
     const client = this.clientFactory(prepared.pageAccessToken);
 

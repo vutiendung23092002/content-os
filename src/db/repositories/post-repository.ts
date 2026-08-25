@@ -237,4 +237,34 @@ export class PostRepository {
       })
       .where(eq(posts.id, id));
   }
+
+  async markNeedsAttention(id: string, message: string): Promise<void> {
+    await this.database
+      .update(posts)
+      .set({
+        status: "needs_attention",
+        lastErrorCode: "RECONCILIATION_REQUIRED",
+        lastErrorMessage: message,
+        updatedAt: new Date(),
+      })
+      .where(eq(posts.id, id));
+  }
+
+  async markReconciledPublished(
+    id: string,
+    remotePostId: string,
+    publishedAt: Date,
+  ): Promise<void> {
+    await this.database
+      .update(posts)
+      .set({
+        status: "published",
+        remotePostId,
+        publishedAt,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(posts.id, id));
+  }
 }

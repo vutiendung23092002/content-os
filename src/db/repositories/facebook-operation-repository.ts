@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
 import { facebookOperations } from "@/db/schema";
 
@@ -13,6 +13,7 @@ export class FacebookOperationRepository {
     postId?: string;
     type: FacebookOperationType;
     requestFingerprint?: string;
+    requestMetadata?: Record<string, unknown>;
   }): Promise<FacebookOperationRecord> {
     const [record] = await this.database
       .insert(facebookOperations)
@@ -22,6 +23,7 @@ export class FacebookOperationRepository {
         type: input.type,
         status: "pending",
         requestFingerprint: input.requestFingerprint,
+        requestMetadata: input.requestMetadata ?? {},
       })
       .returning();
 
@@ -30,6 +32,35 @@ export class FacebookOperationRepository {
     }
 
     return record;
+  }
+
+  async findById(id: string): Promise<FacebookOperationRecord | undefined> {
+    const [record] = await this.database
+      .select()
+      .from(facebookOperations)
+      .where(eq(facebookOperations.id, id))
+      .limit(1);
+    return record;
+  }
+
+  async listReviewable(input: {
+    stalePendingBefore: Date;
+    limit?: number;
+  }): Promise<FacebookOperationRecord[]> {
+    return this.database
+      .select()
+      .from(facebookOperations)
+      .where(
+        or(
+          inArray(facebookOperations.status, ["uncertain", "needs_attention"]),
+          and(
+            eq(facebookOperations.status, "pending"),
+            lt(facebookOperations.startedAt, input.stalePendingBefore),
+          ),
+        ),
+      )
+      .orderBy(desc(facebookOperations.startedAt))
+      .limit(Math.min(Math.max(input.limit ?? 50, 1), 100));
   }
 
   async markSucceeded(id: string, remotePostId?: string): Promise<void> {
@@ -60,5 +91,61 @@ export class FacebookOperationRepository {
         finishedAt: new Date(),
       })
       .where(eq(facebookOperations.id, id));
+  }
+
+  async markNeedsAttention(
+    id: string,
+    evidence: Record<string, unknown>,
+  ): Promise<void> {
+    await this.database
+      .update(facebookOperations)
+      .set({
+        status: "needs_attention",
+        resolution: "unresolved",
+        resolutionEvidence: evidence,
+        resolvedAt: null,
+      })
+      .where(eq(facebookOperations.id, id));
+  }
+
+  async markReconciledSucceeded(input: {
+    id: string;
+    remotePostId: string;
+    evidence: Record<string, unknown>;
+    resolvedByUserId?: string;
+  }): Promise<void> {
+    await this.database
+      .update(facebookOperations)
+      .set({
+        status: "succeeded",
+        remotePostId: input.remotePostId,
+        resolution: "remote_created",
+        resolutionEvidence: input.evidence,
+        resolvedByUserId: input.resolvedByUserId,
+        resolvedAt: new Date(),
+        finishedAt: new Date(),
+      })
+      .where(eq(facebookOperations.id, input.id));
+  }
+
+  async markReconciledFailed(input: {
+    id: string;
+    evidence: Record<string, unknown>;
+    resolvedByUserId?: string;
+  }): Promise<void> {
+    await this.database
+      .update(facebookOperations)
+      .set({
+        status: "failed",
+        providerErrorCode: "REMOTE_NOT_CREATED",
+        providerErrorMessage:
+          "Đối soát không tìm thấy bài remote; không tự động retry.",
+        resolution: "remote_not_created",
+        resolutionEvidence: input.evidence,
+        resolvedByUserId: input.resolvedByUserId,
+        resolvedAt: new Date(),
+        finishedAt: new Date(),
+      })
+      .where(eq(facebookOperations.id, input.id));
   }
 }

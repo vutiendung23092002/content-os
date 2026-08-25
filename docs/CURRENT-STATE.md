@@ -76,11 +76,12 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Publish-now/native-schedule orchestration có operation ledger, double-submit claim và mock Meta client.
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
 - Meta thành công nhưng local commit lỗi được giữ cho reconciliation, không đổi thành remote failure.
+- Reconciliation cho publish/schedule đã dùng intent metadata tối thiểu và remote evidence; chỉ một candidate chính xác mới được tự chốt, còn no-match/ambiguous/incomplete/visibility-window đều chuyển `needs_attention`. Admin resolution được audit theo user và không có blind retry.
 - Local UI `/posts` và `/posts/new`.
 - Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh hoặc một video MP4/MOV, preview theo thiết bị, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
 - Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.
 - Video dùng signed upload trực tiếp lên private Supabase Storage, sau đó Meta adapter gửi signed `file_url` vào Page `/videos`; video thường và Reel được tách riêng.
-- Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy: orphan quá 1 giờ hoặc bài published quá 7 ngày; scheduled/failed/uncertain được giữ nguyên. Migration `0003_steep_hex.sql` đã áp dụng trên Supabase.
+- Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy: orphan quá 1 giờ hoặc bài published quá 7 ngày; scheduled/failed/uncertain được giữ nguyên. Migration cleanup `0003_steep_hex.sql` và reconciliation `0005_exotic_shinko_yamashiro.sql` đã áp dụng trên Supabase.
 - UI `/posts` đọc trực tiếp bài đã đăng/hẹn giờ theo Page, hỗ trợ phân trang, làm mới và chuyển đổi giữa dạng bảng với timeline tuần.
 - Timeline cache theo Page/tab/tuần ở client và mirror bài remote vào Supabase; published sync dùng `since/until`, request trùng được hợp nhất và dữ liệu stale hiển thị trước khi refresh nền.
 
@@ -91,7 +92,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 66 unit tests pass; 2 database integration tests pass và rollback sạch dữ liệu test.
+- Vitest: 115 tests pass; 2 database integration tests pass và rollback sạch dữ liệu test.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -106,7 +107,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 
 - Token rotation utility hoàn chỉnh.
 - Phần còn lại của Meta capability smoke: native schedule, reschedule và cancel trên Page test.
-- Remote list/reschedule/cancel services và reconciliation.
+- Remote reschedule/cancel services.
 - Credential riêng cho reconciliation cron tương lai; Cloudflare Access vẫn là lớp hardening tùy chọn.
 - AI content assistant; multi-image và native schedule vẫn cần capability smoke đầy đủ trên Page test.
 
