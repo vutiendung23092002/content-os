@@ -128,12 +128,8 @@
           "tableFrom": "ai_generations",
           "tableTo": "posts",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "post_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["post_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -142,12 +138,8 @@
           "tableFrom": "ai_generations",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -324,12 +316,8 @@
           "tableFrom": "app_users",
           "tableTo": "app_users",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "approved_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["approved_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -469,12 +457,8 @@
           "tableFrom": "assets",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -839,12 +823,8 @@
           "tableFrom": "facebook_operations",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -853,12 +833,8 @@
           "tableFrom": "facebook_operations",
           "tableTo": "posts",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "post_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["post_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -867,12 +843,8 @@
           "tableFrom": "facebook_operations",
           "tableTo": "app_users",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "resolved_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["resolved_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -991,12 +963,8 @@
           "tableFrom": "page_credentials",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1207,12 +1175,8 @@
           "tableFrom": "post_assets",
           "tableTo": "posts",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "post_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["post_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1221,12 +1185,8 @@
           "tableFrom": "post_assets",
           "tableTo": "assets",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "asset_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["asset_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1234,10 +1194,7 @@
       "compositePrimaryKeys": {
         "post_assets_post_id_asset_id_pk": {
           "name": "post_assets_post_id_asset_id_pk",
-          "columns": [
-            "post_id",
-            "asset_id"
-          ]
+          "columns": ["post_id", "asset_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1437,12 +1394,8 @@
           "tableFrom": "posts",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1552,12 +1505,8 @@
           "tableFrom": "sync_cursors",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1662,12 +1611,8 @@
           "tableFrom": "user_page_assignments",
           "tableTo": "app_users",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1676,12 +1621,8 @@
           "tableFrom": "user_page_assignments",
           "tableTo": "pages",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "page_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["page_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1690,12 +1631,8 @@
           "tableFrom": "user_page_assignments",
           "tableTo": "app_users",
           "schemaTo": "hancontent_os",
-          "columnsFrom": [
-            "assigned_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assigned_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1711,31 +1648,17 @@
     "hancontent_os.app_role": {
       "name": "app_role",
       "schema": "hancontent_os",
-      "values": [
-        "super_admin",
-        "admin",
-        "member"
-      ]
+      "values": ["super_admin", "admin", "member"]
     },
     "hancontent_os.connection_status": {
       "name": "connection_status",
       "schema": "hancontent_os",
-      "values": [
-        "active",
-        "expired",
-        "revoked",
-        "permission_missing",
-        "error"
-      ]
+      "values": ["active", "expired", "revoked", "permission_missing", "error"]
     },
     "hancontent_os.generation_type": {
       "name": "generation_type",
       "schema": "hancontent_os",
-      "values": [
-        "caption",
-        "rewrite",
-        "idea"
-      ]
+      "values": ["caption", "rewrite", "idea"]
     },
     "hancontent_os.operation_status": {
       "name": "operation_status",
@@ -1779,21 +1702,12 @@
     "hancontent_os.post_type": {
       "name": "post_type",
       "schema": "hancontent_os",
-      "values": [
-        "text",
-        "image",
-        "video"
-      ]
+      "values": ["text", "image", "video"]
     },
     "hancontent_os.user_approval_status": {
       "name": "user_approval_status",
       "schema": "hancontent_os",
-      "values": [
-        "pending",
-        "approved",
-        "rejected",
-        "suspended"
-      ]
+      "values": ["pending", "approved", "rejected", "suspended"]
     }
   },
   "schemas": {
