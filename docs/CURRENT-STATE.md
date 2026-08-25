@@ -39,7 +39,7 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 ### Database
 
 - Cả pooled `DATABASE_URL` và migration `DIRECT_DATABASE_URL` đã kết nối thành công.
-- Drizzle schema `hancontent_os` cho 11 bảng hiện hành, gồm `app_users` và `user_page_assignments` phục vụ allowlist/phạm vi Page.
+- Drizzle schema `hancontent_os` cho 12 bảng hiện hành, gồm `app_users`, `user_page_assignments` và `cron_jobs` phục vụ allowlist, phạm vi Page và lease/cursor cron.
 - Enum, foreign key, unique/index và check constraint cốt lõi.
 - Supabase-compatible runtime client dùng pooled URL với prepared statement tắt.
 - Drizzle config dùng direct URL cho migration.
@@ -82,6 +82,7 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.
 - Video dùng signed upload trực tiếp lên private Supabase Storage, sau đó Meta adapter gửi signed `file_url` vào Page `/videos`; video thường và Reel được tách riêng.
 - Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy: orphan quá 1 giờ hoặc bài published quá 7 ngày; scheduled/failed/uncertain được giữ nguyên. Migration cleanup `0003_steep_hex.sql` và reconciliation `0005_exotic_shinko_yamashiro.sql` đã áp dụng trên Supabase.
+- FB-011 có hai cron read-only đồng bộ published/native scheduled và đối soát operation bất định. `cron_jobs` giữ lease/cursor, retry hữu hạn và không có publish worker; migration `0006_faithful_spitfire.sql` đã áp dụng lên Supabase.
 - UI `/posts` đọc trực tiếp bài đã đăng/hẹn giờ theo Page, hỗ trợ phân trang, làm mới và chuyển đổi giữa dạng bảng với timeline tuần.
 - Timeline cache theo Page/tab/tuần ở client và mirror bài remote vào Supabase; published sync dùng `since/until`, request trùng được hợp nhất và dữ liệu stale hiển thị trước khi refresh nền.
 
@@ -92,7 +93,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 115 tests pass; 2 database integration tests pass và rollback sạch dữ liệu test.
+- Vitest: 128 tests pass; 3 database integration tests pass và rollback/dọn sạch dữ liệu test.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -108,7 +109,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Token rotation utility hoàn chỉnh.
 - Phần còn lại của Meta capability smoke: native schedule, reschedule và cancel trên Page test.
 - Remote reschedule/cancel services.
-- Credential riêng cho reconciliation cron tương lai; Cloudflare Access vẫn là lớp hardening tùy chọn.
+- Scheduler host cho FB-011 cần được bật bằng `corepack pnpm facebook:cron`; Cloudflare Access vẫn là lớp hardening tùy chọn.
 - AI content assistant; multi-image và native schedule vẫn cần capability smoke đầy đủ trên Page test.
 
 ## Secret cần cấu hình tiếp theo
@@ -124,6 +125,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_STORAGE_BUCKET
 ASSET_CLEANUP_SECRET
+FACEBOOK_CRON_SECRET
 NEXT_PUBLIC_SITE_URL
 INITIAL_ADMIN_EMAIL
 ```

@@ -116,6 +116,18 @@ corepack pnpm storage:configure
 
 Media của draft được giữ tới khi draft bị xóa. Media của bài đã đăng được giữ 7 ngày kể từ thời điểm Facebook xác nhận bài ở trạng thái `published`; bài `scheduled`, `failed` và `uncertain` không bị dọn. Endpoint `GET/POST /api/cron/assets/cleanup` chạy batch tối đa 50 asset và yêu cầu `Authorization: Bearer <ASSET_CLEANUP_SECRET>`. Đặt một secret ngẫu nhiên tối thiểu 32 ký tự trong `.env.local`, rồi cấu hình scheduler gọi endpoint mỗi ngày một lần.
 
+## Đồng bộ Facebook định kỳ
+
+Đặt `FACEBOOK_CRON_SECRET` ngẫu nhiên tối thiểu 32 ký tự trong `.env.local`. Có thể đặt `FACEBOOK_CRON_BASE_URL=http://127.0.0.1:3000` để Windows gọi thẳng app local, không đi vòng qua Cloudflare Tunnel.
+
+Chạy thử một lượt đồng bộ bài và đối soát operation:
+
+```bash
+corepack pnpm facebook:cron
+```
+
+Sau khi thử thành công, tạo Windows Task Scheduler chạy lệnh trên trong đúng thư mục project mỗi 10–15 phút. Hai endpoint `/api/cron/sync-facebook` và `/api/cron/reconcile-operations` chỉ đọc Facebook; chúng không phải publish worker. Bài hẹn giờ vẫn do Facebook native tự đăng, kể cả app tắt đúng thời điểm đăng.
+
 ## Tài liệu
 
 - [Product overview](docs/00-PRODUCT-OVERVIEW.md)

@@ -54,18 +54,29 @@ MVP background work is reconciliation only and may use Vercel Cron or host cron.
 - MVP may execute request-time with strict timeout; move to a durable runner only if latency requires.
 - Persists generation/result/cost before applying to draft.
 
-## Cron endpoint
+## Cron endpoints đã triển khai
 
-- Protected by dedicated secret/signature.
-- Claims Page sync lease to prevent overlap.
-- Bounded Page batches and pagination.
-- Logs safe IDs/status only.
-- Failure leaves cursor unchanged and is visible in Settings.
+- `GET/POST /api/cron/sync-facebook`: đọc bài published gần đây và lịch native trong 30 ngày, rồi upsert mirror nội bộ.
+- `GET/POST /api/cron/reconcile-operations`: đối soát operation `uncertain` hoặc stale `pending`; không tự chạy lại create.
+- Cả hai yêu cầu `Authorization: Bearer <FACEBOOK_CRON_SECRET>` với secret tối thiểu 32 ký tự.
+- `cron_jobs` giữ lease toàn cục, checkpoint cursor sau từng Page/operation và cho phép owner mới nhận lại lease đã stale.
+- Mỗi lần sync tối đa 5 Page mặc định, 10 trang Graph cho mỗi loại dữ liệu và 2 lần đọc khi lỗi tạm thời.
+- Lỗi từng phần giữ checkpoint đã hoàn tất. `needs_attention` không bị cron chạy lặp lại.
+- Response/log chỉ có trạng thái, số lượng và mã lỗi an toàn; không log token, secret hoặc signed URL.
+- Không endpoint nào chứa lệnh đăng/sửa/xóa Facebook. Facebook native scheduling vẫn tự đăng kể cả app dừng đúng giờ publish.
+
+Host Windows gọi cả hai endpoint bằng:
+
+```bash
+corepack pnpm facebook:cron
+```
+
+Đặt lịch Windows Task Scheduler chạy lệnh trên mỗi 10–15 phút trong thư mục project. Script ưu tiên `FACEBOOK_CRON_BASE_URL`, nếu không có sẽ dùng `NEXT_PUBLIC_SITE_URL`. Không chạy scheduler ngắn hơn thời gian hoàn tất thông thường; lease vẫn chặn hai lần chạy chồng.
 
 ## Suggested cadence
 
-- Scheduled posts: every 5–15 minutes while schedules exist, configurable.
-- Published posts: every 15–60 minutes, plus manual refresh.
+- Scheduled/reconciliation mirror: every 10–15 minutes.
+- Published posts: cùng cron 10–15 phút, cộng thêm manual refresh khi người dùng yêu cầu.
 - Pages/token health: daily or before write when last validation is stale.
 - Image cleanup: daily.
 

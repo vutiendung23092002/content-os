@@ -9,6 +9,7 @@ const expectedTables = [
   "ai_generations",
   "app_users",
   "assets",
+  "cron_jobs",
   "facebook_connection",
   "facebook_operations",
   "page_credentials",

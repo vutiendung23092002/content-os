@@ -105,9 +105,9 @@ AI response không tự cập nhật post. Client phải gọi `PATCH /api/posts
 | `POST`  | `/api/facebook/operations/:operationId/reconcile` | Đọc remote evidence và tự chốt khi có đúng một candidate |
 | `PATCH` | `/api/facebook/operations/:operationId/reconcile` | Admin giải quyết thủ công từ evidence đã được xác minh   |
 | `POST`  | `/api/cron/sync-facebook`                         | Đồng bộ Page theo batch có cursor                        |
-| `POST`  | `/api/cron/reconcile-operations`                  | Đối soát định kỳ; thuộc FB-011                           |
+| `POST`  | `/api/cron/reconcile-operations`                  | Đối soát định kỳ operation bất định                      |
 
-Ba route operation yêu cầu Admin; mutation kiểm tra same-origin. Không route nào retry request create. Cron endpoint tương lai dùng secret riêng, rate limit và lock để tránh chạy chồng. Cron không đăng bài đến hạn; Facebook thực hiện việc đó.
+Ba route operation yêu cầu Admin; mutation kiểm tra same-origin. Không route nào retry request create. Hai cron endpoint dùng `Authorization: Bearer <FACEBOOK_CRON_SECRET>`, lease database để tránh chạy chồng và retry hữu hạn. Cron không đăng bài đến hạn; Facebook thực hiện việc đó.
 
 ## 7. Idempotency và lỗi không chắc chắn
 

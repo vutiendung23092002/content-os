@@ -14,6 +14,9 @@ const redactPaths = [
   "DATABASE_URL",
   "DIRECT_DATABASE_URL",
   "TOKEN_ENCRYPTION_KEY",
+  "FACEBOOK_CRON_SECRET",
+  "ASSET_CLEANUP_SECRET",
+  "SUPABASE_SERVICE_ROLE_KEY",
 ];
 
 export const logger = pino({

@@ -29,6 +29,7 @@ describe("database schema", () => {
         "facebookOperations",
         "aiGenerations",
         "syncCursors",
+        "cronJobs",
       ]),
     );
   });

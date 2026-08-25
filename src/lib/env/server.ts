@@ -26,6 +26,7 @@ const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: optionalSecret,
   SUPABASE_STORAGE_BUCKET: optionalSecret,
   ASSET_CLEANUP_SECRET: optionalSecret,
+  FACEBOOK_CRON_SECRET: optionalSecret,
   AI_PROVIDER_API_KEY: optionalSecret,
 });
 

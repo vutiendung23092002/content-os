@@ -150,6 +150,12 @@ Fields: `id uuid PK`; `post_id uuid NULL FK posts SET NULL`; `page_id uuid FK pa
 
 Fields: `id uuid PK`; `page_id uuid FK pages CASCADE`; `sync_type text NOT NULL`; `cursor text NULL`; `window_start`, `window_end`, `last_success_at` timestamptz NULL`; `last_error jsonb NULL`; `updated_at`. Unique `(page_id,sync_type)`.
 
+## `cron_jobs`
+
+Lease và cursor bền vững cho các cron read-only. Mỗi `job_key` chỉ có một owner còn hạn tại một thời điểm; worker mới chỉ được claim khi lease trống hoặc đã stale.
+
+Fields: `job_key text PK`; `cursor text NULL`; `lease_owner text NULL`; `lease_expires_at`, `last_started_at`, `last_success_at` timestamptz NULL; `last_error jsonb NULL`; `updated_at`.
+
 ## ER diagram
 
 ```text
@@ -159,6 +165,8 @@ app_users ──< user_page_assignments >── pages ──1 page_credentials
   ├──< facebook_operations
   ├──< ai_generations
   └──< sync_cursors
+
+cron_jobs (global lease/cursor, không tạo quan hệ với publish intent)
 ```
 
 ## Invariants

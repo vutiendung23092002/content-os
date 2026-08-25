@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
 import { pages } from "@/db/schema";
 
@@ -80,6 +80,20 @@ export class PageRepository {
       .from(pages)
       .where(eq(pages.isActive, true))
       .orderBy(asc(pages.name));
+  }
+
+  async listActiveBatch(input: {
+    afterId?: string;
+    limit: number;
+  }): Promise<PageRecord[]> {
+    const filters = [eq(pages.isActive, true)];
+    if (input.afterId) filters.push(gt(pages.id, input.afterId));
+    return this.database
+      .select()
+      .from(pages)
+      .where(and(...filters))
+      .orderBy(asc(pages.id))
+      .limit(Math.min(Math.max(input.limit, 1), 25));
   }
 
   async deactivate(id: string): Promise<PageRecord | undefined> {

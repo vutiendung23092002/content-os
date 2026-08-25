@@ -60,7 +60,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Làm lại màn Nhân sự và panel gán Page theo Liquid Glass nền đục, không nhìn xuyên nội dung.
   - [x] Giảm auth waterfall khi vào Nhân sự bằng verified JWT claims, server-provided initial data và loading boundary tức thời.
   - [x] Đưa nội dung onboarding sang Hướng dẫn nhanh; bỏ trang Tổng quan độc lập và chuyển `/`, đăng nhập mặc định sang `/posts`.
-  - [ ] Bổ sung credential riêng cho cron khi triển khai FB-011, rồi mới đóng task FOUND-006.
+  - [x] Bổ sung `FACEBOOK_CRON_SECRET` riêng cho cron FB-011; không dùng chung secret dọn asset hay credential người dùng.
 
 ## Database
 
@@ -210,13 +210,19 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] API Admin liệt kê, chạy đối soát và resolve thủ công có same-origin guard, actor audit và xác minh lại candidate từ Facebook.
   - [x] Migration `0005_exotic_shinko_yamashiro.sql` đã áp dụng; unit/API/schema và Supabase transaction integration tests pass.
 
-- [ ] FB-011 — Scheduled sync and reconciliation cron
+- [x] FB-011 — Scheduled sync and reconciliation cron
   - Priority: P1
   - Goal: Chạy sync/reconciliation định kỳ mà không tạo publish worker.
   - Depends on: FB-006, FB-007, FB-010, FOUND-006.
   - Files/modules expected: cron routes, cursor/lease/lock service, deployment schedule.
   - Acceptance criteria: Batch có cursor; không chạy chồng; retry hữu hạn; app downtime không ảnh hưởng native publish.
   - Tests: Lock contention, partial batch failure, resume cursor, stale lease và offline-at-publish-time scenario.
+  - [x] Hai cron route chỉ đọc dùng bearer secret riêng; không có publish worker hoặc mutation Facebook.
+  - [x] Batch Page có cursor, lease toàn cục, checkpoint sau từng Page và tự nhận lại stale lease.
+  - [x] Retry hữu hạn tối đa hai lần cho lỗi tạm thời; lỗi từng phần giữ cursor để lần sau chạy tiếp.
+  - [x] Cron đối soát chỉ tự xử lý `uncertain`/stale `pending`; `needs_attention` chờ Admin, không lặp vô hạn.
+  - [x] Có script host cron cho Windows và test lock contention, partial failure, resume cursor, stale lease, app offline lúc Facebook native publish.
+  - [x] Migration `0006_faithful_spitfire.sql` đã áp dụng lên Supabase; stale-lease integration test pass.
 
 ## Posts and operator UI
 

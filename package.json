@@ -16,7 +16,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:db": "node --env-file=.env.local node_modules/vitest/vitest.mjs run src/db/repositories/repositories.integration.test.ts",
+    "test:db": "node --env-file=.env.local node_modules/vitest/vitest.mjs run src/db/repositories/repositories.integration.test.ts src/db/repositories/cron-job-repository.integration.test.ts",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:ping": "node scripts/check-database-connections.mjs",
@@ -24,6 +24,7 @@
     "db:check": "drizzle-kit check",
     "db:verify": "node scripts/verify-database-schema.mjs",
     "storage:configure": "node scripts/configure-media-bucket.mjs",
+    "facebook:cron": "node --env-file=.env.local scripts/run-facebook-cron.mjs",
     "facebook:list-pages": "node --env-file=.env.local scripts/list-managed-pages.mjs",
     "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
   },

@@ -436,6 +436,23 @@ export const syncCursors = applicationSchema.table(
   ],
 );
 
+export const cronJobs = applicationSchema.table(
+  "cron_jobs",
+  {
+    jobKey: text("job_key").primaryKey(),
+    cursor: text("cursor"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    lastStartedAt: timestamp("last_started_at", { withTimezone: true }),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    lastError: jsonb("last_error").$type<Record<string, unknown>>(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("cron_jobs_lease_expiry_idx").on(table.leaseExpiresAt)],
+);
+
 export const schema = {
   appUsers,
   facebookConnection,
@@ -448,4 +465,5 @@ export const schema = {
   facebookOperations,
   aiGenerations,
   syncCursors,
+  cronJobs,
 };
