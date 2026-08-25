@@ -5081,11 +5081,7 @@ a.postDetailPermalink:focus-visible {
   display: grid;
   place-items: center;
   color: white;
-  background: linear-gradient(
-    145deg,
-    rgb(55 37 86 / 94%),
-    rgb(36 25 58 / 90%)
-  );
+  background: linear-gradient(145deg, rgb(55 37 86 / 94%), rgb(36 25 58 / 90%));
   border: 1px solid rgb(255 255 255 / 88%);
   border-radius: 50%;
   box-shadow:

@@ -82,7 +82,7 @@ Backend chuyển về UTC, kiểm tra capability/range đã xác nhận và gử
 | Method   | Route                      | Mục đích                                       |
 | -------- | -------------------------- | ---------------------------------------------- |
 | `POST`   | `/api/assets`              | Validate và upload một ảnh vào private Storage |
-| `POST`   | `/api/assets/video-upload` | Tạo signed upload và xác nhận video đã tải |
+| `POST`   | `/api/assets/video-upload` | Tạo signed upload và xác nhận video đã tải     |
 | `DELETE` | `/api/assets/:assetId`     | Xóa asset chưa được gắn vào draft              |
 
 Các route này chỉ xuất hiện sau khi text post ổn định.
