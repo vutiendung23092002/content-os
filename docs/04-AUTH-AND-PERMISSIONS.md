@@ -40,7 +40,7 @@ Trong ứng dụng:
 ```text
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-key>
-NEXT_PUBLIC_SITE_URL=https://content.battletoadserc20.xyz
+NEXT_PUBLIC_SITE_URL=https://social.vutiendung.io.vn
 INITIAL_ADMIN_EMAIL=<email-chủ-hệ-thống>
 ```
 
@@ -53,8 +53,8 @@ https://<project-ref>.supabase.co/auth/v1/callback
 Trong Supabase Dashboard:
 
 - Auth > Providers > Google: bật provider và nhập Google Client ID/Secret.
-- Auth > URL Configuration > Site URL: `https://content.battletoadserc20.xyz`.
-- Redirect URLs: thêm `https://content.battletoadserc20.xyz/auth/callback` và, khi dev, `http://localhost:3000/auth/callback`.
+- Auth > URL Configuration > Site URL: `https://social.vutiendung.io.vn`.
+- Redirect URLs: thêm `https://social.vutiendung.io.vn/auth/callback` và, khi dev, `http://localhost:3000/auth/callback`.
 
 ## Kiểm soát server
 
