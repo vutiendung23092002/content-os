@@ -30,6 +30,7 @@ type RemoteSnapshot = {
   permalinkUrl?: unknown;
   imageUrl?: unknown;
   imageUrls?: unknown;
+  mediaType?: unknown;
   engagement?: unknown;
 };
 
@@ -81,6 +82,12 @@ function toRemotePost(record: PostRecord): RemoteFacebookPost | null {
     permalinkUrl: asNullableString(snapshot.permalinkUrl),
     imageUrl,
     imageUrls,
+    mediaType:
+      snapshot.mediaType === "video" ||
+      snapshot.mediaType === "image" ||
+      snapshot.mediaType === "text"
+        ? snapshot.mediaType
+        : record.type,
     engagement: asEngagement(snapshot.engagement),
     source: "facebook",
   };
@@ -102,6 +109,7 @@ function toCacheInput(
       permalinkUrl: post.permalinkUrl,
       imageUrl: post.imageUrl,
       imageUrls: post.imageUrls,
+      mediaType: post.mediaType,
       engagement: post.engagement,
       source: post.source,
     },
@@ -112,8 +120,84 @@ function syncType(kind: RemotePostKind, weekStart: Date): string {
   return `remote_posts:${kind}:week:${weekStart.toISOString()}`;
 }
 
+function remotePostIdentity(remoteId: string): string {
+  const separator = remoteId.lastIndexOf("_");
+  return separator >= 0 ? remoteId.slice(separator + 1) : remoteId;
+}
+
+function remotePostCompleteness(post: RemoteFacebookPost): number {
+  return (
+    (post.remoteId.includes("_") ? 2 : 0) +
+    (post.permalinkUrl ? 4 : 0) +
+    (post.imageUrl ? 2 : 0) +
+    Math.min(post.imageUrls.length, 3) +
+    (post.engagement ? 1 : 0)
+  );
+}
+
+function normalizedPostMessage(post: RemoteFacebookPost): string {
+  return post.message.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function postEffectiveTime(post: RemoteFacebookPost): number | null {
+  if (!post.effectiveAt) return null;
+  const timestamp = new Date(post.effectiveAt).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isIncompleteSubmission(post: RemoteFacebookPost): boolean {
+  return (
+    !post.permalinkUrl &&
+    !post.imageUrl &&
+    post.imageUrls.length === 0 &&
+    !post.engagement
+  );
+}
+
+function isSameFacebookSubmission(
+  first: RemoteFacebookPost,
+  second: RemoteFacebookPost,
+): boolean {
+  if (
+    remotePostIdentity(first.remoteId) === remotePostIdentity(second.remoteId)
+  ) {
+    return true;
+  }
+
+  const firstMessage = normalizedPostMessage(first);
+  const secondMessage = normalizedPostMessage(second);
+  const firstTime = postEffectiveTime(first);
+  const secondTime = postEffectiveTime(second);
+  const hasOneIncompleteRecord =
+    isIncompleteSubmission(first) !== isIncompleteSubmission(second);
+
+  return (
+    first.mediaType === second.mediaType &&
+    firstMessage.length > 0 &&
+    firstMessage === secondMessage &&
+    firstTime !== null &&
+    secondTime !== null &&
+    Math.abs(firstTime - secondTime) <= 60_000 &&
+    hasOneIncompleteRecord
+  );
+}
+
 function mergeRemotePosts(posts: RemoteFacebookPost[]): RemoteFacebookPost[] {
-  return [...new Map(posts.map((post) => [post.remoteId, post])).values()];
+  const records: RemoteFacebookPost[] = [];
+  for (const post of posts) {
+    const existingIndex = records.findIndex((current) =>
+      isSameFacebookSubmission(current, post),
+    );
+    if (existingIndex < 0) {
+      records.push(post);
+      continue;
+    }
+    const existing = records[existingIndex]!;
+    if (remotePostCompleteness(post) >= remotePostCompleteness(existing)) {
+      records[existingIndex] = post;
+    }
+  }
+  return records;
 }
 
 export class RemotePostWeekCache {
@@ -150,9 +234,11 @@ export class RemotePostWeekCache {
         weekEnd,
       ),
     ]);
-    const cachedPosts = cachedRecords
-      .map(toRemotePost)
-      .filter((post): post is RemoteFacebookPost => post !== null);
+    const cachedPosts = mergeRemotePosts(
+      cachedRecords
+        .map(toRemotePost)
+        .filter((post): post is RemoteFacebookPost => post !== null),
+    );
     const hasSnapshot = Boolean(state?.lastSuccessAt);
     const stale =
       !state?.lastSuccessAt ||

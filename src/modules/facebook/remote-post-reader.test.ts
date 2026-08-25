@@ -36,14 +36,17 @@ function createSetup() {
           attachments: {
             data: [
               {
+                media_type: "album",
                 subattachments: {
                   data: [
                     {
+                      media_type: "photo",
                       media: {
                         image: { src: "https://images.test/post-1-a.jpg" },
                       },
                     },
                     {
+                      media_type: "photo",
                       media: {
                         image: { src: "https://images.test/post-1-b.jpg" },
                       },
@@ -102,6 +105,7 @@ describe("RemotePostReader", () => {
         "https://images.test/post-1-a.jpg",
         "https://images.test/post-1-b.jpg",
       ],
+      mediaType: "image",
       source: "facebook",
     });
     expect(result.after).toBe("next-page");
@@ -125,6 +129,7 @@ describe("RemotePostReader", () => {
       effectiveAt: "2026-08-22T02:00:00.000Z",
       engagement: null,
       imageUrls: [],
+      mediaType: "text",
     });
     expect(setup.client.getPublishedPosts).not.toHaveBeenCalled();
   });

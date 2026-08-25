@@ -17,6 +17,7 @@ function remotePost(id: string, effectiveAt: string): RemoteFacebookPost {
     permalinkUrl: `https://facebook.test/${id}`,
     imageUrl: null,
     imageUrls: [],
+    mediaType: "text",
     engagement: { reactions: 3, comments: 2, shares: 1 },
     source: "facebook",
   };
@@ -63,6 +64,56 @@ describe("RemotePostWeekCache", () => {
       engagement: { reactions: 4, comments: 1, shares: 0 },
     });
     expect(reader.list).not.toHaveBeenCalled();
+  });
+
+  it("collapses local and canonical video records with different Facebook ids", async () => {
+    const effectiveAt = new Date("2026-08-18T10:07:09.000Z");
+    const localVideoRecord = {
+      remotePostId: "27878800935145896",
+      status: "published",
+      type: "video",
+      message: "Test video",
+      publishedAt: effectiveAt,
+      scheduledAt: null,
+      remoteCreatedAt: effectiveAt,
+      remoteUpdatedAt: null,
+      remoteSnapshot: {},
+    } as unknown as PostRecord;
+    const canonicalRecord = {
+      ...localVideoRecord,
+      remotePostId: "page-456_122192016956910216",
+      publishedAt: new Date("2026-08-18T10:07:20.000Z"),
+      remoteSnapshot: {
+        permalinkUrl: "https://facebook.test/page-456_122192016956910216",
+        imageUrl: "https://facebook.test/thumbnail.jpg",
+        imageUrls: ["https://facebook.test/thumbnail.jpg"],
+        mediaType: "video",
+        engagement: { reactions: 1, comments: 0, shares: 0 },
+        source: "facebook",
+      },
+    } as unknown as PostRecord;
+    const posts = {
+      listRemoteWindow: vi
+        .fn()
+        .mockResolvedValue([localVideoRecord, canonicalRecord]),
+      upsertRemotePosts: vi.fn(),
+    };
+    const cache = new RemotePostWeekCache({ list: vi.fn() }, posts, {
+      find: vi.fn().mockResolvedValue({ lastSuccessAt: new Date() }),
+      markSuccess: vi.fn(),
+    });
+
+    const result = await cache.list({
+      localPageId: pageId,
+      kind: "published",
+      weekStart,
+    });
+
+    expect(result.posts).toHaveLength(1);
+    expect(result.posts[0]).toMatchObject({
+      remoteId: "page-456_122192016956910216",
+      imageUrl: "https://facebook.test/thumbnail.jpg",
+    });
   });
 
   it("fetches a cold week with a time window, persists it and records completion", async () => {

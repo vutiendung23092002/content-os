@@ -22,6 +22,7 @@ export type RemoteFacebookPost = {
   permalinkUrl: string | null;
   imageUrl: string | null;
   imageUrls: string[];
+  mediaType: "text" | "image" | "video";
   engagement: {
     reactions: number;
     comments: number;
@@ -134,6 +135,26 @@ function getPublishedImageUrls(post: {
   return [...new Set(urls)];
 }
 
+function getPublishedMediaType(post: {
+  full_picture?: string;
+  attachments?: {
+    data: Array<{
+      media_type?: string;
+      subattachments?: { data: Array<{ media_type?: string }> };
+    }>;
+  };
+}): RemoteFacebookPost["mediaType"] {
+  const attachments = post.attachments?.data ?? [];
+  const mediaTypes = attachments.flatMap((attachment) => [
+    attachment.media_type,
+    ...(attachment.subattachments?.data.map((item) => item.media_type) ?? []),
+  ]);
+  if (mediaTypes.some((value) => value?.toLowerCase().includes("video"))) {
+    return "video";
+  }
+  return post.full_picture || attachments.length > 0 ? "image" : "text";
+}
+
 export class RemotePostReader {
   constructor(
     private readonly access: RemotePostAccess = new DatabaseRemotePostAccess(),
@@ -187,6 +208,7 @@ export class RemotePostReader {
           permalinkUrl: null,
           imageUrl: post.full_picture ?? null,
           imageUrls: post.full_picture ? [post.full_picture] : [],
+          mediaType: post.full_picture ? "image" : "text",
           engagement: null,
           source: "facebook",
         })),
@@ -222,6 +244,7 @@ export class RemotePostReader {
           permalinkUrl: post.permalink_url ?? null,
           imageUrl: imageUrls[0] ?? null,
           imageUrls,
+          mediaType: getPublishedMediaType(post),
           engagement: {
             reactions: post.reactions?.summary?.total_count ?? 0,
             comments: post.comments?.summary?.total_count ?? 0,

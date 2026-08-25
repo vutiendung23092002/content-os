@@ -51,6 +51,7 @@ type RemotePostDto = {
   permalinkUrl: string | null;
   imageUrl: string | null;
   imageUrls: string[];
+  mediaType: "text" | "image" | "video";
   engagement: {
     reactions: number;
     comments: number;
@@ -62,6 +63,10 @@ type RemotePostDto = {
 type PostTab = "drafts" | "scheduled" | "published";
 type ViewMode = "table" | "timeline";
 type PreviewDevice = "desktop" | "tablet" | "mobile";
+
+function postOpenPath(remotePostId: string) {
+  return `/api/facebook/posts/open?postId=${encodeURIComponent(remotePostId)}`;
+}
 
 const OPERATOR_TIMEZONE = "Asia/Ho_Chi_Minh";
 const weekDayFormatter = new Intl.DateTimeFormat("vi-VN", {
@@ -116,9 +121,73 @@ function mergePosts(
   current: RemotePostDto[],
   incoming: RemotePostDto[],
 ): RemotePostDto[] {
-  const records = new Map(current.map((post) => [post.remoteId, post]));
-  for (const post of incoming) records.set(post.remoteId, post);
-  return Array.from(records.values()).sort((first, second) => {
+  const records: RemotePostDto[] = [];
+  for (const post of [...current, ...incoming]) {
+    const separator = post.remoteId.lastIndexOf("_");
+    const identity =
+      separator >= 0 ? post.remoteId.slice(separator + 1) : post.remoteId;
+    const normalizedMessage = post.message
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase();
+    const effectiveTime = post.effectiveAt
+      ? new Date(post.effectiveAt).getTime()
+      : null;
+    const isIncomplete =
+      !post.permalinkUrl &&
+      !post.imageUrl &&
+      post.imageUrls.length === 0 &&
+      !post.engagement;
+    const existingIndex = records.findIndex((candidate) => {
+      const candidateSeparator = candidate.remoteId.lastIndexOf("_");
+      const candidateIdentity =
+        candidateSeparator >= 0
+          ? candidate.remoteId.slice(candidateSeparator + 1)
+          : candidate.remoteId;
+      if (candidateIdentity === identity) return true;
+
+      const candidateTime = candidate.effectiveAt
+        ? new Date(candidate.effectiveAt).getTime()
+        : null;
+      const candidateIsIncomplete =
+        !candidate.permalinkUrl &&
+        !candidate.imageUrl &&
+        candidate.imageUrls.length === 0 &&
+        !candidate.engagement;
+      return (
+        candidate.mediaType === post.mediaType &&
+        normalizedMessage.length > 0 &&
+        candidate.message.trim().replace(/\s+/g, " ").toLocaleLowerCase() ===
+          normalizedMessage &&
+        candidateTime !== null &&
+        effectiveTime !== null &&
+        Number.isFinite(candidateTime) &&
+        Number.isFinite(effectiveTime) &&
+        Math.abs(candidateTime - effectiveTime) <= 60_000 &&
+        candidateIsIncomplete !== isIncomplete
+      );
+    });
+    const existing = existingIndex >= 0 ? records[existingIndex] : undefined;
+    const completeness =
+      (post.remoteId.includes("_") ? 2 : 0) +
+      (post.permalinkUrl ? 4 : 0) +
+      (post.imageUrl ? 2 : 0) +
+      Math.min(post.imageUrls.length, 3) +
+      (post.engagement ? 1 : 0);
+    const existingCompleteness = existing
+      ? (existing.remoteId.includes("_") ? 2 : 0) +
+        (existing.permalinkUrl ? 4 : 0) +
+        (existing.imageUrl ? 2 : 0) +
+        Math.min(existing.imageUrls.length, 3) +
+        (existing.engagement ? 1 : 0)
+      : -1;
+    if (!existing) {
+      records.push(post);
+    } else if (completeness >= existingCompleteness) {
+      records[existingIndex] = post;
+    }
+  }
+  return records.sort((first, second) => {
     const firstTime = first.effectiveAt
       ? new Date(first.effectiveAt).getTime()
       : 0;
@@ -439,7 +508,7 @@ function RemotePostTable({ posts }: { posts: RemotePostDto[] }) {
             {post.permalinkUrl ? (
               <a
                 aria-label="Mở bài viết trên Facebook"
-                href={post.permalinkUrl}
+                href={postOpenPath(post.remoteId)}
                 rel="noreferrer"
                 target="_blank"
               >
@@ -598,7 +667,9 @@ function PostDetailDialog({
               onClick={onClose}
               type="button"
             >
-              ×
+              <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+                <path d="m5.5 5.5 9 9m0-9-9 9" />
+              </svg>
             </button>
           </div>
         </header>
@@ -690,7 +761,7 @@ function PostDetailDialog({
             <a
               aria-label={`Mở bài ${post.remoteId} trên Facebook trong tab mới`}
               className="postDetailPermalink"
-              href={post.permalinkUrl}
+              href={postOpenPath(post.remoteId)}
               rel="noreferrer"
               target="_blank"
               title="Mở bài trên Facebook"
@@ -725,6 +796,7 @@ function RemotePostTimeline({
   onPostSelect: (post: RemotePostDto) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
   const now = new Date();
   const postsByDay = useMemo(
@@ -801,12 +873,55 @@ function RemotePostTimeline({
       }),
     [hourLayouts, postsByDay, visibleStartHour],
   );
+  const latestPositionedPost = useMemo(
+    () =>
+      positionedPostsByDay.flat().reduce<{
+        remoteId: string;
+        timestamp: number;
+        top: number;
+      } | null>((latest, positioned) => {
+        const timestamp = new Date(positioned.post.effectiveAt!).getTime();
+        if (!latest || timestamp > latest.timestamp) {
+          return {
+            remoteId: positioned.post.remoteId,
+            timestamp,
+            top: positioned.top,
+          };
+        }
+        return latest;
+      }, null),
+    [positionedPostsByDay],
+  );
 
   useEffect(() => {
-    if (viewportRef.current) {
-      viewportRef.current.scrollTop = 0;
-    }
-  }, [visibleStartHour, weekStart]);
+    const viewport = viewportRef.current;
+    const canvas = canvasRef.current;
+    if (!viewport) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      if (!latestPositionedPost || !canvas) {
+        viewport.scrollTop = 0;
+        return;
+      }
+
+      const eventCenter =
+        canvas.offsetTop + latestPositionedPost.top + TIMELINE_EVENT_HEIGHT / 2;
+      const preferredViewportOffset = Math.min(
+        viewport.clientHeight * 0.42,
+        15 * 16,
+      );
+      const maximumScrollTop = Math.max(
+        0,
+        viewport.scrollHeight - viewport.clientHeight,
+      );
+      viewport.scrollTop = Math.min(
+        maximumScrollTop,
+        Math.max(0, eventCenter - preferredViewportOffset),
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestPositionedPost, visibleStartHour, weekStart]);
 
   return (
     <div className="timelineSection">
@@ -857,6 +972,7 @@ function RemotePostTimeline({
         </div>
         <div
           className="timelineCanvas"
+          ref={canvasRef}
           style={
             { "--timeline-height": `${timelineHeight}px` } as CSSProperties
           }
