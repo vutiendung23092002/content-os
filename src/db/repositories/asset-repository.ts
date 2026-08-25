@@ -119,6 +119,30 @@ export class AssetRepository {
     }));
   }
 
+  async setRemoteMediaIds(
+    postId: string,
+    remoteMediaIds: string[],
+  ): Promise<void> {
+    for (const [sortOrder, remoteMediaId] of remoteMediaIds.entries()) {
+      const [updated] = await this.database
+        .update(postAssets)
+        .set({ remoteMediaId })
+        .where(
+          and(
+            eq(postAssets.postId, postId),
+            eq(postAssets.sortOrder, sortOrder),
+          ),
+        )
+        .returning({ assetId: postAssets.assetId });
+
+      if (!updated) {
+        throw new Error(
+          `Missing attached asset at sort order ${sortOrder} for remote media`,
+        );
+      }
+    }
+  }
+
   async listCleanupCandidates(
     window: AssetCleanupWindow,
     limit: number,

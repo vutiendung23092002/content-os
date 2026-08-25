@@ -350,7 +350,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Composer có chọn/kéo thả file, preview, kéo card để đổi thứ tự, xóa ảnh và cleanup asset chưa gắn khi luồng tạo draft lỗi.
   - [x] Bổ sung kiểm tra magic bytes/dimension phía server và storage integration test trước khi đóng task.
 
-- [ ] ASSET-003 — Publish and schedule multiple images
+- [x] ASSET-003 — Publish and schedule multiple images
   - Priority: P2
   - Goal: Mở rộng Meta adapter cho bài có tối đa 10 ảnh theo đúng thứ tự sau khi text flow ổn định.
   - Depends on: ASSET-002, FB-004, FB-005, FB-010.
@@ -358,7 +358,10 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Publish/schedule/lists đối soát được remote ID; URL không chứa token; không coi multi-image là carousel hoặc video.
   - Tests: Publish, schedule, Meta media-fetch failure, timeout reconciliation và app-offline scenario.
   - [x] Meta adapter upload ảnh với `published=false`, gom `media_fbid` vào `attached_media`, rồi đăng ngay hoặc tạo lịch native trên Page feed.
-  - [ ] Xác minh contract nhiều ảnh và lịch native trên Page test trước khi đóng task.
+  - [x] Lưu từng `media_fbid` theo đúng `sort_order`; contract tests bao phủ publish, native schedule, lỗi media fetch, app offline và timeout không blind retry.
+  - [x] Scheduled list đọc `attachments/subattachments` để preview đủ toàn bộ ảnh trước giờ đăng, không chỉ dùng một `full_picture` đại diện.
+  - [x] Xác minh read-only dữ liệu Page test: 1 lượt đăng ngay và 2 lượt hẹn giờ nhiều ảnh đã có remote post ID thành công.
+  - [x] FB-010 đối soát operation `uncertain` bằng evidence từ remote thay vì tự retry.
 
 - [ ] ASSET-005 — Page video publishing
   - Priority: P1

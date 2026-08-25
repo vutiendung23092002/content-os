@@ -11,6 +11,11 @@ import {
 const pageId = "018f0d44-35f0-7b63-99d2-c1b9222cd05c";
 const postId = "018f0d44-35f0-7b63-99d2-c1b9222cd05d";
 const assetId = "018f0d44-35f0-7b63-99d2-c1b9222cd05e";
+const assetIds = Array.from(
+  { length: 11 },
+  (_, index) =>
+    `018f0d44-35f0-7b63-99d2-${(index + 100).toString().padStart(12, "0")}`,
+);
 
 function activePage(): PageRecord {
   const now = new Date();
@@ -134,6 +139,76 @@ describe("DraftService", () => {
       type: "video",
       assetIds: [assetId],
     });
+  });
+
+  it("accepts ten images and preserves their order", async () => {
+    const stores = createStores();
+    const acceptedIds = assetIds.slice(0, 10);
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi
+        .fn()
+        .mockResolvedValue(
+          acceptedIds.map((id) => ({ id, mimeType: "image/png" })),
+        ),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await service.create({ pageId, message: "Album", assetIds: acceptedIds });
+
+    expect(stores.drafts.createDraft).toHaveBeenCalledWith({
+      pageId,
+      message: "Album",
+      type: "image",
+      assetIds: acceptedIds,
+    });
+  });
+
+  it("rejects more than ten assets before reading the database", async () => {
+    const stores = createStores();
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi.fn(),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await expect(
+      service.create({ pageId, message: "Too many", assetIds }),
+    ).rejects.toBeDefined();
+    expect(assets.findAttachableByIds).not.toHaveBeenCalled();
+    expect(stores.drafts.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate asset IDs", async () => {
+    const stores = createStores();
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi.fn(),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await expect(
+      service.create({
+        pageId,
+        message: "Duplicates",
+        assetIds: [assetId, assetId],
+      }),
+    ).rejects.toBeDefined();
+    expect(assets.findAttachableByIds).not.toHaveBeenCalled();
+  });
+
+  it("rejects mixed image and video media", async () => {
+    const stores = createStores();
+    const mixedIds = assetIds.slice(0, 2);
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi.fn().mockResolvedValue([
+        { id: mixedIds[0]!, mimeType: "image/jpeg" },
+        { id: mixedIds[1]!, mimeType: "video/mp4" },
+      ]),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await expect(
+      service.create({ pageId, message: "Mixed", assetIds: mixedIds }),
+    ).rejects.toMatchObject({ code: "DRAFT_MEDIA_MIX_INVALID" });
+    expect(stores.drafts.createDraft).not.toHaveBeenCalled();
   });
 
   it("rejects media that does not belong to the selected Page", async () => {

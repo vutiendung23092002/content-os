@@ -67,6 +67,30 @@ function createSetup() {
           message: "Bài hẹn giờ",
           scheduled_publish_time: "1787364000",
           is_published: false,
+          full_picture: "https://images.test/scheduled-cover.jpg",
+          attachments: {
+            data: [
+              {
+                media_type: "album",
+                subattachments: {
+                  data: [
+                    {
+                      media_type: "photo",
+                      media: {
+                        image: { src: "https://images.test/scheduled-1.jpg" },
+                      },
+                    },
+                    {
+                      media_type: "photo",
+                      media: {
+                        image: { src: "https://images.test/scheduled-2.jpg" },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
         },
       ],
     }),
@@ -128,8 +152,12 @@ describe("RemotePostReader", () => {
       kind: "scheduled",
       effectiveAt: "2026-08-22T02:00:00.000Z",
       engagement: null,
-      imageUrls: [],
-      mediaType: "text",
+      imageUrl: "https://images.test/scheduled-1.jpg",
+      imageUrls: [
+        "https://images.test/scheduled-1.jpg",
+        "https://images.test/scheduled-2.jpg",
+      ],
+      mediaType: "image",
     });
     expect(setup.client.getPublishedPosts).not.toHaveBeenCalled();
   });

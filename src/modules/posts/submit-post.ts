@@ -10,7 +10,10 @@ import { PostRepository } from "@/db/repositories/post-repository";
 import { decryptToken } from "@/lib/crypto/token-crypto";
 import { requireServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
-import { MetaGraphClient } from "@/modules/facebook/meta-client";
+import {
+  MetaGraphClient,
+  type MetaPostSubmissionReceipt,
+} from "@/modules/facebook/meta-client";
 import { AssetStorage } from "@/modules/assets/asset-storage";
 
 const MIN_SCHEDULE_LEAD_MINUTES = 20;
@@ -39,6 +42,7 @@ export type SubmissionPersistence = {
     operationId: string;
     postId: string;
     remotePostId: string;
+    remoteMediaIds: string[];
     kind: SubmissionKind;
     scheduledFor?: Date;
   }): Promise<void>;
@@ -56,13 +60,13 @@ export type SubmissionMetaClient = {
     pageId: string;
     message: string;
     mediaUrls?: string[];
-  }): Promise<string>;
+  }): Promise<MetaPostSubmissionReceipt>;
   schedulePost(input: {
     pageId: string;
     message: string;
     scheduledFor: Date;
     mediaUrls?: string[];
-  }): Promise<string>;
+  }): Promise<MetaPostSubmissionReceipt>;
   publishVideo(input: {
     pageId: string;
     description: string;
@@ -177,12 +181,14 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
     operationId: string;
     postId: string;
     remotePostId: string;
+    remoteMediaIds: string[];
     kind: SubmissionKind;
     scheduledFor?: Date;
   }): Promise<void> {
     await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
       const operations = new FacebookOperationRepository(transaction);
+      const assets = new AssetRepository(transaction);
 
       if (input.kind === "schedule") {
         if (!input.scheduledFor)
@@ -195,6 +201,7 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
       } else {
         await posts.markPublished(input.postId, input.remotePostId);
       }
+      await assets.setRemoteMediaIds(input.postId, input.remoteMediaIds);
       await operations.markSucceeded(input.operationId, input.remotePostId);
     });
   }
@@ -307,6 +314,7 @@ export class SubmitPostService {
     const client = this.clientFactory(prepared.pageAccessToken);
 
     let remotePostId: string;
+    let remoteMediaIds: string[] = [];
 
     try {
       const mediaUrls =
@@ -338,7 +346,7 @@ export class SubmitPostService {
                 fileUrl,
               });
       } else {
-        remotePostId =
+        const receipt =
           input.kind === "schedule" && input.scheduledFor
             ? await client.schedulePost({
                 pageId: prepared.externalPageId,
@@ -351,6 +359,8 @@ export class SubmitPostService {
                 message: prepared.message,
                 mediaUrls,
               });
+        remotePostId = receipt.remotePostId;
+        remoteMediaIds = receipt.remoteMediaIds;
       }
     } catch (error) {
       const normalized =
@@ -379,6 +389,7 @@ export class SubmitPostService {
         operationId: prepared.operationId,
         postId: prepared.postId,
         remotePostId,
+        remoteMediaIds,
         kind: input.kind,
         scheduledFor: input.scheduledFor,
       });

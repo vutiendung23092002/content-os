@@ -82,24 +82,6 @@ const updateMutationSchema = z.union([
 ]);
 const deleteMutationSchema = z.object({ success: z.boolean() });
 
-const scheduledPostsSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string().min(1),
-      message: z.string().optional(),
-      scheduled_publish_time: z.union([z.number(), z.string()]).optional(),
-      is_published: z.boolean().optional(),
-      created_time: z.string().optional(),
-      full_picture: z.string().optional(),
-    }),
-  ),
-  paging: z
-    .object({
-      cursors: z.object({ after: z.string().optional() }).optional(),
-    })
-    .optional(),
-});
-
 const engagementEdgeSchema = z
   .object({
     summary: z
@@ -134,6 +116,25 @@ const attachmentsSchema = z
     ),
   })
   .optional();
+
+const scheduledPostsSchema = z.object({
+  data: z.array(
+    z.object({
+      id: z.string().min(1),
+      message: z.string().optional(),
+      scheduled_publish_time: z.union([z.number(), z.string()]).optional(),
+      is_published: z.boolean().optional(),
+      created_time: z.string().optional(),
+      full_picture: z.string().optional(),
+      attachments: attachmentsSchema,
+    }),
+  ),
+  paging: z
+    .object({
+      cursors: z.object({ after: z.string().optional() }).optional(),
+    })
+    .optional(),
+});
 
 const publishedPostsSchema = z.object({
   data: z.array(
@@ -200,6 +201,11 @@ export type MetaPageReadAccess = {
 export type MetaPostTimeWindow = {
   since: Date;
   until: Date;
+};
+
+export type MetaPostSubmissionReceipt = {
+  remotePostId: string;
+  remoteMediaIds: string[];
 };
 
 export type MetaClientOptions = {
@@ -340,19 +346,25 @@ export class MetaGraphClient {
     pageId: string;
     message: string;
     mediaUrls?: string[];
-  }): Promise<string> {
+  }): Promise<MetaPostSubmissionReceipt> {
     const mediaIds = await this.uploadUnpublishedPhotos(
       input.pageId,
       input.mediaUrls ?? [],
     );
     if (mediaIds.length === 0) {
-      return this.publishText(input.pageId, input.message);
+      return {
+        remotePostId: await this.publishText(input.pageId, input.message),
+        remoteMediaIds: [],
+      };
     }
-    return this.createFeedPost({
-      pageId: input.pageId,
-      message: input.message,
-      mediaIds,
-    });
+    return {
+      remotePostId: await this.createFeedPost({
+        pageId: input.pageId,
+        message: input.message,
+        mediaIds,
+      }),
+      remoteMediaIds: mediaIds,
+    };
   }
 
   async publishVideo(input: {
@@ -423,26 +435,36 @@ export class MetaGraphClient {
     message: string;
     scheduledFor: Date;
     mediaUrls?: string[];
-  }): Promise<string> {
+  }): Promise<MetaPostSubmissionReceipt> {
     const mediaIds = await this.uploadUnpublishedPhotos(
       input.pageId,
       input.mediaUrls ?? [],
     );
     if (mediaIds.length === 0) {
-      return this.scheduleText(input.pageId, input.message, input.scheduledFor);
+      return {
+        remotePostId: await this.scheduleText(
+          input.pageId,
+          input.message,
+          input.scheduledFor,
+        ),
+        remoteMediaIds: [],
+      };
     }
-    return this.createFeedPost({
-      pageId: input.pageId,
-      message: input.message,
-      mediaIds,
-      scheduledFor: input.scheduledFor,
-    });
+    return {
+      remotePostId: await this.createFeedPost({
+        pageId: input.pageId,
+        message: input.message,
+        mediaIds,
+        scheduledFor: input.scheduledFor,
+      }),
+      remoteMediaIds: mediaIds,
+    };
   }
 
   async getScheduledPosts(pageId: string, after?: string, limit = 50) {
     const query = new URLSearchParams({
       fields:
-        "id,message,scheduled_publish_time,is_published,created_time,full_picture",
+        "id,message,scheduled_publish_time,is_published,created_time,full_picture,attachments{media_type,media,subattachments.limit(10){media_type,media}}",
       limit: String(Math.min(Math.max(limit, 1), 100)),
     });
     if (after) query.set("after", after);

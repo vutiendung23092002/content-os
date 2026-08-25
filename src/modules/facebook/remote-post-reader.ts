@@ -111,7 +111,7 @@ function toIsoDate(value?: string | number): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function getPublishedImageUrls(post: {
+function getImageUrls(post: {
   full_picture?: string;
   attachments?: {
     data: Array<{
@@ -135,7 +135,7 @@ function getPublishedImageUrls(post: {
   return [...new Set(urls)];
 }
 
-function getPublishedMediaType(post: {
+function getMediaType(post: {
   full_picture?: string;
   attachments?: {
     data: Array<{
@@ -198,20 +198,23 @@ export class RemotePostReader {
 
       return {
         page: context.page,
-        posts: result.posts.map((post) => ({
-          remoteId: post.id,
-          kind,
-          message: post.message ?? "",
-          effectiveAt: toIsoDate(post.scheduled_publish_time),
-          createdAt: toIsoDate(post.created_time),
-          updatedAt: null,
-          permalinkUrl: null,
-          imageUrl: post.full_picture ?? null,
-          imageUrls: post.full_picture ? [post.full_picture] : [],
-          mediaType: post.full_picture ? "image" : "text",
-          engagement: null,
-          source: "facebook",
-        })),
+        posts: result.posts.map((post) => {
+          const imageUrls = getImageUrls(post);
+          return {
+            remoteId: post.id,
+            kind,
+            message: post.message ?? "",
+            effectiveAt: toIsoDate(post.scheduled_publish_time),
+            createdAt: toIsoDate(post.created_time),
+            updatedAt: null,
+            permalinkUrl: null,
+            imageUrl: imageUrls[0] ?? null,
+            imageUrls,
+            mediaType: getMediaType(post),
+            engagement: null,
+            source: "facebook",
+          };
+        }),
         after: result.after ?? null,
         fetchedAt: new Date().toISOString(),
       };
@@ -232,7 +235,7 @@ export class RemotePostReader {
       posts: result.posts.map((post) => {
         const createdAt = toIsoDate(post.created_time);
         const updatedAt = toIsoDate(post.updated_time);
-        const imageUrls = getPublishedImageUrls(post);
+        const imageUrls = getImageUrls(post);
 
         return {
           remoteId: post.id,
@@ -244,7 +247,7 @@ export class RemotePostReader {
           permalinkUrl: post.permalink_url ?? null,
           imageUrl: imageUrls[0] ?? null,
           imageUrls,
-          mediaType: getPublishedMediaType(post),
+          mediaType: getMediaType(post),
           engagement: {
             reactions: post.reactions?.summary?.total_count ?? 0,
             comments: post.comments?.summary?.total_count ?? 0,

@@ -26,8 +26,14 @@ function setup() {
     fail: vi.fn().mockResolvedValue(undefined),
   };
   const client: SubmissionMetaClient = {
-    publishPost: vi.fn().mockResolvedValue("remote-post-1"),
-    schedulePost: vi.fn().mockResolvedValue("remote-scheduled-1"),
+    publishPost: vi.fn().mockResolvedValue({
+      remotePostId: "remote-post-1",
+      remoteMediaIds: [],
+    }),
+    schedulePost: vi.fn().mockResolvedValue({
+      remotePostId: "remote-scheduled-1",
+      remoteMediaIds: [],
+    }),
     publishVideo: vi.fn().mockResolvedValue("remote-video-1"),
     scheduleVideo: vi.fn().mockResolvedValue("remote-video-scheduled-1"),
   };
@@ -189,8 +195,14 @@ describe("SubmitPostService", () => {
       fail: vi.fn().mockResolvedValue(undefined),
     };
     const client: SubmissionMetaClient = {
-      publishPost: vi.fn().mockResolvedValue("remote-gallery-1"),
-      schedulePost: vi.fn().mockResolvedValue("remote-gallery-1"),
+      publishPost: vi.fn().mockResolvedValue({
+        remotePostId: "remote-gallery-1",
+        remoteMediaIds: ["photo-1", "photo-2"],
+      }),
+      schedulePost: vi.fn().mockResolvedValue({
+        remotePostId: "remote-gallery-1",
+        remoteMediaIds: ["photo-1", "photo-2"],
+      }),
       publishVideo: vi.fn().mockResolvedValue("remote-video-1"),
       scheduleVideo: vi.fn().mockResolvedValue("remote-video-scheduled-1"),
     };
@@ -217,6 +229,165 @@ describe("SubmitPostService", () => {
       message: "Caption",
       mediaUrls: ["https://signed/one", "https://signed/two"],
     });
+    expect(persistence.succeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        remotePostId: "remote-gallery-1",
+        remoteMediaIds: ["photo-1", "photo-2"],
+      }),
+    );
+  });
+
+  it("hands a multi-photo schedule to Facebook once and does no due-time work", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T00:00:00.000Z"));
+    try {
+      const setupResult = setup();
+      vi.mocked(setupResult.persistence.prepare).mockResolvedValue({
+        ...prepared,
+        postType: "image",
+        media: [
+          {
+            assetId: "asset-1",
+            storageKey: "page/one.jpg",
+            mimeType: "image/jpeg",
+          },
+          {
+            assetId: "asset-2",
+            storageKey: "page/two.jpg",
+            mimeType: "image/jpeg",
+          },
+        ],
+      });
+      vi.mocked(setupResult.client.schedulePost).mockResolvedValue({
+        remotePostId: "scheduled-gallery-1",
+        remoteMediaIds: ["photo-1", "photo-2"],
+      });
+      const assetUrls = {
+        createSignedUrls: vi
+          .fn()
+          .mockResolvedValue(["https://signed/one", "https://signed/two"]),
+      };
+      const service = new SubmitPostService(
+        setupResult.persistence,
+        () => setupResult.client,
+        () => new Date(),
+        assetUrls,
+      );
+      const scheduledFor = "2026-08-20T02:00:00.000Z";
+
+      await expect(service.schedule(postId, scheduledFor)).resolves.toEqual({
+        operationId: "operation-1",
+        postId,
+        remotePostId: "scheduled-gallery-1",
+        status: "scheduled",
+        scheduledFor,
+      });
+      expect(setupResult.persistence.succeed).toHaveBeenCalledWith({
+        operationId: "operation-1",
+        postId,
+        remotePostId: "scheduled-gallery-1",
+        remoteMediaIds: ["photo-1", "photo-2"],
+        kind: "schedule",
+        scheduledFor: new Date(scheduledFor),
+      });
+
+      vi.advanceTimersByTime(3 * 60 * 60 * 1000);
+      expect(setupResult.client.schedulePost).toHaveBeenCalledTimes(1);
+      expect(setupResult.client.publishPost).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("marks a multi-photo timeout uncertain without retrying or committing media ids", async () => {
+    const setupResult = setup();
+    vi.mocked(setupResult.persistence.prepare).mockResolvedValue({
+      ...prepared,
+      postType: "image",
+      media: [
+        {
+          assetId: "asset-1",
+          storageKey: "page/one.jpg",
+          mimeType: "image/jpeg",
+        },
+        {
+          assetId: "asset-2",
+          storageKey: "page/two.jpg",
+          mimeType: "image/jpeg",
+        },
+      ],
+    });
+    vi.mocked(setupResult.client.publishPost).mockRejectedValue(
+      new AppError({
+        code: "FACEBOOK_NETWORK_ERROR",
+        message: "Khong the xac dinh Meta da tao bai nhieu anh hay chua.",
+        retryable: true,
+      }),
+    );
+    const assetUrls = {
+      createSignedUrls: vi
+        .fn()
+        .mockResolvedValue(["https://signed/one", "https://signed/two"]),
+    };
+    const service = new SubmitPostService(
+      setupResult.persistence,
+      () => setupResult.client,
+      () => new Date("2026-08-20T00:00:00.000Z"),
+      assetUrls,
+    );
+
+    await expect(service.publish(postId)).rejects.toMatchObject({
+      code: "FACEBOOK_NETWORK_ERROR",
+    });
+    expect(setupResult.client.publishPost).toHaveBeenCalledTimes(1);
+    expect(setupResult.persistence.succeed).not.toHaveBeenCalled();
+    expect(setupResult.persistence.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "FACEBOOK_NETWORK_ERROR",
+        uncertain: true,
+      }),
+    );
+  });
+
+  it("fails safely before Meta when private media URLs cannot be prepared", async () => {
+    const setupResult = setup();
+    vi.mocked(setupResult.persistence.prepare).mockResolvedValue({
+      ...prepared,
+      postType: "image",
+      media: [
+        {
+          assetId: "asset-1",
+          storageKey: "page/one.jpg",
+          mimeType: "image/jpeg",
+        },
+      ],
+    });
+    const assetUrls = {
+      createSignedUrls: vi.fn().mockRejectedValue(
+        new AppError({
+          code: "ASSET_SIGNING_FAILED",
+          message: "Không thể chuẩn bị ảnh.",
+          status: 502,
+        }),
+      ),
+    };
+    const service = new SubmitPostService(
+      setupResult.persistence,
+      () => setupResult.client,
+      () => new Date("2026-08-20T00:00:00.000Z"),
+      assetUrls,
+    );
+
+    await expect(service.publish(postId)).rejects.toMatchObject({
+      code: "ASSET_SIGNING_FAILED",
+    });
+    expect(setupResult.client.publishPost).not.toHaveBeenCalled();
+    expect(setupResult.persistence.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "ASSET_SIGNING_FAILED",
+        uncertain: false,
+      }),
+    );
   });
 
   it("publishes a video through the dedicated Page video method", async () => {

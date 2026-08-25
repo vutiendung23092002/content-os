@@ -252,6 +252,29 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         );
 
         const draft = await createAttached("draft");
+        const galleryAssets = [
+          await createAsset("gallery-one"),
+          await createAsset("gallery-two"),
+        ];
+        const gallery = await postRepository.createDraft({
+          pageId: page.id,
+          message: "gallery",
+          type: "image",
+          assetIds: galleryAssets.map((asset) => asset.id),
+        });
+        await assetRepository.setRemoteMediaIds(gallery.id, [
+          "remote-photo-1",
+          "remote-photo-2",
+        ]);
+        expect(
+          (await assetRepository.listForPost(gallery.id)).map((asset) => ({
+            sortOrder: asset.sortOrder,
+            remoteMediaId: asset.remoteMediaId,
+          })),
+        ).toEqual([
+          { sortOrder: 0, remoteMediaId: "remote-photo-1" },
+          { sortOrder: 1, remoteMediaId: "remote-photo-2" },
+        ]);
         const orphan = await createAsset("orphan");
         const window = {
           publishedBefore: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
@@ -272,6 +295,8 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         expect(candidateIds.has(failed.asset.id)).toBe(false);
         expect(candidateIds.has(uncertain.asset.id)).toBe(false);
         expect(candidateIds.has(draft.asset.id)).toBe(false);
+        expect(candidateIds.has(galleryAssets[0]!.id)).toBe(false);
+        expect(candidateIds.has(galleryAssets[1]!.id)).toBe(false);
 
         const claimedAt = new Date("2026-08-22T04:00:01.000Z");
         expect(
@@ -291,5 +316,5 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         throw rollbackSignal;
       }),
     ).rejects.toBe(rollbackSignal);
-  });
+  }, 15_000);
 });

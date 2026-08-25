@@ -126,13 +126,16 @@ describe("MetaGraphClient", () => {
       fetch: fetchMock,
     });
 
-    const remoteId = await client.publishPost({
+    const receipt = await client.publishPost({
       pageId: "page-1",
       message: "Gallery caption",
       mediaUrls: ["https://signed/one.jpg", "https://signed/two.jpg"],
     });
 
-    expect(remoteId).toBe("post-1");
+    expect(receipt).toEqual({
+      remotePostId: "post-1",
+      remoteMediaIds: ["photo-1", "photo-2"],
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     const [firstUrl, firstInit] = fetchMock.mock.calls[0] ?? [];
     const [secondUrl, secondInit] = fetchMock.mock.calls[1] ?? [];
@@ -150,6 +153,81 @@ describe("MetaGraphClient", () => {
     expect((feedInit?.body as URLSearchParams).get("attached_media")).toBe(
       JSON.stringify([{ media_fbid: "photo-1" }, { media_fbid: "photo-2" }]),
     );
+  });
+
+  it("creates one native scheduled feed post for ordered photos", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ id: "photo-1" }))
+      .mockResolvedValueOnce(Response.json({ id: "photo-2" }))
+      .mockResolvedValueOnce(Response.json({ id: "scheduled-post-1" }));
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    const receipt = await client.schedulePost({
+      pageId: "page-1",
+      message: "Scheduled gallery",
+      mediaUrls: ["https://signed/one.jpg", "https://signed/two.jpg"],
+      scheduledFor: new Date("2026-08-21T02:00:00.000Z"),
+    });
+
+    expect(receipt).toEqual({
+      remotePostId: "scheduled-post-1",
+      remoteMediaIds: ["photo-1", "photo-2"],
+    });
+    const [feedUrl, feedInit] = fetchMock.mock.calls[2] ?? [];
+    const body = feedInit?.body as URLSearchParams;
+    expect(String(feedUrl)).toBe("https://graph.test/v99.0/page-1/feed");
+    expect(body.get("published")).toBe("false");
+    expect(body.get("scheduled_publish_time")).toBe("1787277600");
+    expect(body.get("attached_media")).toBe(
+      JSON.stringify([{ media_fbid: "photo-1" }, { media_fbid: "photo-2" }]),
+    );
+  });
+
+  it("stops before creating the feed post when Meta cannot fetch one photo", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ id: "photo-1" }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: 2, message: "Provider media fetch failed" } },
+          { status: 502 },
+        ),
+      );
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    await expect(
+      client.publishPost({
+        pageId: "page-1",
+        message: "Gallery",
+        mediaUrls: ["https://signed/one.jpg", "https://signed/two.jpg"],
+      }),
+    ).rejects.toMatchObject({
+      code: "FACEBOOK_API_ERROR",
+      retryable: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        String(url).endsWith("/page-1/feed"),
+      ),
+    ).toBe(false);
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(String(url)).not.toContain("page-token");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer page-token",
+      );
+    }
   });
 
   it("normalizes token errors without returning the provider message", async () => {
@@ -284,6 +362,34 @@ describe("MetaGraphClient", () => {
             message: "Scheduled caption",
             scheduled_publish_time: 1_800_000_000,
             is_published: false,
+            full_picture: "https://images.test/scheduled-cover.jpg",
+            attachments: {
+              data: [
+                {
+                  media_type: "album",
+                  subattachments: {
+                    data: [
+                      {
+                        media_type: "photo",
+                        media: {
+                          image: {
+                            src: "https://images.test/scheduled-1.jpg",
+                          },
+                        },
+                      },
+                      {
+                        media_type: "photo",
+                        media: {
+                          image: {
+                            src: "https://images.test/scheduled-2.jpg",
+                          },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
           },
         ],
       }),
@@ -299,7 +405,13 @@ describe("MetaGraphClient", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
 
     expect(result.posts[0]?.id).toBe("page-1_post-2");
+    expect(
+      result.posts[0]?.attachments?.data[0]?.subattachments?.data,
+    ).toHaveLength(2);
     expect(new URL(String(url)).searchParams.get("limit")).toBe("100");
+    expect(new URL(String(url)).searchParams.get("fields")).toContain(
+      "attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+    );
     expect(init?.method ?? "GET").toBe("GET");
     expect(init?.body).toBeUndefined();
   });

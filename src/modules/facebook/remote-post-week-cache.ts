@@ -14,6 +14,9 @@ import {
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_SYNC_PAGES = 100;
+// v2 adds all scheduled-photo attachments to the cached snapshot. Keeping the
+// version in the cursor key invalidates legacy week snapshots exactly once.
+const SCHEDULED_CACHE_FORMAT_VERSION = 2;
 const inFlightSyncs = new Map<string, Promise<RemoteFacebookPost[]>>();
 
 type PostRepositoryPort = Pick<
@@ -117,7 +120,9 @@ function toCacheInput(
 }
 
 function syncType(kind: RemotePostKind, weekStart: Date): string {
-  return `remote_posts:${kind}:week:${weekStart.toISOString()}`;
+  const version =
+    kind === "scheduled" ? `:v${SCHEDULED_CACHE_FORMAT_VERSION}` : "";
+  return `remote_posts:${kind}${version}:week:${weekStart.toISOString()}`;
 }
 
 function remotePostIdentity(remoteId: string): string {

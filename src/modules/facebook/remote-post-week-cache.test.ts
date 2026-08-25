@@ -164,6 +164,61 @@ describe("RemotePostWeekCache", () => {
     expect(cursors.markSuccess).toHaveBeenCalledOnce();
   });
 
+  it("uses the v2 scheduled cursor so legacy single-image snapshots refresh once", async () => {
+    const scheduledPost: RemoteFacebookPost = {
+      ...remotePost("scheduled-1", "2026-08-18T02:00:00.000Z"),
+      kind: "scheduled",
+      permalinkUrl: null,
+      imageUrl: "https://facebook.test/first.jpg",
+      imageUrls: [
+        "https://facebook.test/first.jpg",
+        "https://facebook.test/second.jpg",
+      ],
+      engagement: null,
+    };
+    const reader = {
+      list: vi.fn().mockResolvedValue({
+        posts: [scheduledPost],
+        after: null,
+      }),
+    };
+    const posts = {
+      listRemoteWindow: vi.fn().mockResolvedValue([]),
+      upsertRemotePosts: vi.fn().mockResolvedValue(undefined),
+    };
+    const cursors = {
+      find: vi.fn().mockResolvedValue(undefined),
+      markSuccess: vi.fn().mockResolvedValue(undefined),
+    };
+    const cache = new RemotePostWeekCache(reader, posts, cursors);
+
+    const result = await cache.list({
+      localPageId: pageId,
+      kind: "scheduled",
+      weekStart,
+    });
+
+    expect(cursors.find).toHaveBeenCalledWith(
+      pageId,
+      `remote_posts:scheduled:v2:week:${weekStart.toISOString()}`,
+    );
+    expect(result.posts[0]?.imageUrls).toEqual([
+      "https://facebook.test/first.jpg",
+      "https://facebook.test/second.jpg",
+    ]);
+    expect(posts.upsertRemotePosts).toHaveBeenCalledWith([
+      expect.objectContaining({
+        remotePostId: "scheduled-1",
+        snapshot: expect.objectContaining({
+          imageUrls: [
+            "https://facebook.test/first.jpg",
+            "https://facebook.test/second.jpg",
+          ],
+        }),
+      }),
+    ]);
+  });
+
   it("returns stale cached data immediately until refresh is requested", async () => {
     const reader = { list: vi.fn() };
     const posts = {
