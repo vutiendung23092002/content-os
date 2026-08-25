@@ -46,7 +46,7 @@ Server token
 - Text post.
 - Single image post sau khi capability test thành công.
 - Multi-image chỉ thêm sau test Page cụ thể.
-- Video/Reel, Stories và Instagram chưa nằm trong MVP.
+- Video thường của Facebook Page đã nằm trong MVP; Reel, Stories và Instagram vẫn ngoài phạm vi hiện tại.
 
 ## Explicit non-goals
 

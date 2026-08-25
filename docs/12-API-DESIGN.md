@@ -79,10 +79,11 @@ Backend chuyển về UTC, kiểm tra capability/range đã xác nhận và gử
 
 ## 4. Asset
 
-| Method   | Route                  | Mục đích                                       |
-| -------- | ---------------------- | ---------------------------------------------- |
-| `POST`   | `/api/assets`          | Validate và upload một ảnh vào private Storage |
-| `DELETE` | `/api/assets/:assetId` | Xóa asset chưa được gắn vào draft              |
+| Method   | Route                      | Mục đích                                       |
+| -------- | -------------------------- | ---------------------------------------------- |
+| `POST`   | `/api/assets`              | Validate và upload một ảnh vào private Storage |
+| `POST`   | `/api/assets/video-upload` | Tạo signed upload và xác nhận video đã tải |
+| `DELETE` | `/api/assets/:assetId`     | Xóa asset chưa được gắn vào draft              |
 
 Các route này chỉ xuất hiện sau khi text post ổn định.
 
@@ -121,6 +122,7 @@ Cron endpoint dùng secret riêng, rate limit và lock để tránh chạy chồ
 - Timeline gửi `weekStart`; backend giới hạn published posts bằng `since/until`, phân trang tối đa 100 bản ghi mỗi request và mirror kết quả vào `posts`.
 - `POST /api/posts` nhận `assetIds` có thứ tự, tối đa 10 phần tử; mỗi asset phải thuộc đúng Page, chưa bị xóa và chưa gắn vào bài khác.
 - Publish/schedule bài nhiều ảnh dùng signed URL ngắn hạn để Meta tạo unpublished photo, sau đó tạo một feed post bằng `attached_media`.
+- Publish/schedule video dùng một signed URL ngắn hạn qua Page `/videos`; không dùng endpoint Reel.
 - `sync_cursors` ghi nhận cửa sổ Page/kind/tuần đã đồng bộ, kể cả tuần không có bài, để tránh gọi Meta lặp lại.
 - Cache tuần có TTL 5 phút. Dữ liệu cũ được trả ngay rồi client refresh nền; `refresh=1` buộc đồng bộ Meta.
 - Client giữ cache theo `pageId + tab + view + weekStart`; đổi tab hoặc quay lại tuần vừa xem không gọi lại API trong TTL.

@@ -85,7 +85,7 @@
 
 - **Status:** Accepted
 - **Context:** Media làm tăng số endpoint, upload lifecycle và lỗi khó đối soát.
-- **Decision:** Hoàn thiện text post trước; sau đó mới thêm một ảnh mỗi bài. Video/carousel/Reels ngoài MVP.
+- **Decision:** Hoàn thiện text/multi-image trước, sau đó thêm video thường bằng Page `/videos`. Reel dùng API riêng và vẫn ngoài MVP.
 - **Alternatives:** Hỗ trợ mọi định dạng ngay từ đầu.
 - **Consequences:** MVP nhỏ hơn, capability test rõ hơn.
 - **Revisit when:** Text flow đạt tiêu chí ổn định và single image là nhu cầu vận hành thực tế.

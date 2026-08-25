@@ -17,7 +17,7 @@ Luồng hiện tại hỗ trợ:
 - đăng ngay hoặc lên lịch bằng endpoint chính thức phù hợp của Meta;
 - lưu remote media/post ID để đối soát.
 
-Facebook quyết định bố cục album cuối cùng. Công cụ giữ thứ tự `attached_media` nhưng không cam kết ép một layout cụ thể. Chưa hỗ trợ video, reel, chỉnh sửa ảnh hay thư viện template trong giai đoạn này.
+Facebook quyết định bố cục album cuối cùng. Công cụ giữ thứ tự `attached_media` nhưng không cam kết ép một layout cụ thể. Video thường của Page dùng luồng riêng; chưa hỗ trợ Reel, chỉnh sửa ảnh hay thư viện template trong giai đoạn này.
 
 ## 3. Luồng xử lý an toàn
 

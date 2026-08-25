@@ -2,20 +2,20 @@
 
 ## MVP choices
 
-| Concern           | Choice                                   | Reason                                              |
-| ----------------- | ---------------------------------------- | --------------------------------------------------- |
-| Language          | TypeScript strict                        | One language across UI/API/services                 |
-| Web               | Next.js App Router                       | Small internal tool, single deployable              |
-| Validation        | Zod                                      | Validate env, API inputs and Meta responses         |
-| Database          | PostgreSQL via Supabase                  | Drafts, mappings, AI history and sync state         |
-| ORM/migrations    | Drizzle ORM/drizzle-kit                  | Typed SQL-oriented schema and reviewable migrations |
-| Meta integration  | Direct Graph API adapter                 | Official documented API only                        |
-| Native scheduling | Facebook Page scheduled posts            | Meta publishes at due time                          |
-| Reconciliation    | Vercel Cron/host cron                    | Poll only; no exact-time publish worker             |
-| Storage           | S3/R2, optional for image MVP            | Controlled media URL and immutable files            |
-| AI                | Provider adapter                         | Generate/rewrite/ideas without provider lock-in     |
-| Monitoring        | Structured logs; Sentry optional         | Safe operational visibility                         |
-| Access protection | localhost/private network/access gateway | Avoid full user system while keeping tool private   |
+| Concern           | Choice                                   | Reason                                               |
+| ----------------- | ---------------------------------------- | ---------------------------------------------------- |
+| Language          | TypeScript strict                        | One language across UI/API/services                  |
+| Web               | Next.js App Router                       | Small internal tool, single deployable               |
+| Validation        | Zod                                      | Validate env, API inputs and Meta responses          |
+| Database          | PostgreSQL via Supabase                  | Drafts, mappings, AI history and sync state          |
+| ORM/migrations    | Drizzle ORM/drizzle-kit                  | Typed SQL-oriented schema and reviewable migrations  |
+| Meta integration  | Direct Graph API adapter                 | Official documented API only                         |
+| Native scheduling | Facebook Page scheduled posts            | Meta publishes at due time                           |
+| Reconciliation    | Vercel Cron/host cron                    | Poll only; no exact-time publish worker              |
+| Storage           | Private Supabase Storage                 | Signed media upload/URL without exposing credentials |
+| AI                | Provider adapter                         | Generate/rewrite/ideas without provider lock-in      |
+| Monitoring        | Structured logs; Sentry optional         | Safe operational visibility                          |
+| Access protection | localhost/private network/access gateway | Avoid full user system while keeping tool private    |
 
 ## Intentionally removed from MVP
 

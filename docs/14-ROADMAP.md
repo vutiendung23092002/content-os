@@ -50,18 +50,18 @@ Hoàn thiện một đường dọc nhỏ nhưng đáng tin cậy trước: kế
 - Human-in-the-loop trước khi draft thay đổi.
 - Usage/cost limit và prompt redaction.
 
-## Phase 5 — Một ảnh mỗi bài
+## Phase 5 — Media publishing
 
 - Private object storage và signed upload.
-- Validate/preview ảnh.
-- Publish/schedule single-image post.
+- Validate/preview ảnh và video thường của Page.
+- Publish/schedule multi-image hoặc một video thường.
 - Cleanup an toàn và reconciliation.
 
 ## Sau MVP, chỉ khi có nhu cầu
 
 - Analytics/insights đã xác minh permission và metric.
 - AI image generation.
-- Video, carousel hoặc Reels.
+- Carousel hoặc Reels (video thường của Page đã được triển khai riêng).
 - OAuth cho người dùng khác tự kết nối Page.
 - Multi-user, role, approval workflow.
 - Trigger.dev hoặc queue nếu sync/reconciliation vượt khả năng cron đơn giản.

@@ -102,7 +102,7 @@ Unique `(user_id,page_id)`; index `(page_id,user_id)`.
 
 ## `assets`
 
-Image metadata. Private bytes live in Supabase Storage.
+Image/video metadata. Private bytes live in Supabase Storage.
 
 Fields: `id uuid PK`; `page_id uuid NULL FK pages SET NULL`; `storage_key text UNIQUE NOT NULL`; `mime_type text NOT NULL`; `file_size bigint NOT NULL`; `width`, `height integer NULL`; `checksum text NOT NULL`; `original_filename text NOT NULL`; `created_at`; `cleanup_claimed_at NULL`; `deleted_at NULL`. No permanent public URL. Uploaded original is immutable.
 

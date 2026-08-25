@@ -77,8 +77,9 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
 - Meta thành công nhưng local commit lỗi được giữ cho reconciliation, không đổi thành remote failure.
 - Local UI `/posts` và `/posts/new`.
-- Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh, kéo thả card để sắp xếp, preview bố cục, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
+- Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh hoặc một video MP4/MOV, preview theo thiết bị, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
 - Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.
+- Video dùng signed upload trực tiếp lên private Supabase Storage, sau đó Meta adapter gửi signed `file_url` vào Page `/videos`; video thường và Reel được tách riêng.
 - Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy: orphan quá 1 giờ hoặc bài published quá 7 ngày; scheduled/failed/uncertain được giữ nguyên. Migration `0003_steep_hex.sql` đã áp dụng trên Supabase.
 - UI `/posts` đọc trực tiếp bài đã đăng/hẹn giờ theo Page, hỗ trợ phân trang, làm mới và chuyển đổi giữa dạng bảng với timeline tuần.
 - Timeline cache theo Page/tab/tuần ở client và mirror bài remote vào Supabase; published sync dùng `since/until`, request trùng được hợp nhất và dữ liệu stale hiển thị trước khi refresh nền.

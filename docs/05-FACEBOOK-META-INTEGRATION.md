@@ -135,4 +135,4 @@ Do not send the create request again immediately. Mark operation `uncertain`, fe
 
 ## Deferred
 
-OAuth/reconnect UI, webhooks, system user migration, Instagram, analytics insights, video/Reel and bulk multi-Page publishing.
+OAuth/reconnect UI, webhooks, system user migration, Instagram, analytics insights, Reel và bulk multi-Page publishing. Video thường của Page đã có adapter riêng qua `/videos`.

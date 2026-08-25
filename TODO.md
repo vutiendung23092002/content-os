@@ -58,6 +58,8 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Đưa đăng xuất vào menu tài khoản và cảnh báo khi còn nội dung soạn chưa lưu.
   - [x] Phân quyền Page theo từng tài khoản; Super Admin có toàn bộ Page, Admin/Nhân viên chỉ dùng Page được gán và API kiểm tra quyền ở server.
   - [x] Làm lại màn Nhân sự và panel gán Page theo Liquid Glass nền đục, không nhìn xuyên nội dung.
+  - [x] Giảm auth waterfall khi vào Nhân sự bằng verified JWT claims, server-provided initial data và loading boundary tức thời.
+  - [x] Đưa nội dung onboarding sang Hướng dẫn nhanh; bỏ trang Tổng quan độc lập và chuyển `/`, đăng nhập mặc định sang `/posts`.
   - [ ] Bổ sung credential riêng cho cron khi triển khai FB-011, rồi mới đóng task FOUND-006.
 
 ## Database
@@ -230,6 +232,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Có unsaved/error/loading state; timezone hiển thị rõ; không có token field.
   - Tests: Component/form tests và draft creation E2E.
   - [x] Composer Liquid Glass có Page picker kèm avatar, caption editor, vùng AI dự kiến, upload tối đa 10 ảnh, kéo thả đổi thứ tự và preview bố cục.
+  - [x] Bổ sung lựa chọn Video thường của Page, preview trong composer và không cho trộn ảnh/video trong cùng draft.
 
 - [ ] POST-003 — Published and scheduled list UI
   - Priority: P0
@@ -241,11 +244,13 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Khôi phục bộ lọc Page, refresh, pagination, xem chi tiết và chuyển đổi Bảng/Timeline bằng dữ liệu GET trực tiếp từ Facebook.
   - [x] Đặt Timeline làm mặc định, highlight toàn cột hôm nay, mở rộng layout màn hình lớn và áp dụng liquid-glass/bento visual system.
   - [x] Đồng bộ Liquid Glass toàn ứng dụng: shell, dashboard, form, bảng, timeline, dropdown và modal dùng nền kính đục, viền sáng và chiều sâu thống nhất.
+  - [x] Thêm Liquid Glass indicator trượt mượt giữa các mục điều hướng trong sidebar và tôn trọng chế độ giảm chuyển động.
   - [x] Tự ẩn khung giờ 00:00–07:00 khi tuần không có bài sáng sớm và tự mở lại khi có dữ liệu.
   - [x] Thay select Page mặc định bằng Page picker có avatar, category, trạng thái kết nối và điều hướng bàn phím.
   - [x] Đồng bộ avatar Page từ Meta và thu gọn Page picker cho màn hình desktop.
   - [x] Hiển thị tổng Reaction, Comment và Share trên Bảng/Timeline từ dữ liệu đọc trực tiếp của Meta.
   - [x] Hiển thị gallery đầy đủ từ Facebook attachments trong popup chi tiết bài viết.
+  - [x] Tối ưu vị trí nút đóng popup trên mobile và resolve permalink công khai từ composite Post ID trước khi mở Facebook.
   - [x] Tự giãn chiều cao từng khung giờ Timeline để các card đăng gần nhau không chồng lấn.
   - [x] Tự phân trang để tải đủ dữ liệu của tuần đang xem trên Timeline; bỏ nút tải thêm thủ công khỏi chế độ này.
   - [x] Cache theo Page/tab/tuần ở trình duyệt, mirror tuần trong Supabase, lọc Meta bằng `since/until` và stale-while-refresh để quay lại tab không phải tải lại.
@@ -340,10 +345,21 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Goal: Mở rộng Meta adapter cho bài có tối đa 10 ảnh theo đúng thứ tự sau khi text flow ổn định.
   - Depends on: ASSET-002, FB-004, FB-005, FB-010.
   - Files/modules expected: Meta photo adapter/use-cases, operation metadata.
-  - Acceptance criteria: Publish/schedule/lists đối soát được remote ID; URL không chứa token; không hỗ trợ carousel/video ngầm.
+  - Acceptance criteria: Publish/schedule/lists đối soát được remote ID; URL không chứa token; không coi multi-image là carousel hoặc video.
   - Tests: Publish, schedule, Meta media-fetch failure, timeout reconciliation và app-offline scenario.
   - [x] Meta adapter upload ảnh với `published=false`, gom `media_fbid` vào `attached_media`, rồi đăng ngay hoặc tạo lịch native trên Page feed.
   - [ ] Xác minh contract nhiều ảnh và lịch native trên Page test trước khi đóng task.
+
+- [ ] ASSET-005 — Page video publishing
+  - Priority: P1
+  - Goal: Đăng ngay hoặc hẹn giờ native một video thường của Facebook Page.
+  - [x] Signed upload trực tiếp lên private Supabase Storage và cleanup asset dở dang.
+  - [x] Draft phân loại `video`, chỉ nhận đúng một MP4/MOV và không trộn với ảnh.
+  - [x] Meta adapter dùng Page `/videos` với `file_url`, `description`, `published=false` và `scheduled_publish_time` khi hẹn giờ.
+  - [x] Composer có lựa chọn Ảnh/Video, preview video và trạng thái Facebook đang xử lý mã hóa.
+  - [x] Cập nhật bucket `post-assets` lên 50 MB và allow MIME video trên Supabase Cloud.
+  - [ ] Live smoke đăng ngay/hẹn giờ chỉ trên Page test được cho phép, rồi đối soát remote video ID và trạng thái mã hóa.
+  - [ ] Reel publishing là task riêng qua `video_reels`, không coi video thường là Reel.
 
 - [ ] ASSET-004 — Private image lifecycle cleanup
   - Priority: P1
@@ -391,4 +407,4 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
 
 ## Explicitly deferred
 
-Không tạo task triển khai cho OAuth Facebook đa tenant, team/workflow duyệt nội dung, full analytics, AI image, video/carousel/Reels, pgvector hoặc Trigger.dev cho đến khi có nhu cầu mới được xác nhận. Google allowlist, role và phân quyền Page cho nhóm nội bộ đã được xác nhận và triển khai.
+Không tạo task triển khai cho OAuth Facebook đa tenant, team/workflow duyệt nội dung, full analytics, AI image, carousel/Reels, pgvector hoặc Trigger.dev cho đến khi có nhu cầu mới được xác nhận. Video thường của Page, Google allowlist, role và phân quyền Page cho nhóm nội bộ đã được xác nhận và triển khai.
