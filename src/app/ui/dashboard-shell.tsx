@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 type IconName =
-  | "home"
   | "write"
   | "posts"
   | "pages"
@@ -28,6 +33,18 @@ type SessionViewer = {
   role: "super_admin" | "admin" | "member";
 };
 
+type NavIndicatorGeometry = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+type PendingNavigation = {
+  fromPathname: string;
+  key: string;
+};
+
 const roleLabels: Record<SessionViewer["role"], string> = {
   super_admin: "Super Admin",
   admin: "Admin",
@@ -46,7 +63,6 @@ const navGroups: Array<{
   {
     label: "Nội dung",
     items: [
-      { href: "/", label: "Tổng quan", icon: "home" },
       {
         href: "/posts",
         label: "Bài viết",
@@ -66,32 +82,24 @@ const navGroups: Array<{
     label: "Hỗ trợ",
     items: [
       {
-        href: "/",
+        href: "/guide",
         label: "Hướng dẫn nhanh",
         icon: "help",
-        match: () => false,
       },
     ],
   },
 ];
 
 const pageTitles: Record<string, { eyebrow: string; title: string }> = {
-  "/": { eyebrow: "Không gian làm việc", title: "Tổng quan" },
   "/pages": { eyebrow: "Quản trị", title: "Facebook Pages" },
   "/posts": { eyebrow: "Nội dung", title: "Bài viết" },
   "/posts/new": { eyebrow: "Nội dung", title: "Soạn bài mới" },
   "/admin": { eyebrow: "Quản trị", title: "Nhân sự" },
+  "/guide": { eyebrow: "Hỗ trợ", title: "Hướng dẫn nhanh" },
 };
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
-    home: (
-      <>
-        <path d="m3 11 9-8 9 8" />
-        <path d="M5 10v10h14V10" />
-        <path d="M9 20v-6h6v6" />
-      </>
-    ),
     write: (
       <>
         <path d="M12 20h9" />
@@ -158,7 +166,11 @@ function isItemActive(
   item: (typeof navGroups)[number]["items"][number],
 ) {
   if (item.match) return item.match(pathname);
-  return item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+  return pathname.startsWith(item.href);
+}
+
+function navItemKey(groupLabel: string, itemLabel: string) {
+  return `${groupLabel}-${itemLabel}`;
 }
 
 export function DashboardShell({ children }: { children: ReactNode }) {
@@ -169,8 +181,66 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const [viewer, setViewer] = useState<SessionViewer | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const sidebarNavRef = useRef<HTMLElement>(null);
+  const sidebarNavItemRefs = useRef(new Map<string, HTMLAnchorElement>());
+  const [navIndicatorGeometry, setNavIndicatorGeometry] =
+    useState<NavIndicatorGeometry | null>(null);
+  const [pendingNavigation, setPendingNavigation] =
+    useState<PendingNavigation | null>(null);
   const isBarePage = pathname === "/login" || pathname === "/access-pending";
-  const heading = pageTitles[pathname] ?? pageTitles["/"]!;
+  const heading = pageTitles[pathname] ?? pageTitles["/posts"]!;
+  const activeNavItem = navGroups
+    .flatMap((group) =>
+      group.items.map((item) => ({
+        groupLabel: group.label,
+        item,
+      })),
+    )
+    .filter(({ item }) => item.href !== "/admin" || viewer?.role !== "member")
+    .find(({ item }) => isItemActive(pathname, item));
+  const activeNavKey = activeNavItem
+    ? navItemKey(activeNavItem.groupLabel, activeNavItem.item.label)
+    : null;
+  const indicatorNavKey =
+    pendingNavigation?.fromPathname === pathname
+      ? pendingNavigation.key
+      : activeNavKey;
+
+  useLayoutEffect(() => {
+    const nav = sidebarNavRef.current;
+    const activeItem = indicatorNavKey
+      ? sidebarNavItemRefs.current.get(indicatorNavKey)
+      : null;
+
+    if (!nav || !activeItem) {
+      setNavIndicatorGeometry(null);
+      return;
+    }
+
+    const updateGeometry = () => {
+      const navRect = nav.getBoundingClientRect();
+      const itemRect = activeItem.getBoundingClientRect();
+
+      setNavIndicatorGeometry({
+        height: itemRect.height,
+        width: itemRect.width,
+        x: itemRect.left - navRect.left + nav.scrollLeft,
+        y: itemRect.top - navRect.top + nav.scrollTop,
+      });
+    };
+
+    updateGeometry();
+
+    const resizeObserver = new ResizeObserver(updateGeometry);
+    resizeObserver.observe(nav);
+    resizeObserver.observe(activeItem);
+    window.addEventListener("resize", updateGeometry);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateGeometry);
+    };
+  }, [indicatorNavKey, viewer?.role]);
 
   useEffect(() => {
     if (isBarePage) return;
@@ -249,7 +319,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <aside className={`sidebar ${sidebarOpen ? "isOpen" : ""}`}>
         <Link
           className="wordmark"
-          href="/"
+          href="/posts"
           onClick={() => setSidebarOpen(false)}
         >
           <span className="wordmarkMark" aria-hidden="true">
@@ -270,7 +340,26 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           Viết bài mới
         </Link>
 
-        <nav className="sidebarNav" aria-label="Điều hướng chính">
+        <nav
+          className="sidebarNav"
+          aria-label="Điều hướng chính"
+          ref={sidebarNavRef}
+        >
+          <span
+            aria-hidden="true"
+            className={`sidebarNavIndicator ${
+              navIndicatorGeometry ? "isReady" : ""
+            }`}
+            style={
+              navIndicatorGeometry
+                ? {
+                    height: navIndicatorGeometry.height,
+                    transform: `translate3d(${navIndicatorGeometry.x}px, ${navIndicatorGeometry.y}px, 0)`,
+                    width: navIndicatorGeometry.width,
+                  }
+                : undefined
+            }
+          />
           {navGroups.map((group) => (
             <div className="navGroup" key={group.label}>
               <p>{group.label}</p>
@@ -280,13 +369,35 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 )
                 .map((item) => {
                   const active = isItemActive(pathname, item);
+                  const itemKey = navItemKey(group.label, item.label);
                   return (
                     <Link
                       aria-current={active ? "page" : undefined}
                       className={`navItem ${active ? "isActive" : ""}`}
                       href={item.href}
-                      key={`${group.label}-${item.label}`}
-                      onClick={() => setSidebarOpen(false)}
+                      key={itemKey}
+                      onClick={(event) => {
+                        const isPrimaryClick =
+                          event.button === 0 &&
+                          !event.altKey &&
+                          !event.ctrlKey &&
+                          !event.metaKey &&
+                          !event.shiftKey;
+                        if (isPrimaryClick && isItemActive(item.href, item)) {
+                          setPendingNavigation({
+                            fromPathname: pathname,
+                            key: itemKey,
+                          });
+                        }
+                        setSidebarOpen(false);
+                      }}
+                      ref={(element) => {
+                        if (element) {
+                          sidebarNavItemRefs.current.set(itemKey, element);
+                        } else {
+                          sidebarNavItemRefs.current.delete(itemKey);
+                        }
+                      }}
                     >
                       <Icon name={item.icon} />
                       <span>{item.label}</span>

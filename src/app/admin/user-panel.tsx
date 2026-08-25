@@ -160,9 +160,15 @@ function RoleSelect({
   );
 }
 
-export function UserPanel({ viewer }: { viewer: Viewer }) {
+export function UserPanel({
+  initialUsers,
+  viewer,
+}: {
+  initialUsers: ManagedUser[];
+  viewer: Viewer;
+}) {
   const { showToast, updateToast } = useToast();
-  const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [users, setUsers] = useState<ManagedUser[]>(initialUsers);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
@@ -180,26 +186,6 @@ export function UserPanel({ viewer }: { viewer: Viewer }) {
     );
     setUsers(payload.users);
   }, []);
-
-  useEffect(() => {
-    let active = true;
-    void apiRequest<{ users: ManagedUser[] }>("/api/admin/users")
-      .then((payload) => {
-        if (active) setUsers(payload.users);
-      })
-      .catch((error: Error) => {
-        if (active) {
-          showToast({
-            tone: "error",
-            title: "Không thể tải danh sách nhân sự",
-            description: error.message,
-          });
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [showToast]);
 
   const stats = useMemo(
     () => ({

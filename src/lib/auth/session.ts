@@ -8,6 +8,7 @@ import {
 import { getServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
 import { hasSupabasePublicConfig } from "@/lib/supabase/config";
+import { toSupabaseIdentityClaims } from "@/lib/supabase/identity-claims";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Viewer } from "./types";
 
@@ -75,14 +76,13 @@ export async function recordGoogleLogin(user: User): Promise<Viewer> {
 export async function getOptionalViewer(): Promise<Viewer | null> {
   if (!hasSupabasePublicConfig()) return null;
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
+  const { data, error } = await supabase.auth.getClaims();
+  const identity = toSupabaseIdentityClaims(error ? null : data?.claims);
+  if (!identity) return null;
   const repository = new AppUserRepository(getDatabase());
   const record =
-    (await repository.findByExternalId(data.user.id)) ??
-    (data.user.email
-      ? await repository.findByEmail(data.user.email)
-      : undefined);
+    (await repository.findByExternalId(identity.sub)) ??
+    (identity.email ? await repository.findByEmail(identity.email) : undefined);
   return toViewer(record);
 }
 

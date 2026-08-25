@@ -25,9 +25,9 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  const { response, user } = await updateSupabaseSession(request);
+  const { response, identity } = await updateSupabaseSession(request);
   if (isCallback) return response;
-  if (!user) {
+  if (!identity) {
     if (isLogin) return response;
     const loginUrl = new URL("/login", request.url);
     const next = `${path}${request.nextUrl.search}`;
@@ -37,8 +37,8 @@ export async function proxy(request: NextRequest) {
 
   const users = new AppUserRepository(getDatabase());
   const appUser =
-    (await users.findByExternalId(user.id)) ??
-    (user.email ? await users.findByEmail(user.email) : undefined);
+    (await users.findByExternalId(identity.sub)) ??
+    (identity.email ? await users.findByEmail(identity.email) : undefined);
   const approved = appUser?.approvalStatus === "approved";
 
   if (!approved) {
@@ -47,10 +47,10 @@ export async function proxy(request: NextRequest) {
       : redirectWithCookies(new URL("/access-pending", request.url), response);
   }
   if (path.startsWith("/admin") && appUser.role === "member") {
-    return redirectWithCookies(new URL("/", request.url), response);
+    return redirectWithCookies(new URL("/posts", request.url), response);
   }
   if (isLogin || isPending) {
-    return redirectWithCookies(new URL("/", request.url), response);
+    return redirectWithCookies(new URL("/posts", request.url), response);
   }
   return response;
 }

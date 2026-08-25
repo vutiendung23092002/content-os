@@ -1,11 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabasePublicConfig } from "./config";
+import {
+  type SupabaseIdentityClaims,
+  toSupabaseIdentityClaims,
+} from "./identity-claims";
 
 export async function updateSupabaseSession(request: NextRequest): Promise<{
   response: NextResponse;
-  user: User | null;
+  identity: SupabaseIdentityClaims | null;
 }> {
   const config = getSupabasePublicConfig();
   let response = NextResponse.next({ request });
@@ -27,6 +30,9 @@ export async function updateSupabaseSession(request: NextRequest): Promise<{
     },
   });
 
-  const { data, error } = await supabase.auth.getUser();
-  return { response, user: error ? null : data.user };
+  const { data, error } = await supabase.auth.getClaims();
+  return {
+    response,
+    identity: toSupabaseIdentityClaims(error ? null : data?.claims),
+  };
 }

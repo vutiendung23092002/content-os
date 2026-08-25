@@ -8,7 +8,7 @@ function safeNextPath(value: string | null): string {
     !value.startsWith("//") &&
     !value.includes("\\")
     ? value
-    : "/";
+    : "/posts";
 }
 
 function publicOrigin(request: Request): string {

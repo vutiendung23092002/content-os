@@ -13,7 +13,7 @@ function safeNextPath(value?: string): string {
     !value.startsWith("//") &&
     !value.includes("\\")
     ? value
-    : "/";
+    : "/posts";
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
