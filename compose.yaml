@@ -1,0 +1,58 @@
+name: han-content-os
+
+x-runtime: &runtime
+  image: han-content-os:local
+  env_file:
+    - .env.local
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  app:
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    ports:
+      - "127.0.0.1:${HAN_CONTENT_PORT:-3210}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then(response=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  facebook-cron:
+    <<: *runtime
+    command:
+      - sh
+      - -c
+      - while true; do node scripts/run-facebook-cron.mjs; sleep 600; done
+    depends_on:
+      app:
+        condition: service_healthy
+
+  asset-cleanup:
+    <<: *runtime
+    command:
+      - sh
+      - -c
+      - while true; do if node scripts/run-asset-cleanup.mjs; then sleep 86400; else sleep 3600; fi; done
+    depends_on:
+      app:
+        condition: service_healthy
