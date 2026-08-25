@@ -1,137 +1,79 @@
 # Han Content OS
 
-Công cụ nội bộ cho nhóm nhỏ để soạn, đăng và hẹn giờ bài viết Facebook Page bằng Meta Graph API chính thức. Nhân sự đăng nhập Google qua Supabase; Facebook token chỉ nằm ở server.
+Han Content OS là công cụ nội bộ để soạn, quản lý và đăng nội dung lên các Facebook Page bằng Meta Graph API. Ứng dụng dùng Google OAuth để đăng nhập, phân quyền nhân sự theo từng Page và giữ toàn bộ Facebook token/secret ở phía server.
 
-## Trạng thái
+## Chức năng chính
 
-Foundation và local application slice đã được triển khai. Repository có Next.js, strict TypeScript, Supabase/Drizzle repositories, draft CRUD, encrypted Page credential flow và Meta adapter chưa kết nối credential thật.
+- Quản lý Facebook Page bằng Page ID và kiểm tra quyền trước khi thêm.
+- Duyệt tài khoản Google, gán vai trò và giới hạn Page cho từng nhân sự.
+- Soạn caption, lưu bản nháp và có vùng mở rộng cho AI hỗ trợ nội dung.
+- Đăng ngay hoặc hẹn giờ bằng cơ chế hẹn giờ native của Facebook.
+- Hỗ trợ bài chữ, nhiều ảnh có sắp xếp thứ tự và video thường của Page.
+- Xem bài đã đăng hoặc đã hẹn giờ theo bảng và timeline tuần.
+- Đồng bộ trạng thái từ Facebook, đối soát lịch đăng và tránh gửi lại mù khi kết quả chưa rõ.
+- Dùng Supabase Cloud cho PostgreSQL, Google Auth và Storage tạm thời cho media.
 
-## Yêu cầu
+## Nguyên tắc vận hành
 
-- Node.js 24 trở lên.
-- pnpm 11.22.0 qua Corepack.
-- Supabase PostgreSQL project khi bắt đầu migration/integration.
+- Facebook là nguồn dữ liệu chuẩn cho trạng thái bài đăng và lịch hẹn.
+- Bài hẹn giờ được Facebook tự đăng; hệ thống không chạy worker để đăng khi đến giờ.
+- Token, App Secret, service-role key và cron secret chỉ tồn tại ở server.
+- Gỡ Page khỏi ứng dụng chỉ vô hiệu hóa Page trong Han Content OS, không xóa hay sửa dữ liệu trên Facebook.
+- Mọi thao tác ghi lên Facebook đều cần người dùng xác nhận rõ ràng.
 
-## Cài đặt lần đầu
+## Kiến trúc tổng quát
 
-Trên máy Windows không có quyền tạo Corepack shim toàn cục, không cần chạy `corepack enable`. Dùng trực tiếp `corepack pnpm` cho tất cả lệnh pnpm:
+```text
+Trình duyệt
+    |
+    v
+Next.js (UI + API server-side)
+    |---------------------> Meta Graph API
+    |
+    +---------------------> Supabase Cloud
+    |                         - PostgreSQL
+    |                         - Google Auth
+    |                         - Storage
+    |
+    +<--------------------- Cron đối soát / dọn media
 
-```bash
-corepack pnpm install
+Cloudflare Tunnel -> Next.js trên máy chủ nội bộ
 ```
 
-Tạo file cấu hình local từ file mẫu:
+## Bắt đầu sử dụng
 
-```bash
-# Git Bash
-cp .env.example .env.local
-```
+- Chạy trực tiếp bằng Node.js: [Hướng dẫn setup local](docs/16-LOCAL-SETUP.md)
+- Chạy bằng Docker Compose: [Hướng dẫn setup Docker](docs/17-DOCKER-SETUP.md)
+- Xem trạng thái triển khai hiện tại: [CURRENT-STATE.md](docs/CURRENT-STATE.md)
+- Xem công việc còn lại: [TODO.md](TODO.md) và [NEXT-STEPS.md](docs/NEXT-STEPS.md)
 
-```powershell
-# PowerShell
-Copy-Item .env.example .env.local
-```
+## Tài liệu chi tiết
 
-Điền các biến môi trường cần thiết vào `.env.local`. Không commit file này lên Git.
+| Tài liệu                                                                | Nội dung                               |
+| ----------------------------------------------------------------------- | -------------------------------------- |
+| [00-PRODUCT-OVERVIEW.md](docs/00-PRODUCT-OVERVIEW.md)                   | Phạm vi sản phẩm và nguyên tắc cốt lõi |
+| [01-ARCHITECTURE.md](docs/01-ARCHITECTURE.md)                           | Kiến trúc tổng thể                     |
+| [02-TECH-STACK.md](docs/02-TECH-STACK.md)                               | Công nghệ và thư viện                  |
+| [03-DATABASE-DESIGN.md](docs/03-DATABASE-DESIGN.md)                     | Thiết kế database                      |
+| [04-AUTH-AND-PERMISSIONS.md](docs/04-AUTH-AND-PERMISSIONS.md)           | Đăng nhập và phân quyền                |
+| [05-FACEBOOK-META-INTEGRATION.md](docs/05-FACEBOOK-META-INTEGRATION.md) | Tích hợp Meta Graph API                |
+| [06-CONTENT-WORKFLOW.md](docs/06-CONTENT-WORKFLOW.md)                   | Luồng draft, đăng ngay và hẹn giờ      |
+| [07-BACKGROUND-JOBS.md](docs/07-BACKGROUND-JOBS.md)                     | Cron, đối soát và dọn media            |
+| [08-AI-RAG.md](docs/08-AI-RAG.md)                                       | Định hướng AI hỗ trợ nội dung          |
+| [09-AI-IMAGE.md](docs/09-AI-IMAGE.md)                                   | Định hướng AI hình ảnh                 |
+| [10-ANALYTICS.md](docs/10-ANALYTICS.md)                                 | Định hướng analytics                   |
+| [11-SECURITY.md](docs/11-SECURITY.md)                                   | Bảo mật và quản lý secret              |
+| [12-API-DESIGN.md](docs/12-API-DESIGN.md)                               | Thiết kế API                           |
+| [13-OBSERVABILITY.md](docs/13-OBSERVABILITY.md)                         | Log, theo dõi và xử lý sự cố           |
+| [14-ROADMAP.md](docs/14-ROADMAP.md)                                     | Roadmap sản phẩm                       |
+| [15-ADRS.md](docs/15-ADRS.md)                                           | Các quyết định kiến trúc               |
+| [16-LOCAL-SETUP.md](docs/16-LOCAL-SETUP.md)                             | Cài đặt và vận hành local              |
+| [17-DOCKER-SETUP.md](docs/17-DOCKER-SETUP.md)                           | Build và vận hành Docker Compose       |
 
-## Chạy khi phát triển
+## Bảo mật
 
-Chế độ phát triển tự cập nhật giao diện sau khi sửa code, không cần build lại:
+Không commit hoặc gửi qua issue, log, ảnh chụp hay công cụ AI các file `.env*`, database URL, Facebook token, App Secret, Supabase service-role key, cron secret hoặc Cloudflare Tunnel token. Khi nghi ngờ bị lộ, hãy rotate secret tương ứng.
 
-```bash
-corepack pnpm dev
-```
+## Phạm vi sử dụng
 
-Mở [http://localhost:3000](http://localhost:3000). Dừng server bằng `Ctrl+C` tại cửa sổ terminal đang chạy.
-
-## Chạy bản production và Cloudflare Tunnel
-
-Cloudflare Tunnel hiện trỏ tới `127.0.0.1:3000`, vì vậy chạy ứng dụng bằng:
-
-```bash
-corepack pnpm build
-corepack pnpm exec next start -H 127.0.0.1
-```
-
-`next start` chỉ phục vụ bản đã được tạo bởi lệnh `build`. Sau mỗi lần sửa code, phải dừng server bằng `Ctrl+C`, build lại rồi khởi động lại:
-
-```bash
-corepack pnpm build
-corepack pnpm exec next start -H 127.0.0.1
-```
-
-Không cần tạo lại route hay khởi động lại Cloudflare Tunnel nếu hostname và địa chỉ `127.0.0.1:3000` không đổi.
-
-### Lỗi cổng 3000 đang được sử dụng
-
-Nếu gặp `EADDRINUSE: address already in use 127.0.0.1:3000`, một tiến trình khác vẫn đang chạy trên cổng 3000.
-
-Kiểm tra PID bằng PowerShell:
-
-```powershell
-Get-NetTCPConnection -LocalPort 3000 -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
-```
-
-Ưu tiên quay lại terminal cũ và nhấn `Ctrl+C`. Nếu không còn terminal đó, xem đúng tiến trình trước khi dừng:
-
-```powershell
-Get-Process -Id <PID>
-Stop-Process -Id <PID>
-```
-
-Sau đó chạy lại lệnh `next start` ở trên.
-
-Không cần điền Facebook hoặc database secret chỉ để build giao diện. Tính năng tương ứng sẽ báo lỗi khi được gọi mà thiếu cấu hình.
-
-## Quality gates
-
-```bash
-corepack pnpm format:check
-corepack pnpm lint
-corepack pnpm typecheck
-corepack pnpm test
-corepack pnpm build
-```
-
-## Database
-
-Đặt Supabase pooled URL vào `DATABASE_URL` và direct URL vào `DIRECT_DATABASE_URL`, sau đó:
-
-```bash
-corepack pnpm db:generate
-corepack pnpm db:migrate
-```
-
-Không commit `.env.local`. Không đưa database URL, Meta token, App Secret hoặc encryption key vào issue, log hay AI prompt.
-
-## Private media storage
-
-Tạo bucket private `post-assets` trong Supabase Storage, sau đó đặt `SUPABASE_SERVICE_ROLE_KEY` và `SUPABASE_STORAGE_BUCKET=post-assets` trong `.env.local`. Service-role key chỉ được đọc ở server, tuyệt đối không dùng tiền tố `NEXT_PUBLIC_` hoặc gửi key này cho nhân sự.
-
-Bucket cần giới hạn file `50 MB` và cho phép `image/jpeg`, `image/png`, `image/webp`, `video/mp4`, `video/quicktime`. Video được tải thẳng từ trình duyệt lên Storage bằng signed upload token; service-role key không đi xuống browser. Nếu bucket cũ vẫn giới hạn 10 MB/chỉ cho ảnh, phải cập nhật cấu hình bucket trước khi thử video.
-
-```bash
-corepack pnpm storage:configure
-```
-
-Media của draft được giữ tới khi draft bị xóa. Media của bài đã đăng được giữ 7 ngày kể từ thời điểm Facebook xác nhận bài ở trạng thái `published`; bài `scheduled`, `failed` và `uncertain` không bị dọn. Endpoint `GET/POST /api/cron/assets/cleanup` chạy batch tối đa 50 asset và yêu cầu `Authorization: Bearer <ASSET_CLEANUP_SECRET>`. Đặt một secret ngẫu nhiên tối thiểu 32 ký tự trong `.env.local`, rồi cấu hình scheduler gọi endpoint mỗi ngày một lần.
-
-## Đồng bộ Facebook định kỳ
-
-Đặt `FACEBOOK_CRON_SECRET` ngẫu nhiên tối thiểu 32 ký tự trong `.env.local`. Có thể đặt `FACEBOOK_CRON_BASE_URL=http://127.0.0.1:3000` để Windows gọi thẳng app local, không đi vòng qua Cloudflare Tunnel.
-
-Chạy thử một lượt đồng bộ bài và đối soát operation:
-
-```bash
-corepack pnpm facebook:cron
-```
-
-Sau khi thử thành công, tạo Windows Task Scheduler chạy lệnh trên trong đúng thư mục project mỗi 10–15 phút. Hai endpoint `/api/cron/sync-facebook` và `/api/cron/reconcile-operations` chỉ đọc Facebook; chúng không phải publish worker. Bài hẹn giờ vẫn do Facebook native tự đăng, kể cả app tắt đúng thời điểm đăng.
-
-## Tài liệu
-
-- [Product overview](docs/00-PRODUCT-OVERVIEW.md)
-- [Architecture](docs/01-ARCHITECTURE.md)
-- [Meta integration](docs/05-FACEBOOK-META-INTEGRATION.md)
-- [Next steps](docs/NEXT-STEPS.md)
-- [Backlog](TODO.md)
+Dự án hiện phục vụ nội bộ HanContent; chưa được thiết kế như một nền tảng SaaS công khai.
