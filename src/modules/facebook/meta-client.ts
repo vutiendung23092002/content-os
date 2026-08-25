@@ -206,6 +206,7 @@ export type MetaClientOptions = {
   graphVersion: string;
   accessToken: string;
   baseUrl?: string;
+  videoBaseUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
 };
@@ -214,6 +215,7 @@ export class MetaGraphClient {
   private readonly graphVersion: string;
   private readonly accessToken: string;
   private readonly baseUrl: string;
+  private readonly videoBaseUrl: string;
   private readonly fetchImplementation: typeof fetch;
   private readonly timeoutMs: number;
 
@@ -223,6 +225,9 @@ export class MetaGraphClient {
       : `v${options.graphVersion}`;
     this.accessToken = options.accessToken;
     this.baseUrl = options.baseUrl ?? "https://graph.facebook.com";
+    this.videoBaseUrl =
+      options.videoBaseUrl ??
+      (options.baseUrl ? options.baseUrl : "https://graph-video.facebook.com");
     this.fetchImplementation = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 15_000;
   }
@@ -348,6 +353,49 @@ export class MetaGraphClient {
       message: input.message,
       mediaIds,
     });
+  }
+
+  async publishVideo(input: {
+    pageId: string;
+    description: string;
+    fileUrl: string;
+  }): Promise<string> {
+    const result = postMutationSchema.parse(
+      await this.request(`${encodeURIComponent(input.pageId)}/videos`, {
+        method: "POST",
+        baseUrl: this.videoBaseUrl,
+        timeoutMs: 120_000,
+        body: new URLSearchParams({
+          description: input.description,
+          file_url: input.fileUrl,
+        }),
+      }),
+    );
+    return result.id;
+  }
+
+  async scheduleVideo(input: {
+    pageId: string;
+    description: string;
+    fileUrl: string;
+    scheduledFor: Date;
+  }): Promise<string> {
+    const result = postMutationSchema.parse(
+      await this.request(`${encodeURIComponent(input.pageId)}/videos`, {
+        method: "POST",
+        baseUrl: this.videoBaseUrl,
+        timeoutMs: 120_000,
+        body: new URLSearchParams({
+          description: input.description,
+          file_url: input.fileUrl,
+          published: "false",
+          scheduled_publish_time: String(
+            Math.floor(input.scheduledFor.getTime() / 1000),
+          ),
+        }),
+      }),
+    );
+    return result.id;
   }
 
   async scheduleText(
@@ -530,9 +578,13 @@ export class MetaGraphClient {
       query?: URLSearchParams;
       body?: URLSearchParams;
       authorizationToken?: string;
+      baseUrl?: string;
+      timeoutMs?: number;
     },
   ): Promise<unknown> {
-    const url = new URL(`${this.baseUrl}/${this.graphVersion}/${path}`);
+    const url = new URL(
+      `${options.baseUrl ?? this.baseUrl}/${this.graphVersion}/${path}`,
+    );
     options.query?.forEach((value, key) => url.searchParams.set(key, value));
 
     let response: Response;
@@ -549,7 +601,7 @@ export class MetaGraphClient {
             : {}),
         },
         body: options.body,
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(options.timeoutMs ?? this.timeoutMs),
       });
     } catch (error) {
       throw new AppError({

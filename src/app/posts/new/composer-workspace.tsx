@@ -8,6 +8,13 @@ import {
   useState,
 } from "react";
 import { useToast } from "@/app/ui/toast-provider";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import {
+  isImageMimeType,
+  isVideoMimeType,
+  MAX_IMAGE_FILE_SIZE,
+  MAX_VIDEO_FILE_SIZE,
+} from "@/modules/assets/media-policy";
 
 type PageDto = {
   id: string;
@@ -27,15 +34,14 @@ type LocalMedia = {
   previewUrl: string;
 };
 
+type MediaKind = "image" | "video";
 type PublishMode = "now" | "schedule";
 type PendingAction = "publish" | "schedule" | null;
 type PreviewDevice = "desktop" | "tablet" | "mobile";
 
 const MAX_IMAGES = 10;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const FACEBOOK_MIN_SCHEDULE_LEAD_MINUTES = 20;
 const SUGGESTED_SCHEDULE_LEAD_MINUTES = 25;
-const ACCEPTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 async function readPayload<ResponseBody>(response: Response) {
   type Payload = ResponseBody & {
@@ -231,6 +237,14 @@ function ComposerPagePicker({
 
 function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function mediaMimeType(file: File) {
+  if (file.type) return file.type;
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".mp4")) return "video/mp4";
+  if (lowerName.endsWith(".mov")) return "video/quicktime";
+  return "";
 }
 
 function minimumScheduleValue(referenceTime: number) {
@@ -547,12 +561,16 @@ export function ComposerWorkspace() {
   const [pageId, setPageId] = useState("");
   const [message, setMessage] = useState("");
   const [media, setMedia] = useState<LocalMedia[]>([]);
+  const [mediaKind, setMediaKind] = useState<MediaKind>("image");
   const [mode, setMode] = useState<PublishMode>("now");
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
   const [scheduledFor, setScheduledFor] = useState("");
   const [pageNotice, setPageNotice] = useState("Đang tải Pages...");
   const [submitting, setSubmitting] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [pendingMediaKind, setPendingMediaKind] = useState<MediaKind | null>(
+    null,
+  );
   const [dragActive, setDragActive] = useState(false);
   const [draggedMediaId, setDraggedMediaId] = useState<string | null>(null);
   const [dropTargetMediaId, setDropTargetMediaId] = useState<string | null>(
@@ -592,6 +610,15 @@ export function ComposerWorkspace() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!pendingMediaKind) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setPendingMediaKind(null);
+    }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [pendingMediaKind]);
+
   useEffect(
     () => () => {
       for (const item of mediaRef.current) URL.revokeObjectURL(item.previewUrl);
@@ -630,19 +657,26 @@ export function ComposerWorkspace() {
   }, []);
 
   function appendFiles(files: File[]) {
-    const validFiles = files.filter(
-      (file) =>
-        ACCEPTED_IMAGE_TYPES.has(file.type) && file.size <= MAX_FILE_SIZE,
+    const validFiles = files.filter((file) =>
+      mediaKind === "image"
+        ? isImageMimeType(mediaMimeType(file)) &&
+          file.size <= MAX_IMAGE_FILE_SIZE
+        : isVideoMimeType(mediaMimeType(file)) &&
+          file.size <= MAX_VIDEO_FILE_SIZE,
     );
     if (validFiles.length !== files.length) {
       showToast({
         tone: "error",
-        title: "Không thể thêm một số ảnh",
-        description: "Chỉ nhận JPEG, PNG, WebP và tối đa 10 MB mỗi ảnh.",
+        title: `Không thể thêm ${mediaKind === "image" ? "một số ảnh" : "video"}`,
+        description:
+          mediaKind === "image"
+            ? "Chỉ nhận JPEG, PNG, WebP và tối đa 10 MB mỗi ảnh."
+            : "Chỉ nhận MP4, MOV và tối đa 50 MB mỗi video.",
       });
     }
     setMedia((current) => {
-      const slots = Math.max(0, MAX_IMAGES - current.length);
+      const limit = mediaKind === "image" ? MAX_IMAGES : 1;
+      const slots = Math.max(0, limit - current.length);
       const additions = validFiles.slice(0, slots).map((file) => ({
         localId: crypto.randomUUID(),
         file,
@@ -651,8 +685,11 @@ export function ComposerWorkspace() {
       if (validFiles.length > slots) {
         showToast({
           tone: "error",
-          title: "Đã đạt giới hạn ảnh",
-          description: `Mỗi bài tối đa ${MAX_IMAGES} ảnh.`,
+          title: "Đã đạt giới hạn tệp",
+          description:
+            mediaKind === "image"
+              ? `Mỗi bài tối đa ${MAX_IMAGES} ảnh.`
+              : "Mỗi bài video chỉ dùng một tệp.",
         });
       }
       return [...current, ...additions];
@@ -711,6 +748,23 @@ export function ComposerWorkspace() {
     setDropTargetMediaId(null);
   }
 
+  function changeMediaKind(nextKind: MediaKind) {
+    if (nextKind === mediaKind) return;
+    if (media.length > 0) {
+      setPendingMediaKind(nextKind);
+      return;
+    }
+    setMediaKind(nextKind);
+  }
+
+  function confirmMediaKindChange() {
+    if (!pendingMediaKind) return;
+    for (const item of media) URL.revokeObjectURL(item.previewUrl);
+    setMedia([]);
+    setMediaKind(pendingMediaKind);
+    setPendingMediaKind(null);
+  }
+
   async function cleanupAssets(assetIds: string[]) {
     await Promise.allSettled(
       assetIds.map((assetId) =>
@@ -720,6 +774,87 @@ export function ComposerWorkspace() {
   }
 
   async function uploadMedia(uploadedIds: string[], toastId: string) {
+    if (mediaKind === "video") {
+      const item = media[0];
+      if (!item) return;
+      const mimeType = mediaMimeType(item.file);
+
+      updateToast(toastId, {
+        title: "Đang tải video lên",
+        description:
+          "Video được tải trực tiếp vào kho riêng tư; tiến độ sẽ cập nhật tại đây.",
+        progress: 0.04,
+      });
+      const intent = await readPayload<{
+        upload: {
+          assetId: string;
+          bucket: string;
+          storageKey: string;
+          token: string;
+        };
+      }>(
+        await fetch("/api/assets/video-upload", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "create",
+            pageId,
+            fileName: item.file.name,
+            mimeType,
+            fileSize: item.file.size,
+          }),
+        }),
+      );
+      uploadedIds.push(intent.upload.assetId);
+
+      updateToast(toastId, {
+        title: "Đang tải video lên",
+        description: `${formatFileSize(item.file.size)} đang được gửi thẳng vào kho riêng tư.`,
+        progress: 0.16,
+      });
+      const { error: uploadError } = await createSupabaseBrowserClient()
+        .storage.from(intent.upload.bucket)
+        .uploadToSignedUrl(
+          intent.upload.storageKey,
+          intent.upload.token,
+          item.file,
+          {
+            cacheControl: "3600",
+            contentType: mimeType,
+          },
+        );
+      if (uploadError) {
+        throw new Error(
+          "Không thể tải video lên kho lưu trữ. Vui lòng thử lại; nếu lỗi lặp lại, hãy kiểm tra cấu hình Supabase Storage.",
+        );
+      }
+      updateToast(toastId, {
+        title: "Đã tải video lên",
+        description: "Đang xác minh tệp trước khi gửi sang Facebook.",
+        progress: 0.72,
+      });
+
+      const completed = await readPayload<{ asset: { id: string } }>(
+        await fetch("/api/assets/video-upload", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "complete",
+            assetId: intent.upload.assetId,
+            pageId,
+            storageKey: intent.upload.storageKey,
+            fileName: item.file.name,
+            mimeType,
+            fileSize: item.file.size,
+          }),
+        }),
+      );
+      if (completed.asset.id !== intent.upload.assetId) {
+        throw new Error("Máy chủ trả về video không khớp phiên tải lên.");
+      }
+      return;
+    }
+
     for (let index = 0; index < media.length; index += 1) {
       updateToast(toastId, {
         title: "Đang tải ảnh lên",
@@ -748,7 +883,9 @@ export function ComposerWorkspace() {
       title: actionLabel,
       description:
         media.length > 0
-          ? `Đang chuẩn bị ${media.length} ảnh theo đúng thứ tự đã chọn.`
+          ? mediaKind === "video"
+            ? "Đang chuẩn bị video để gửi lên Facebook."
+            : `Đang chuẩn bị ${media.length} ảnh theo đúng thứ tự đã chọn.`
           : "Đang chuẩn bị nội dung bài viết.",
       duration: null,
       progress: media.length > 0 ? 0.04 : null,
@@ -801,7 +938,9 @@ export function ComposerWorkspace() {
           action === "draft"
             ? "Đã lưu bản nháp"
             : action === "publish"
-              ? "Facebook đã xác nhận bài đăng"
+              ? mediaKind === "video"
+                ? "Facebook đã nhận video"
+                : "Facebook đã xác nhận bài đăng"
               : "Facebook đã xác nhận lịch đăng",
         description:
           action === "schedule"
@@ -813,8 +952,10 @@ export function ComposerWorkspace() {
                 },
               ).format(new Date(scheduledFor))}.`
             : action === "publish"
-              ? `Bài viết đã được gửi lên ${selectedPage?.name ?? "Page"}.`
-              : "Nội dung và thứ tự ảnh đã được lưu an toàn.",
+              ? mediaKind === "video"
+                ? `Video đã được gửi lên ${selectedPage?.name ?? "Page"} và Facebook đang xử lý mã hóa.`
+                : `Bài viết đã được gửi lên ${selectedPage?.name ?? "Page"}.`
+              : `Nội dung và ${mediaKind === "video" ? "video" : "thứ tự ảnh"} đã được lưu an toàn.`,
         duration: 5_000,
         progress: 1,
       });
@@ -884,25 +1025,59 @@ export function ComposerWorkspace() {
           <div className="composerMediaPanel">
             <div className="composerMediaHeading">
               <div>
-                <span className="stepLabel">HÌNH ẢNH</span>
-                <h2>Thư viện bài viết</h2>
+                <span className="stepLabel">NỘI DUNG ĐA PHƯƠNG TIỆN</span>
+                <h2>
+                  {mediaKind === "image" ? "Thư viện ảnh" : "Video bài viết"}
+                </h2>
                 <p>
-                  Tối đa 10 ảnh. Kéo trực tiếp từng ảnh để sắp xếp thứ tự gửi
-                  sang Facebook.
+                  {mediaKind === "image"
+                    ? "Tối đa 10 ảnh. Kéo trực tiếp từng ảnh để sắp xếp thứ tự gửi sang Facebook."
+                    : "Một video MP4 hoặc MOV, tối đa 50 MB. Facebook sẽ xử lý mã hóa sau khi nhận."}
                 </p>
               </div>
-              <button
-                className="button buttonSecondary composerAddMediaButton"
-                disabled={!pageId || submitting || media.length >= MAX_IMAGES}
-                onClick={() => inputRef.current?.click()}
-                type="button"
-              >
-                + Thêm ảnh
-              </button>
+              <div className="composerMediaActions">
+                <div
+                  className={`composerMediaKindSwitch ${mediaKind === "video" ? "isVideo" : ""}`}
+                  role="group"
+                  aria-label="Chọn loại tệp đăng"
+                >
+                  <span aria-hidden="true" />
+                  <button
+                    className={mediaKind === "image" ? "isActive" : ""}
+                    onClick={() => changeMediaKind("image")}
+                    type="button"
+                  >
+                    Ảnh
+                  </button>
+                  <button
+                    className={mediaKind === "video" ? "isActive" : ""}
+                    onClick={() => changeMediaKind("video")}
+                    type="button"
+                  >
+                    Video
+                  </button>
+                </div>
+                <button
+                  className="button buttonSecondary composerAddMediaButton"
+                  disabled={
+                    !pageId ||
+                    submitting ||
+                    media.length >= (mediaKind === "image" ? MAX_IMAGES : 1)
+                  }
+                  onClick={() => inputRef.current?.click()}
+                  type="button"
+                >
+                  + Thêm {mediaKind === "image" ? "ảnh" : "video"}
+                </button>
+              </div>
               <input
-                accept="image/jpeg,image/png,image/webp"
+                accept={
+                  mediaKind === "image"
+                    ? "image/jpeg,image/png,image/webp"
+                    : "video/mp4,video/quicktime"
+                }
                 hidden
-                multiple
+                multiple={mediaKind === "image"}
                 onChange={handleFiles}
                 ref={inputRef}
                 type="file"
@@ -929,17 +1104,30 @@ export function ComposerWorkspace() {
                 tabIndex={0}
               >
                 <span className="composerDropIcon">＋</span>
-                <strong>Kéo ảnh vào đây hoặc chọn từ máy</strong>
-                <small>JPEG, PNG, WebP · tối đa 10 MB/ảnh</small>
+                <strong>
+                  Kéo {mediaKind === "image" ? "ảnh" : "video"} vào đây hoặc
+                  chọn từ máy
+                </strong>
+                <small>
+                  {mediaKind === "image"
+                    ? "JPEG, PNG, WebP · tối đa 10 MB/ảnh"
+                    : "MP4, MOV · tối đa 50 MB/video"}
+                </small>
               </div>
             ) : (
-              <div className="composerMediaList">
+              <div
+                className={`composerMediaList ${mediaKind === "video" ? "isVideo" : ""}`}
+              >
                 {media.map((item, index) => (
                   <article
-                    aria-label={`${item.file.name}, ảnh ${index + 1}. Kéo để đổi vị trí hoặc dùng các phím mũi tên.`}
+                    aria-label={
+                      mediaKind === "video"
+                        ? `${item.file.name}, video đã chọn.`
+                        : `${item.file.name}, ảnh ${index + 1}. Kéo để đổi vị trí hoặc dùng các phím mũi tên.`
+                    }
                     className={`composerMediaItem ${draggedMediaId === item.localId ? "isDragging" : ""} ${dropTargetMediaId === item.localId && draggedMediaId !== item.localId ? "isDropTarget" : ""}`}
                     data-media-id={item.localId}
-                    draggable={!submitting}
+                    draggable={!submitting && mediaKind === "image"}
                     key={item.localId}
                     onDragEnd={resetMediaDrag}
                     onDragLeave={(event) => {
@@ -991,8 +1179,18 @@ export function ComposerWorkspace() {
                     }}
                     tabIndex={submitting ? -1 : 0}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img alt={`Ảnh ${index + 1}`} src={item.previewUrl} />
+                    {mediaKind === "video" ? (
+                      <video
+                        aria-label="Video đã chọn"
+                        muted
+                        playsInline
+                        preload="metadata"
+                        src={item.previewUrl}
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img alt={`Ảnh ${index + 1}`} src={item.previewUrl} />
+                    )}
                     <span className="composerMediaOrder">{index + 1}</span>
                     <span className="composerMediaTooltip" role="tooltip">
                       <strong>{item.file.name}</strong>
@@ -1164,22 +1362,37 @@ export function ComposerWorkspace() {
                   {message.trim() || "Nội dung bài viết sẽ hiển thị tại đây..."}
                 </p>
                 {media.length > 0 ? (
-                  <div
-                    className="facebookMediaLayout"
-                    data-count={previewCount}
-                  >
-                    {media.slice(0, 4).map((item, index) => (
-                      <div key={item.localId}>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img alt="" src={item.previewUrl} />
-                        {index === 3 && media.length > 4 ? (
-                          <b>+{media.length - 4}</b>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
+                  mediaKind === "video" ? (
+                    <div className="facebookVideoPreview">
+                      <video
+                        controls
+                        playsInline
+                        preload="metadata"
+                        src={media[0]!.previewUrl}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="facebookMediaLayout"
+                      data-count={previewCount}
+                    >
+                      {media.slice(0, 4).map((item, index) => (
+                        <div key={item.localId}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img alt="" src={item.previewUrl} />
+                          {index === 3 && media.length > 4 ? (
+                            <b>+{media.length - 4}</b>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )
                 ) : (
-                  <div className="facebookPreviewEmptyMedia">Ảnh xem trước</div>
+                  <div className="facebookPreviewEmptyMedia">
+                    {mediaKind === "image"
+                      ? "Ảnh xem trước"
+                      : "Video xem trước"}
+                  </div>
                 )}
                 <div className="facebookPreviewFooter">
                   <span>
@@ -1209,14 +1422,79 @@ export function ComposerWorkspace() {
             </div>
           </div>
           <div className="composerLayoutNote">
-            <strong>Bố cục ảnh tự động</strong>
+            <strong>
+              {mediaKind === "image"
+                ? "Bố cục ảnh tự động"
+                : "Video thường của Page"}
+            </strong>
             <p>
-              Facebook quyết định cách ghép cuối cùng; thứ tự ảnh bạn sắp xếp
-              vẫn được giữ khi gửi.
+              {mediaKind === "image"
+                ? "Facebook quyết định cách ghép cuối cùng; thứ tự ảnh bạn sắp xếp vẫn được giữ khi gửi."
+                : "Video được đăng vào Page bằng Video API. Reel là một loại nội dung riêng và chưa được bật trong luồng này."}
             </p>
           </div>
         </aside>
       </div>
+
+      {pendingMediaKind ? (
+        <div
+          className="composerConfirmBackdrop composerWarningBackdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPendingMediaKind(null);
+            }
+          }}
+          role="presentation"
+        >
+          <section
+            aria-describedby="change-media-kind-description"
+            aria-labelledby="change-media-kind-title"
+            aria-modal="true"
+            className="composerConfirmDialog composerWarningDialog"
+            role="alertdialog"
+          >
+            <div className="composerWarningHeading">
+              <span aria-hidden="true" className="composerWarningIcon">
+                !
+              </span>
+              <div>
+                <span className="stepLabel">CẢNH BÁO THAY ĐỔI</span>
+                <h2 id="change-media-kind-title">
+                  Đổi sang {pendingMediaKind === "video" ? "Video" : "Ảnh"}?
+                </h2>
+              </div>
+            </div>
+            <p id="change-media-kind-description">
+              {media.length === 1
+                ? "Tệp đang chọn"
+                : `${media.length} tệp đang chọn`}{" "}
+              sẽ bị bỏ khỏi bản soạn để tránh trộn ảnh và video trong cùng một
+              bài viết.
+            </p>
+            <div className="composerWarningNote">
+              <strong>Caption vẫn được giữ nguyên.</strong>
+              <span>File gốc trên máy của bạn không bị xóa hoặc thay đổi.</span>
+            </div>
+            <footer>
+              <button
+                autoFocus
+                className="button buttonSecondary"
+                onClick={() => setPendingMediaKind(null)}
+                type="button"
+              >
+                Giữ lại
+              </button>
+              <button
+                className="button composerWarningConfirmButton"
+                onClick={confirmMediaKindChange}
+                type="button"
+              >
+                Đổi loại nội dung
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
 
       {pendingAction ? (
         <div className="composerConfirmBackdrop" role="presentation">
@@ -1245,8 +1523,12 @@ export function ComposerWorkspace() {
                 </strong>
               </div>
               <div>
-                <span>Hình ảnh</span>
-                <strong>{media.length} ảnh</strong>
+                <span>{mediaKind === "image" ? "Hình ảnh" : "Video"}</span>
+                <strong>
+                  {mediaKind === "image"
+                    ? `${media.length} ảnh`
+                    : (media[0]?.file.name ?? "Chưa chọn video")}
+                </strong>
               </div>
               {pendingAction === "schedule" ? (
                 <div>

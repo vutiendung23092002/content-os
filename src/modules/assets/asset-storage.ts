@@ -6,6 +6,36 @@ import {
 import { AppError } from "@/lib/errors/app-error";
 
 export class AssetStorage {
+  async createSignedUploadUrl(storageKey: string) {
+    const { data, error } = await createSupabaseAdminClient()
+      .storage.from(getAssetBucketName())
+      .createSignedUploadUrl(storageKey);
+    if (error || !data?.token) {
+      throw new AppError({
+        code: "ASSET_UPLOAD_INTENT_FAILED",
+        message: "Không thể chuẩn bị phiên tải video bảo mật.",
+        status: 502,
+        cause: error,
+      });
+    }
+    return data.token;
+  }
+
+  async info(storageKey: string) {
+    const { data, error } = await createSupabaseAdminClient()
+      .storage.from(getAssetBucketName())
+      .info(storageKey);
+    if (error || !data) {
+      throw new AppError({
+        code: "ASSET_UPLOAD_NOT_FOUND",
+        message: "Không tìm thấy video vừa tải lên kho lưu trữ.",
+        status: 404,
+        cause: error,
+      });
+    }
+    return data;
+  }
+
   async upload(input: {
     storageKey: string;
     data: ArrayBuffer;

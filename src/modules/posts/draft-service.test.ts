@@ -78,6 +78,7 @@ describe("DraftService", () => {
     expect(stores.drafts.createDraft).toHaveBeenCalledWith({
       pageId,
       message: "Draft caption",
+      type: "text",
       assetIds: [],
     });
   });
@@ -99,7 +100,9 @@ describe("DraftService", () => {
   it("allows an image-only draft and preserves asset order", async () => {
     const stores = createStores();
     const assets: DraftAssetReader = {
-      findAttachableByIds: vi.fn().mockResolvedValue([{ id: assetId }]),
+      findAttachableByIds: vi
+        .fn()
+        .mockResolvedValue([{ id: assetId, mimeType: "image/jpeg" }]),
     };
     const service = new DraftService(stores.pages, stores.drafts, assets);
 
@@ -109,6 +112,26 @@ describe("DraftService", () => {
     expect(stores.drafts.createDraft).toHaveBeenCalledWith({
       pageId,
       message: "",
+      type: "image",
+      assetIds: [assetId],
+    });
+  });
+
+  it("creates a video draft from exactly one video asset", async () => {
+    const stores = createStores();
+    const assets: DraftAssetReader = {
+      findAttachableByIds: vi
+        .fn()
+        .mockResolvedValue([{ id: assetId, mimeType: "video/mp4" }]),
+    };
+    const service = new DraftService(stores.pages, stores.drafts, assets);
+
+    await service.create({ pageId, message: "Video", assetIds: [assetId] });
+
+    expect(stores.drafts.createDraft).toHaveBeenCalledWith({
+      pageId,
+      message: "Video",
+      type: "video",
       assetIds: [assetId],
     });
   });

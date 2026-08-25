@@ -63,6 +63,56 @@ describe("MetaGraphClient", () => {
     expect(body.get("scheduled_publish_time")).toBe("1787277600");
   });
 
+  it("publishes a hosted Page video through the videos edge", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ id: "video-1" }));
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    const remoteId = await client.publishVideo({
+      pageId: "page-1",
+      description: "Video caption",
+      fileUrl: "https://signed/video.mp4",
+    });
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const body = init?.body as URLSearchParams;
+
+    expect(remoteId).toBe("video-1");
+    expect(String(url)).toBe("https://graph.test/v99.0/page-1/videos");
+    expect(body.get("description")).toBe("Video caption");
+    expect(body.get("file_url")).toBe("https://signed/video.mp4");
+    expect(body.has("published")).toBe(false);
+  });
+
+  it("creates a Facebook-native Page video schedule", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ id: "video-2" }));
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    await client.scheduleVideo({
+      pageId: "page-1",
+      description: "Scheduled video",
+      fileUrl: "https://signed/video.mp4",
+      scheduledFor: new Date("2026-08-21T02:00:00.000Z"),
+    });
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const body = init?.body as URLSearchParams;
+
+    expect(body.get("published")).toBe("false");
+    expect(body.get("scheduled_publish_time")).toBe("1787277600");
+  });
+
   it("uploads photos without publishing and preserves their order in one feed post", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

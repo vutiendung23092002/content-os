@@ -48,6 +48,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         const draft = await postRepository.createDraft({
           pageId: page.id,
           message: "Integration draft",
+          type: "text",
         });
         const operation = await operationRepository.createPending({
           pageId: page.id,
@@ -174,6 +175,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           const post = await postRepository.createDraft({
             pageId: page.id,
             message: label,
+            type: "image",
             assetIds: [asset.id],
           });
           return { asset, post };

@@ -7,6 +7,7 @@ export type PostRecord = typeof posts.$inferSelect;
 export type CreateDraftInput = {
   pageId: string;
   message: string;
+  type: "text" | "image" | "video";
   assetIds?: string[];
 };
 
@@ -35,7 +36,7 @@ export class PostRepository {
       .values({
         pageId: input.pageId,
         message: input.message,
-        type: input.assetIds?.length ? "image" : "text",
+        type: input.type,
         status: "draft",
       })
       .returning();
@@ -112,9 +113,12 @@ export class PostRepository {
         inputs.map((input) => ({
           pageId: input.pageId,
           remotePostId: input.remotePostId,
-          type: input.snapshot.imageUrl
-            ? ("image" as const)
-            : ("text" as const),
+          type:
+            input.snapshot.mediaType === "video"
+              ? ("video" as const)
+              : input.snapshot.imageUrl
+                ? ("image" as const)
+                : ("text" as const),
           message: input.message,
           status: input.kind,
           scheduledAt: input.kind === "scheduled" ? input.effectiveAt : null,
@@ -129,7 +133,7 @@ export class PostRepository {
         target: [posts.pageId, posts.remotePostId],
         targetWhere: sql`${posts.remotePostId} is not null`,
         set: {
-          type: sql`excluded.type`,
+          type: sql`case when ${posts.type} = 'video' then ${posts.type} else excluded.type end`,
           message: sql`excluded.message`,
           status: sql`excluded.status`,
           scheduledAt: sql`excluded.scheduled_at`,

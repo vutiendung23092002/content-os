@@ -23,6 +23,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
     "db:verify": "node scripts/verify-database-schema.mjs",
+    "storage:configure": "node scripts/configure-media-bucket.mjs",
     "facebook:list-pages": "node --env-file=.env.local scripts/list-managed-pages.mjs",
     "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
   },

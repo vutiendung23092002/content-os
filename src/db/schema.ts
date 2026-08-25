@@ -64,6 +64,7 @@ export const postStatusEnum = applicationSchema.enum("post_status", [
 export const postTypeEnum = applicationSchema.enum("post_type", [
   "text",
   "image",
+  "video",
 ]);
 
 export const operationTypeEnum = applicationSchema.enum("operation_type", [

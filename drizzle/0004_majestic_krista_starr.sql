@@ -1,0 +1,1 @@
+ALTER TYPE "hancontent_os"."post_type" ADD VALUE 'video';

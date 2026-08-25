@@ -3,6 +3,10 @@ import { z } from "zod";
 import type { PageRecord } from "@/db/repositories/page-repository";
 import type { PostRecord } from "@/db/repositories/post-repository";
 import { AppError } from "@/lib/errors/app-error";
+import {
+  isImageMimeType,
+  isVideoMimeType,
+} from "@/modules/assets/media-policy";
 
 export const draftMessageSchema = z
   .string()
@@ -49,6 +53,7 @@ export type DraftStore = {
   createDraft(input: {
     pageId: string;
     message: string;
+    type: "text" | "image" | "video";
     assetIds?: string[];
   }): Promise<PostRecord>;
   findById(id: string): Promise<PostRecord | undefined>;
@@ -64,7 +69,7 @@ export type DraftAssetReader = {
   findAttachableByIds(
     pageId: string,
     ids: string[],
-  ): Promise<Array<{ id: string }>>;
+  ): Promise<Array<{ id: string; mimeType: string }>>;
 };
 
 export class DraftService {
@@ -93,6 +98,7 @@ export class DraftService {
       });
     }
 
+    let type: "text" | "image" | "video" = "text";
     if (parsed.assetIds.length > 0) {
       const available = await this.assets?.findAttachableByIds(
         parsed.pageId,
@@ -105,11 +111,31 @@ export class DraftService {
           status: 409,
         });
       }
+
+      const imageCount = available.filter((asset) =>
+        isImageMimeType(asset.mimeType),
+      ).length;
+      const videoCount = available.filter((asset) =>
+        isVideoMimeType(asset.mimeType),
+      ).length;
+      if (imageCount === available.length) {
+        type = "image";
+      } else if (videoCount === 1 && available.length === 1) {
+        type = "video";
+      } else {
+        throw new AppError({
+          code: "DRAFT_MEDIA_MIX_INVALID",
+          message:
+            "Mỗi bài chỉ được dùng bộ ảnh hoặc một video, không trộn hai loại.",
+          status: 400,
+        });
+      }
     }
 
     return this.drafts.createDraft({
       pageId: parsed.pageId,
       message: parsed.message.trim(),
+      type,
       assetIds: parsed.assetIds,
     });
   }

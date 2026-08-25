@@ -182,12 +182,43 @@ a {
 }
 
 .sidebarNav {
+  position: relative;
   display: grid;
   gap: 1rem;
   overflow-y: auto;
 }
 
+.sidebarNavIndicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+  border: 1px solid rgb(255 255 255 / 96%);
+  border-radius: var(--glass-radius-sm);
+  background:
+    radial-gradient(circle at 16% 8%, rgb(255 255 255 / 76%), transparent 52%),
+    linear-gradient(125deg, rgb(239 230 255 / 98%), rgb(255 233 247 / 94%));
+  box-shadow:
+    0 9px 24px rgb(83 49 142 / 9%),
+    inset 0 1px 0 white,
+    inset 0 0 0 1px rgb(201 178 242 / 24%);
+  will-change: transform, width, height;
+  transition:
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 140ms ease;
+}
+
+.sidebarNavIndicator.isReady {
+  opacity: 1;
+}
+
 .navGroup {
+  position: relative;
+  z-index: 1;
   display: grid;
   gap: 0.25rem;
 }
@@ -235,13 +266,9 @@ a {
 
 .navItem.isActive {
   color: var(--purple-dark);
-  background: linear-gradient(
-    110deg,
-    rgb(109 49 231 / 13%),
-    rgb(237 77 143 / 8%)
-  );
-  border: 1px solid rgb(255 255 255 / 76%);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 75%);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
   font-weight: 750;
 }
 
@@ -699,6 +726,141 @@ a {
 .peopleWorkspace {
   display: grid;
   gap: 1rem;
+}
+
+.adminLoadingCard,
+.adminLoadingPanel {
+  overflow: hidden;
+}
+
+.adminLoadingLine,
+.adminLoadingField,
+.adminLoadingButton,
+.adminLoadingAvatar,
+.adminLoadingAction {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 80%);
+  background: rgb(229 222 241 / 58%);
+}
+
+.adminLoadingLine::after,
+.adminLoadingField::after,
+.adminLoadingButton::after,
+.adminLoadingAvatar::after,
+.adminLoadingAction::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(
+    105deg,
+    transparent 18%,
+    rgb(255 255 255 / 74%) 48%,
+    transparent 78%
+  );
+  transform: translateX(-110%);
+  animation: adminLoadingShimmer 1.35s ease-in-out infinite;
+}
+
+.adminLoadingCard .adminLoadingLine {
+  width: 62%;
+  height: 0.62rem;
+  margin-top: 0.5rem;
+  border-radius: 999px;
+}
+
+.adminLoadingCard .adminLoadingLine.isValue {
+  width: 2.1rem;
+  height: 1.55rem;
+  margin-top: 0.8rem;
+}
+
+.adminLoadingPanel {
+  min-height: 20rem;
+}
+
+.adminLoadingLine {
+  height: 0.68rem;
+  border-radius: 999px;
+}
+
+.adminLoadingLine.isEyebrow {
+  width: 6.8rem;
+}
+
+.adminLoadingLine.isHeading {
+  width: 10.5rem;
+  height: 1.15rem;
+  margin-top: 0.65rem;
+}
+
+.adminLoadingLine.isCopy {
+  width: min(90%, 22rem);
+  margin-top: 0.8rem;
+}
+
+.adminLoadingField,
+.adminLoadingButton {
+  width: 100%;
+  height: 2.8rem;
+  margin-top: 1rem;
+  border-radius: 0.75rem;
+}
+
+.adminLoadingButton {
+  background: rgb(173 111 228 / 32%);
+}
+
+.adminLoadingPanel.isList {
+  padding-bottom: 0;
+}
+
+.adminLoadingRow {
+  min-height: 5rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  margin-inline: -1.15rem;
+  padding: 0.9rem 1.15rem;
+  border-top: 1px solid rgb(215 205 230 / 62%);
+}
+
+.adminLoadingRow:first-of-type {
+  margin-top: 1.2rem;
+}
+
+.adminLoadingAvatar {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 50%;
+}
+
+.adminLoadingRow > span {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.adminLoadingLine.isName {
+  width: min(70%, 12rem);
+}
+
+.adminLoadingLine.isEmail {
+  width: min(82%, 16rem);
+  height: 0.52rem;
+}
+
+.adminLoadingAction {
+  width: 6.8rem;
+  height: 2.45rem;
+  border-radius: 0.7rem;
+}
+
+@keyframes adminLoadingShimmer {
+  to {
+    transform: translateX(110%);
+  }
 }
 
 .peopleStats {
@@ -4702,10 +4864,73 @@ a.postDetailPermalink:focus-visible {
 }
 
 .composerAddMediaButton {
+  width: 6.45rem;
+  min-width: 6.45rem;
   min-height: 2.25rem;
+  display: inline-grid;
   flex: 0 0 auto;
+  place-items: center;
   padding: 0.4rem 0.7rem;
   font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.composerMediaActions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.composerMediaKindSwitch {
+  position: relative;
+  width: 8.2rem;
+  height: 2.25rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0.2rem;
+  background: linear-gradient(
+    145deg,
+    rgb(243 237 250 / 96%),
+    rgb(251 247 253 / 94%)
+  );
+  border: 1px solid white;
+  border-radius: 0.75rem;
+  box-shadow:
+    inset 0 0 0 1px rgb(207 194 228 / 38%),
+    0 7px 18px rgb(61 39 101 / 6%);
+}
+
+.composerMediaKindSwitch > span {
+  position: absolute;
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 0.2rem;
+  width: calc(50% - 0.2rem);
+  background: linear-gradient(145deg, #fff, #f7f1ff);
+  border: 1px solid white;
+  border-radius: 0.58rem;
+  box-shadow: 0 5px 14px rgb(72 43 118 / 10%);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.composerMediaKindSwitch.isVideo > span {
+  transform: translateX(100%);
+}
+
+.composerMediaKindSwitch button {
+  position: relative;
+  z-index: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  font-size: 0.66rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.composerMediaKindSwitch button.isActive {
+  color: var(--purple-dark);
 }
 
 .composerDropzone {
@@ -4767,6 +4992,17 @@ a.postDetailPermalink:focus-visible {
   margin-top: 0.85rem;
 }
 
+.composerMediaList.isVideo {
+  grid-template-columns: minmax(12rem, 20rem);
+}
+
+.composerMediaList.isVideo .composerMediaItem {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  cursor: default;
+  touch-action: auto;
+}
+
 .composerMediaItem {
   position: relative;
   width: 6.25rem;
@@ -4821,7 +5057,8 @@ a.postDetailPermalink:focus-visible {
     inset 0 0 0 1px rgb(255 255 255 / 88%);
 }
 
-.composerMediaItem > img {
+.composerMediaItem > img,
+.composerMediaItem > video {
   width: 100%;
   height: 100%;
   display: block;
@@ -4831,21 +5068,32 @@ a.postDetailPermalink:focus-visible {
   user-select: none;
 }
 
+.composerMediaItem > video {
+  background: #15121b;
+}
+
 .composerMediaOrder {
   position: absolute;
-  top: 0.42rem;
-  left: 0.42rem;
-  width: 1.25rem;
-  height: 1.25rem;
+  top: 0.55rem;
+  left: 0.55rem;
+  width: 1.55rem;
+  height: 1.55rem;
   display: grid;
   place-items: center;
   color: white;
-  background: rgb(52 35 81 / 84%);
-  border: 1px solid rgb(255 255 255 / 78%);
+  background: linear-gradient(
+    145deg,
+    rgb(55 37 86 / 94%),
+    rgb(36 25 58 / 90%)
+  );
+  border: 1px solid rgb(255 255 255 / 88%);
   border-radius: 50%;
-  box-shadow: 0 4px 12px rgb(34 23 52 / 20%);
-  font-size: 0.56rem;
+  box-shadow:
+    0 5px 15px rgb(23 15 39 / 26%),
+    inset 0 1px 0 rgb(255 255 255 / 20%);
+  font-size: 0.62rem;
   font-weight: 800;
+  line-height: 1;
   pointer-events: none;
 }
 
@@ -4902,27 +5150,33 @@ a.postDetailPermalink:focus-visible {
 
 .composerMediaRemove {
   position: absolute;
-  top: 0.38rem;
-  right: 0.38rem;
-  width: 1.35rem;
-  height: 1.35rem;
+  top: 0.55rem;
+  right: 0.55rem;
+  width: 1.55rem;
+  height: 1.55rem;
   display: grid;
   place-items: center;
-  padding: 0 0 0.08rem;
-  color: #d83954;
-  background: rgb(255 245 247 / 96%);
-  border: 1px solid rgb(255 255 255 / 92%);
+  padding: 0;
+  color: #cf2948;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 98%),
+    rgb(255 237 242 / 96%)
+  );
+  border: 1px solid rgb(255 255 255 / 96%);
   border-radius: 50%;
   box-shadow:
-    0 5px 13px rgb(128 29 52 / 16%),
-    inset 0 0 0 1px rgb(237 108 135 / 20%);
+    0 5px 15px rgb(112 25 47 / 22%),
+    inset 0 0 0 1px rgb(225 77 108 / 24%);
+  backdrop-filter: blur(12px) saturate(130%);
   cursor: pointer;
-  font-size: 0.92rem;
+  font-size: 1rem;
+  font-weight: 700;
   line-height: 1;
-  opacity: 0.9;
   transition:
     color 140ms ease,
     background 140ms ease,
+    box-shadow 140ms ease,
     transform 140ms ease;
 }
 
@@ -4930,6 +5184,9 @@ a.postDetailPermalink:focus-visible {
 .composerMediaRemove:focus-visible {
   color: white;
   background: #e3435d;
+  box-shadow:
+    0 7px 18px rgb(164 30 61 / 28%),
+    inset 0 1px 0 rgb(255 255 255 / 30%);
   outline: none;
   transform: scale(1.08);
 }
@@ -5680,6 +5937,22 @@ a.postDetailPermalink:focus-visible {
   font-size: 1.5rem;
 }
 
+.facebookVideoPreview {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #111018;
+}
+
+.facebookVideoPreview video {
+  width: 100%;
+  max-height: min(62vh, 38rem);
+  display: block;
+  object-fit: contain;
+  background: #111018;
+}
+
 .facebookPreviewEmptyMedia {
   width: 100%;
   aspect-ratio: 2;
@@ -5848,6 +6121,7 @@ a.postDetailPermalink:focus-visible {
   background: rgb(30 23 42 / 46%);
   backdrop-filter: blur(18px) saturate(130%);
   -webkit-backdrop-filter: blur(18px) saturate(130%);
+  animation: composerBackdropEnter 180ms ease-out both;
 }
 
 .composerConfirmDialog {
@@ -5859,6 +6133,7 @@ a.postDetailPermalink:focus-visible {
   border: 1px solid white;
   border-radius: 1.3rem;
   box-shadow: var(--glass-shadow-deep);
+  animation: composerDialogEnter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .composerConfirmDialog h2 {
@@ -5907,6 +6182,91 @@ a.postDetailPermalink:focus-visible {
   margin-top: 1rem;
 }
 
+.composerWarningBackdrop {
+  z-index: 130;
+  background: rgb(29 22 40 / 52%);
+}
+
+.composerWarningDialog {
+  width: min(27rem, 100%);
+  background:
+    radial-gradient(circle at 5% 0%, rgb(226 78 100 / 12%), transparent 17rem),
+    linear-gradient(145deg, rgb(255 255 255 / 99%), rgb(251 246 251 / 98%));
+  box-shadow:
+    0 30px 80px rgb(38 24 59 / 27%),
+    0 8px 24px rgb(123 52 79 / 10%),
+    inset 0 1px 0 white,
+    inset 0 0 0 1px rgb(226 204 216 / 34%);
+}
+
+.composerWarningHeading {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.composerWarningHeading .stepLabel {
+  color: #a52e43;
+}
+
+.composerWarningIcon {
+  flex: 0 0 auto;
+  width: 2.45rem;
+  height: 2.45rem;
+  display: grid;
+  place-items: center;
+  color: #b62f47;
+  background: linear-gradient(145deg, #fff4f6, #fde5e9);
+  border: 1px solid white;
+  border-radius: 0.85rem;
+  box-shadow:
+    0 8px 20px rgb(176 46 69 / 12%),
+    inset 0 0 0 1px rgb(221 91 113 / 18%);
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.composerWarningNote {
+  display: grid;
+  gap: 0.18rem;
+  margin-top: 0.9rem;
+  padding: 0.75rem 0.85rem;
+  color: #64596e;
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid white;
+  border-radius: 0.8rem;
+  box-shadow: inset 0 0 0 1px rgb(218 204 229 / 34%);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.composerWarningNote strong {
+  color: #33283f;
+}
+
+.composerWarningConfirmButton,
+.composerWarningConfirmButton:hover:not(:disabled) {
+  color: white;
+  background: linear-gradient(135deg, #c83c56, #a92843);
+  border-color: rgb(255 255 255 / 48%);
+  box-shadow:
+    0 12px 26px rgb(169 40 66 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 34%);
+}
+
+@keyframes composerBackdropEnter {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes composerDialogEnter {
+  from {
+    opacity: 0;
+    transform: translateY(0.7rem) scale(0.97);
+  }
+}
+
 @media (max-width: 1120px) {
   .composerMainGrid {
     grid-template-columns: 1fr;
@@ -5945,8 +6305,25 @@ a.postDetailPermalink:focus-visible {
     grid-template-columns: repeat(auto-fill, 5.75rem);
   }
 
+  .composerMediaList.isVideo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .composerMediaItem {
     width: 5.75rem;
+  }
+
+  .composerMediaList.isVideo .composerMediaItem {
+    width: min(100%, 20rem);
+  }
+
+  .composerMediaActions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .composerMediaKindSwitch {
+    flex: 1 1 8.2rem;
   }
 
   .composerModeSwitch,
@@ -6080,16 +6457,9 @@ a.postDetailPermalink:focus-visible {
 }
 
 .navItem.isActive {
-  background: linear-gradient(
-    135deg,
-    rgb(242 235 255 / 98%),
-    rgb(255 235 246 / 93%)
-  );
-  border-color: rgb(255 255 255 / 96%);
-  box-shadow:
-    0 8px 22px rgb(83 49 142 / 7%),
-    inset 0 1px 0 white,
-    inset 0 0 0 1px rgb(201 178 242 / 24%);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .sidebarNav {
@@ -6674,6 +7044,14 @@ a.postDetailPermalink:focus-visible {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+
+  .adminLoadingLine::after,
+  .adminLoadingField::after,
+  .adminLoadingButton::after,
+  .adminLoadingAvatar::after,
+  .adminLoadingAction::after {
+    animation: none;
+  }
 }
 
 /* Keep the post library inside the viewport; its table/timeline owns scrolling. */
@@ -6831,13 +7209,19 @@ a.postDetailPermalink:focus-visible {
     0 8px 20px rgb(59 37 96 / 9%),
     inset 0 0 0 1px rgb(207 195 226 / 34%);
   cursor: pointer;
-  font-size: 1.3rem;
-  line-height: 1;
   transition:
     color 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
+}
+
+.postDetailClose svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
 }
 
 .postDetailClose:hover,
@@ -6942,16 +7326,27 @@ a.postDetailPermalink:focus-visible {
 
 @media (max-width: 680px) {
   .postDetailHeader {
+    position: relative;
     align-items: stretch;
     flex-direction: column;
+    padding: 0.85rem 3.55rem 0.75rem 1rem;
   }
 
   .postDetailHeaderActions {
-    justify-content: space-between;
+    display: block;
   }
 
   .postDetailDevices {
-    width: min(100%, 15.5rem);
+    width: 100%;
+    margin-top: 0.75rem;
+  }
+
+  .postDetailClose {
+    position: absolute;
+    top: 0.78rem;
+    right: 0.78rem;
+    width: 2.15rem;
+    height: 2.15rem;
   }
 
   .postDetailPreviewBody {

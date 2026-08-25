@@ -23,8 +23,9 @@ export type PreparedSubmission = {
   pageId: string;
   externalPageId: string;
   message: string;
+  postType: "text" | "image" | "video";
   pageAccessToken: string;
-  media: Array<{ assetId: string; storageKey: string }>;
+  media: Array<{ assetId: string; storageKey: string; mimeType: string }>;
 };
 
 export type SubmissionPersistence = {
@@ -60,6 +61,17 @@ export type SubmissionMetaClient = {
     message: string;
     scheduledFor: Date;
     mediaUrls?: string[];
+  }): Promise<string>;
+  publishVideo(input: {
+    pageId: string;
+    description: string;
+    fileUrl: string;
+  }): Promise<string>;
+  scheduleVideo(input: {
+    pageId: string;
+    description: string;
+    fileUrl: string;
+    scheduledFor: Date;
   }): Promise<string>;
 };
 
@@ -141,10 +153,12 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         pageId: page.id,
         externalPageId: page.externalPageId,
         message: post.message,
+        postType: post.type,
         pageAccessToken,
         media: media.map((asset) => ({
           assetId: asset.id,
           storageKey: asset.storageKey,
+          mimeType: asset.mimeType,
         })),
       };
     });
@@ -291,19 +305,43 @@ export class SubmitPostService {
               prepared.media.map((asset) => asset.storageKey),
             )
           : [];
-      remotePostId =
-        input.kind === "schedule" && input.scheduledFor
-          ? await client.schedulePost({
-              pageId: prepared.externalPageId,
-              message: prepared.message,
-              scheduledFor: input.scheduledFor,
-              mediaUrls,
-            })
-          : await client.publishPost({
-              pageId: prepared.externalPageId,
-              message: prepared.message,
-              mediaUrls,
-            });
+      if (prepared.postType === "video") {
+        const fileUrl = mediaUrls[0];
+        if (!fileUrl || prepared.media.length !== 1) {
+          throw new AppError({
+            code: "VIDEO_ASSET_INVALID",
+            message: "Bài video cần đúng một tệp video hợp lệ.",
+            status: 400,
+          });
+        }
+        remotePostId =
+          input.kind === "schedule" && input.scheduledFor
+            ? await client.scheduleVideo({
+                pageId: prepared.externalPageId,
+                description: prepared.message,
+                fileUrl,
+                scheduledFor: input.scheduledFor,
+              })
+            : await client.publishVideo({
+                pageId: prepared.externalPageId,
+                description: prepared.message,
+                fileUrl,
+              });
+      } else {
+        remotePostId =
+          input.kind === "schedule" && input.scheduledFor
+            ? await client.schedulePost({
+                pageId: prepared.externalPageId,
+                message: prepared.message,
+                scheduledFor: input.scheduledFor,
+                mediaUrls,
+              })
+            : await client.publishPost({
+                pageId: prepared.externalPageId,
+                message: prepared.message,
+                mediaUrls,
+              });
+      }
     } catch (error) {
       const normalized =
         error instanceof AppError

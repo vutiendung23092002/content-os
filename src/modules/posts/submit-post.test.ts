@@ -14,6 +14,7 @@ const prepared: PreparedSubmission = {
   pageId: "page-local-1",
   externalPageId: "page-external-1",
   message: "Caption",
+  postType: "text",
   pageAccessToken: "decrypted-page-token",
   media: [],
 };
@@ -27,6 +28,8 @@ function setup() {
   const client: SubmissionMetaClient = {
     publishPost: vi.fn().mockResolvedValue("remote-post-1"),
     schedulePost: vi.fn().mockResolvedValue("remote-scheduled-1"),
+    publishVideo: vi.fn().mockResolvedValue("remote-video-1"),
+    scheduleVideo: vi.fn().mockResolvedValue("remote-video-scheduled-1"),
   };
   const clientFactory = vi.fn().mockReturnValue(client);
   const service = new SubmitPostService(
@@ -170,8 +173,16 @@ describe("SubmitPostService", () => {
       prepare: vi.fn().mockResolvedValue({
         ...prepared,
         media: [
-          { assetId: "asset-1", storageKey: "page/one.jpg" },
-          { assetId: "asset-2", storageKey: "page/two.jpg" },
+          {
+            assetId: "asset-1",
+            storageKey: "page/one.jpg",
+            mimeType: "image/jpeg",
+          },
+          {
+            assetId: "asset-2",
+            storageKey: "page/two.jpg",
+            mimeType: "image/jpeg",
+          },
         ],
       }),
       succeed: vi.fn().mockResolvedValue(undefined),
@@ -180,6 +191,8 @@ describe("SubmitPostService", () => {
     const client: SubmissionMetaClient = {
       publishPost: vi.fn().mockResolvedValue("remote-gallery-1"),
       schedulePost: vi.fn().mockResolvedValue("remote-gallery-1"),
+      publishVideo: vi.fn().mockResolvedValue("remote-video-1"),
+      scheduleVideo: vi.fn().mockResolvedValue("remote-video-scheduled-1"),
     };
     const assetUrls = {
       createSignedUrls: vi
@@ -204,5 +217,38 @@ describe("SubmitPostService", () => {
       message: "Caption",
       mediaUrls: ["https://signed/one", "https://signed/two"],
     });
+  });
+
+  it("publishes a video through the dedicated Page video method", async () => {
+    const setupResult = setup();
+    vi.mocked(setupResult.persistence.prepare).mockResolvedValue({
+      ...prepared,
+      postType: "video",
+      media: [
+        {
+          assetId: "video-asset",
+          storageKey: "page/video.mp4",
+          mimeType: "video/mp4",
+        },
+      ],
+    });
+    const assetUrls = {
+      createSignedUrls: vi.fn().mockResolvedValue(["https://signed/video"]),
+    };
+    const service = new SubmitPostService(
+      setupResult.persistence,
+      () => setupResult.client,
+      () => new Date("2026-08-20T00:00:00.000Z"),
+      assetUrls,
+    );
+
+    await service.publish(postId);
+
+    expect(setupResult.client.publishVideo).toHaveBeenCalledWith({
+      pageId: "page-external-1",
+      description: "Caption",
+      fileUrl: "https://signed/video",
+    });
+    expect(setupResult.client.publishPost).not.toHaveBeenCalled();
   });
 });
