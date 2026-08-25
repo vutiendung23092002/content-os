@@ -340,7 +340,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Adapter private Supabase Storage, upload server-only, signed URL ngắn hạn và metadata/checksum trong `assets`.
   - [x] Tạo bucket private `post-assets`, giới hạn 10 MB cho JPEG/PNG/WebP và smoke upload/cleanup thành công qua localhost lẫn Cloudflare Tunnel.
 
-- [ ] ASSET-002 — Multi-image upload and preview
+- [x] ASSET-002 — Multi-image upload and preview
   - Priority: P2
   - Goal: Upload/validate tối đa 10 JPEG/PNG/WebP, sắp xếp thứ tự và gắn vào draft.
   - Depends on: ASSET-001, POST-002.
@@ -348,7 +348,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: MIME/dung lượng/kích thước hợp lệ; asset lỗi không được publish; remove an toàn.
   - Tests: Valid formats, spoofed MIME, oversized/corrupt file, retry và detach tests.
   - [x] Composer có chọn/kéo thả file, preview, kéo card để đổi thứ tự, xóa ảnh và cleanup asset chưa gắn khi luồng tạo draft lỗi.
-  - [ ] Bổ sung kiểm tra magic bytes/dimension phía server và storage integration test trước khi đóng task.
+  - [x] Bổ sung kiểm tra magic bytes/dimension phía server và storage integration test trước khi đóng task.
 
 - [ ] ASSET-003 — Publish and schedule multiple images
   - Priority: P2

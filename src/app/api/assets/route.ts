@@ -9,19 +9,16 @@ import { toErrorResponse } from "@/lib/errors/api-error";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { AssetStorage } from "@/modules/assets/asset-storage";
 import { AssetCleanupService } from "@/modules/assets/asset-cleanup-service";
+import { validateImageBytes } from "@/modules/assets/image-validator";
+import {
+  extensionForMedia,
+  isImageMimeType,
+  MAX_IMAGE_FILE_SIZE,
+} from "@/modules/assets/media-policy";
 
 export const dynamic = "force-dynamic";
 
 const pageIdSchema = z.uuid();
-const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-const maximumFileSize = 10 * 1024 * 1024;
-
-function extensionFor(mimeType: string) {
-  if (mimeType === "image/jpeg") return "jpg";
-  if (mimeType === "image/png") return "png";
-  return "webp";
-}
-
 export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
   let uploadedStorageKey: string | undefined;
@@ -41,14 +38,14 @@ export async function POST(request: Request) {
         status: 400,
       });
     }
-    if (!allowedMimeTypes.has(file.type)) {
+    if (!isImageMimeType(file.type)) {
       throw new AppError({
         code: "ASSET_TYPE_INVALID",
         message: "Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.",
         status: 400,
       });
     }
-    if (file.size <= 0 || file.size > maximumFileSize) {
+    if (file.size <= 0 || file.size > MAX_IMAGE_FILE_SIZE) {
       throw new AppError({
         code: "ASSET_SIZE_INVALID",
         message: "Mỗi ảnh phải nhỏ hơn hoặc bằng 10 MB.",
@@ -57,23 +54,26 @@ export async function POST(request: Request) {
     }
 
     const bytes = await file.arrayBuffer();
+    const image = validateImageBytes(bytes, file.type);
     const now = new Date();
-    uploadedStorageKey = `${pageId}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.${extensionFor(file.type)}`;
+    uploadedStorageKey = `${pageId}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}.${extensionForMedia(image.mimeType)}`;
     const storage = new AssetStorage();
     await storage.upload({
       storageKey: uploadedStorageKey,
       data: bytes,
-      contentType: file.type,
+      contentType: image.mimeType,
     });
 
     const asset = await new AssetRepository(getDatabase()).create({
       pageId,
       storageKey: uploadedStorageKey,
-      mimeType: file.type,
+      mimeType: image.mimeType,
       fileSize: file.size,
+      width: image.width,
+      height: image.height,
       checksum: createHash("sha256").update(Buffer.from(bytes)).digest("hex"),
       originalFilename:
-        file.name.slice(0, 255) || `image.${extensionFor(file.type)}`,
+        file.name.slice(0, 255) || `image.${extensionForMedia(image.mimeType)}`,
     });
     persistedAssetId = asset.id;
     const previewUrl = await storage.createSignedUrl(asset.storageKey);
@@ -85,6 +85,8 @@ export async function POST(request: Request) {
           name: asset.originalFilename,
           mimeType: asset.mimeType,
           fileSize: asset.fileSize,
+          width: asset.width,
+          height: asset.height,
           previewUrl,
         },
         requestId,
