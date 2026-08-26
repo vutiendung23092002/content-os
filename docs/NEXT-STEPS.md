@@ -4,14 +4,14 @@ Han Content OS đã có luồng MVP nội bộ cho đăng ngay/hẹn giờ nativ
 
 Các bước còn lại được ưu tiên theo rủi ro và giá trị vận hành:
 
-## 1. FB-008, FB-009 và POST-005 — Quản lý bài hẹn giờ
+## 1. Live smoke FB-008, FB-009 và POST-005 — Quản lý bài remote
 
-- Thêm đổi lịch cho remote scheduled post.
-- Thêm hủy lịch bằng API chính thức của Meta.
+- FB-008/FB-009/POST-005 đã có backend và UI cơ bản bằng mock/unit/typecheck.
+- Menu `•••` trong popup chi tiết hỗ trợ đổi lịch, sửa caption, hủy lịch, sửa bài đã đăng và xóa bài đã đăng.
 - Có popup xác nhận, operation ledger, refetch remote sau mutation và trạng thái `needs_attention` khi kết quả không chắc chắn.
 - Chỉ chạy live mutation trên Page test sau khi được cho phép rõ ràng; unit/contract test dùng mock trước.
 
-Đây là khoảng trống chức năng chính còn lại của phạm vi quản lý bài viết ban đầu.
+Việc còn lại là smoke có kiểm soát trên Page test và xác minh lại trong Facebook/Business Suite trước khi đóng các task này.
 
 ## 2. SEC-003 và SEC-004 — Hardening mutation/credential
 

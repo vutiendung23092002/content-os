@@ -13,6 +13,7 @@ export const remotePostKindSchema = z.enum(["published", "scheduled"]);
 export type RemotePostKind = z.infer<typeof remotePostKindSchema>;
 
 export type RemoteFacebookPost = {
+  localPostId: string | null;
   remoteId: string;
   kind: RemotePostKind;
   message: string;
@@ -201,6 +202,7 @@ export class RemotePostReader {
         posts: result.posts.map((post) => {
           const imageUrls = getImageUrls(post);
           return {
+            localPostId: null,
             remoteId: post.id,
             kind,
             message: post.message ?? "",
@@ -238,6 +240,7 @@ export class RemotePostReader {
         const imageUrls = getImageUrls(post);
 
         return {
+          localPostId: null,
           remoteId: post.id,
           kind,
           message: post.message ?? "",

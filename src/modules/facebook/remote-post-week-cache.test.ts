@@ -8,6 +8,7 @@ const weekStart = new Date("2026-08-16T17:00:00.000Z");
 
 function remotePost(id: string, effectiveAt: string): RemoteFacebookPost {
   return {
+    localPostId: null,
     remoteId: id,
     kind: "published",
     message: `Post ${id}`,
@@ -21,6 +22,34 @@ function remotePost(id: string, effectiveAt: string): RemoteFacebookPost {
     engagement: { reactions: 3, comments: 2, shares: 1 },
     source: "facebook",
   };
+}
+
+function storedRemotePost(post: RemoteFacebookPost, index = 1): PostRecord {
+  return {
+    id: `local-${post.remoteId}-${index}`,
+    remotePostId: post.remoteId,
+    status: post.kind,
+    type: post.mediaType,
+    message: post.message,
+    publishedAt:
+      post.kind === "published" && post.effectiveAt
+        ? new Date(post.effectiveAt)
+        : null,
+    scheduledAt:
+      post.kind === "scheduled" && post.effectiveAt
+        ? new Date(post.effectiveAt)
+        : null,
+    remoteCreatedAt: post.createdAt ? new Date(post.createdAt) : null,
+    remoteUpdatedAt: post.updatedAt ? new Date(post.updatedAt) : null,
+    remoteSnapshot: {
+      permalinkUrl: post.permalinkUrl,
+      imageUrl: post.imageUrl,
+      imageUrls: post.imageUrls,
+      mediaType: post.mediaType,
+      engagement: post.engagement,
+      source: post.source,
+    },
+  } as unknown as PostRecord;
 }
 
 describe("RemotePostWeekCache", () => {
@@ -126,7 +155,13 @@ describe("RemotePostWeekCache", () => {
         .mockResolvedValueOnce({ posts: [second], after: null }),
     };
     const posts = {
-      listRemoteWindow: vi.fn().mockResolvedValue([]),
+      listRemoteWindow: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          storedRemotePost(first),
+          storedRemotePost(second, 2),
+        ]),
       upsertRemotePosts: vi.fn().mockResolvedValue(undefined),
     };
     const cursors = {
@@ -183,7 +218,10 @@ describe("RemotePostWeekCache", () => {
       }),
     };
     const posts = {
-      listRemoteWindow: vi.fn().mockResolvedValue([]),
+      listRemoteWindow: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([storedRemotePost(scheduledPost)]),
       upsertRemotePosts: vi.fn().mockResolvedValue(undefined),
     };
     const cursors = {

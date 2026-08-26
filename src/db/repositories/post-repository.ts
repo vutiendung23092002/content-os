@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
-import { postAssets, posts } from "@/db/schema";
+import { facebookOperations, postAssets, posts } from "@/db/schema";
 
 export type PostRecord = typeof posts.$inferSelect;
 
@@ -106,6 +106,34 @@ export class PostRepository {
   async upsertRemotePosts(inputs: RemotePostCacheInput[]): Promise<void> {
     if (inputs.length === 0) return;
     const syncedAt = new Date();
+    const remotePostIds = Array.from(
+      new Set(inputs.map((input) => input.remotePostId)),
+    );
+
+    await this.database
+      .update(posts)
+      .set({
+        status: sql`case
+          when ${posts.status} = 'scheduled' then 'canceled'::"hancontent_os"."post_status"
+          else 'deleted_remote'::"hancontent_os"."post_status"
+        end`,
+        lastSyncedAt: syncedAt,
+        updatedAt: syncedAt,
+      })
+      .where(
+        and(
+          inArray(posts.remotePostId, remotePostIds),
+          sql`${posts.status} in ('scheduled', 'published')`,
+          sql`exists (
+            select 1
+            from ${facebookOperations}
+            where ${facebookOperations.postId} = ${posts.id}
+              and ${facebookOperations.remotePostId} = ${posts.remotePostId}
+              and ${facebookOperations.type} = 'cancel'
+              and ${facebookOperations.status} = 'succeeded'
+          )`,
+        ),
+      );
 
     await this.database
       .insert(posts)
@@ -144,7 +172,36 @@ export class PostRepository {
           remoteSnapshot: sql`excluded.remote_snapshot`,
           updatedAt: syncedAt,
         },
+        setWhere: sql`${posts.status} not in ('canceled', 'deleted_remote')`,
       });
+
+    // A video upload returns a Video ID while Page feeds expose the associated
+    // Feed Post ID. Successful cancel operations are recorded with the latter,
+    // so a later sync must tombstone a newly discovered feed row as well.
+    await this.database
+      .update(posts)
+      .set({
+        status: sql`case
+          when ${posts.status} = 'scheduled' then 'canceled'::"hancontent_os"."post_status"
+          else 'deleted_remote'::"hancontent_os"."post_status"
+        end`,
+        lastSyncedAt: syncedAt,
+        updatedAt: syncedAt,
+      })
+      .where(
+        and(
+          inArray(posts.remotePostId, remotePostIds),
+          sql`${posts.status} in ('scheduled', 'published')`,
+          sql`exists (
+            select 1
+            from ${facebookOperations}
+            where ${facebookOperations.pageId} = ${posts.pageId}
+              and ${facebookOperations.remotePostId} = ${posts.remotePostId}
+              and ${facebookOperations.type} = 'cancel'
+              and ${facebookOperations.status} = 'succeeded'
+          )`,
+        ),
+      );
   }
 
   async listRemoteWindow(
@@ -208,6 +265,113 @@ export class PostRepository {
         updatedAt: new Date(),
       })
       .where(eq(posts.id, id));
+  }
+
+  async updateScheduledTime(
+    id: string,
+    remotePostId: string,
+    scheduledAt: Date,
+  ): Promise<boolean> {
+    const syncedAt = new Date();
+    const updated = await this.database
+      .update(posts)
+      .set({
+        scheduledAt,
+        remoteUpdatedAt: syncedAt,
+        lastSyncedAt: syncedAt,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        updatedAt: syncedAt,
+      })
+      .where(
+        and(
+          eq(posts.id, id),
+          eq(posts.status, "scheduled"),
+          eq(posts.remotePostId, remotePostId),
+        ),
+      )
+      .returning({ id: posts.id });
+    return updated.length === 1;
+  }
+
+  async updateRemoteMessage(
+    id: string,
+    remotePostId: string,
+    message: string,
+  ): Promise<boolean> {
+    const syncedAt = new Date();
+    const updated = await this.database
+      .update(posts)
+      .set({
+        message,
+        remoteUpdatedAt: syncedAt,
+        lastSyncedAt: syncedAt,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        updatedAt: syncedAt,
+      })
+      .where(
+        and(
+          eq(posts.id, id),
+          sql`${posts.status} in ('scheduled', 'published')`,
+          eq(posts.remotePostId, remotePostId),
+        ),
+      )
+      .returning({ id: posts.id });
+    return updated.length === 1;
+  }
+
+  async markRemoteRemoved(
+    id: string,
+    pageId: string,
+    remotePostId: string,
+    previousStatus: "scheduled" | "published",
+    remotePostAliases: string[] = [],
+  ): Promise<boolean> {
+    const syncedAt = new Date();
+    const updated = await this.database
+      .update(posts)
+      .set({
+        status: previousStatus === "scheduled" ? "canceled" : "deleted_remote",
+        lastSyncedAt: syncedAt,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        updatedAt: syncedAt,
+      })
+      .where(
+        and(
+          eq(posts.id, id),
+          eq(posts.status, previousStatus),
+          eq(posts.remotePostId, remotePostId),
+        ),
+      )
+      .returning({ id: posts.id });
+
+    const aliases = Array.from(
+      new Set(remotePostAliases.filter((alias) => alias !== remotePostId)),
+    );
+    if (aliases.length > 0) {
+      await this.database
+        .update(posts)
+        .set({
+          status: sql`case
+            when ${posts.status} = 'scheduled' then 'canceled'::"hancontent_os"."post_status"
+            else 'deleted_remote'::"hancontent_os"."post_status"
+          end`,
+          lastSyncedAt: syncedAt,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          updatedAt: syncedAt,
+        })
+        .where(
+          and(
+            eq(posts.pageId, pageId),
+            inArray(posts.remotePostId, aliases),
+            sql`${posts.status} in ('scheduled', 'published')`,
+          ),
+        );
+    }
+    return updated.length === 1;
   }
 
   async markSubmissionFailed(

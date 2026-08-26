@@ -42,6 +42,7 @@ type DraftDto = {
 };
 
 type RemotePostDto = {
+  localPostId: string | null;
   remoteId: string;
   kind: "published" | "scheduled";
   message: string;
@@ -63,6 +64,17 @@ type RemotePostDto = {
 type PostTab = "drafts" | "scheduled" | "published";
 type ViewMode = "table" | "timeline";
 type PreviewDevice = "desktop" | "tablet" | "mobile";
+type PostAction = "reschedule" | "edit" | "remove";
+
+function toLocalDateTimeInput(value: string | null): string {
+  const date = value ? new Date(value) : new Date(Date.now() + 25 * 60_000);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function minimumScheduleInput(): string {
+  return toLocalDateTimeInput(new Date(Date.now() + 25 * 60_000).toISOString());
+}
 
 function postOpenPath(remotePostId: string) {
   return `/api/facebook/posts/open?postId=${encodeURIComponent(remotePostId)}`;
@@ -576,20 +588,78 @@ function PostDetailDialog({
   post,
   page,
   onClose,
+  onAction,
 }: {
   post: RemotePostDto;
   page: PageDto | undefined;
   onClose: () => void;
+  onAction: (
+    action: PostAction,
+    payload?: { message?: string; scheduledFor?: string },
+  ) => Promise<void>;
 }) {
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [action, setAction] = useState<PostAction | null>(null);
+  const [message, setMessage] = useState(post.message);
+  const [scheduledFor, setScheduledFor] = useState(() =>
+    toLocalDateTimeInput(post.effectiveAt),
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  const actionTitle =
+    action === "reschedule"
+      ? "Đổi giờ đăng"
+      : action === "edit"
+        ? post.kind === "scheduled"
+          ? "Sửa bài đã hẹn"
+          : "Sửa bài đã đăng"
+        : post.kind === "scheduled"
+          ? "Hủy lịch đăng"
+          : "Xóa bài đăng";
+
+  async function submitAction() {
+    if (!action || submitting) return;
+    const nextScheduledFor =
+      action === "reschedule" ? new Date(scheduledFor) : null;
+    if (
+      action === "reschedule" &&
+      (!nextScheduledFor || Number.isNaN(nextScheduledFor.getTime()))
+    ) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onAction(action, {
+        ...(action === "edit" ? { message } : {}),
+        ...(action === "reschedule"
+          ? { scheduledFor: nextScheduledFor!.toISOString() }
+          : {}),
+      });
+      setAction(null);
+      setMenuOpen(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (submitting) return;
+      if (action) {
+        setAction(null);
+        return;
+      }
+      if (menuOpen) {
+        setMenuOpen(false);
+        return;
+      }
+      onClose();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [action, menuOpen, onClose, submitting]);
 
   return (
     <div
@@ -695,9 +765,63 @@ function PostDetailDialog({
                         <span aria-label="Công khai">◉</span>
                       </small>
                     </div>
-                    <span aria-hidden="true" className="facebookPreviewMenu">
-                      •••
-                    </span>
+                    <div className="facebookPreviewActionAnchor">
+                      <button
+                        aria-expanded={menuOpen}
+                        aria-haspopup="menu"
+                        aria-label="Mở menu thao tác bài viết"
+                        className="facebookPreviewMenu"
+                        disabled={!post.localPostId}
+                        onClick={() => setMenuOpen((current) => !current)}
+                        type="button"
+                      >
+                        <span aria-hidden="true">•••</span>
+                      </button>
+                      {menuOpen ? (
+                        <div className="postActionMenu" role="menu">
+                          {post.kind === "scheduled" ? (
+                            <button
+                              onClick={() => {
+                                setMenuOpen(false);
+                                setAction("reschedule");
+                              }}
+                              role="menuitem"
+                              type="button"
+                            >
+                              <span aria-hidden="true">◷</span>
+                              Đổi giờ đăng
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setAction("edit");
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <span aria-hidden="true">✎</span>
+                            {post.kind === "scheduled"
+                              ? "Sửa bài đã hẹn"
+                              : "Sửa bài đăng"}
+                          </button>
+                          <button
+                            className="isDanger"
+                            onClick={() => {
+                              setMenuOpen(false);
+                              setAction("remove");
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <span aria-hidden="true">⌫</span>
+                            {post.kind === "scheduled"
+                              ? "Hủy lịch đăng"
+                              : "Xóa bài đăng"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                   <p>{post.message || "Bài viết không có caption."}</p>
                   {post.imageUrls.length > 0 ? (
@@ -756,7 +880,7 @@ function PostDetailDialog({
         </div>
 
         <footer className="postDetailFooter">
-          <span>Chế độ chỉ đọc — không sửa hoặc xoá bài Facebook.</span>
+          <span>Mọi thay đổi chỉ được gửi sau khi bạn xác nhận.</span>
           {post.permalinkUrl ? (
             <a
               aria-label={`Mở bài ${post.remoteId} trên Facebook trong tab mới`}
@@ -779,6 +903,105 @@ function PostDetailDialog({
             </span>
           )}
         </footer>
+
+        {action ? (
+          <div
+            className="postActionBackdrop"
+            onMouseDown={(event) => {
+              if (!submitting && event.currentTarget === event.target) {
+                setAction(null);
+              }
+            }}
+            role="presentation"
+          >
+            <section
+              aria-labelledby="post-action-title"
+              aria-modal="true"
+              className="postActionDialog"
+              role="dialog"
+            >
+              <header>
+                <div>
+                  <span>
+                    {post.kind === "scheduled" ? "BÀI ĐÃ HẸN" : "BÀI ĐÃ ĐĂNG"}
+                  </span>
+                  <h3 id="post-action-title">{actionTitle}</h3>
+                </div>
+                <button
+                  aria-label="Đóng"
+                  disabled={submitting}
+                  onClick={() => setAction(null)}
+                  type="button"
+                >
+                  ×
+                </button>
+              </header>
+
+              {action === "edit" ? (
+                <label className="postActionField">
+                  <span>Nội dung bài viết</span>
+                  <textarea
+                    autoFocus
+                    maxLength={63_206}
+                    onChange={(event) => setMessage(event.target.value)}
+                    rows={8}
+                    value={message}
+                  />
+                  <small>{message.length.toLocaleString("vi-VN")} ký tự</small>
+                </label>
+              ) : action === "reschedule" ? (
+                <label className="postActionField">
+                  <span>Ngày và giờ mới · giờ Việt Nam</span>
+                  <input
+                    autoFocus
+                    min={minimumScheduleInput()}
+                    onChange={(event) => setScheduledFor(event.target.value)}
+                    type="datetime-local"
+                    value={scheduledFor}
+                  />
+                  <small>Lịch mới phải cách hiện tại ít nhất 25 phút.</small>
+                </label>
+              ) : (
+                <div className="postActionWarning">
+                  <strong>
+                    {post.kind === "scheduled"
+                      ? "Lịch đăng sẽ bị gỡ khỏi Facebook."
+                      : "Bài viết sẽ bị xóa khỏi Facebook."}
+                  </strong>
+                  <p>
+                    Page: {page?.name ?? "Facebook Page"}
+                    <br />
+                    Bài: {excerpt(post.message, 120)}
+                  </p>
+                  <span>Thao tác này không thể hoàn tác trong HanContent.</span>
+                </div>
+              )}
+
+              <footer>
+                <button
+                  className="button buttonSecondary"
+                  disabled={submitting}
+                  onClick={() => setAction(null)}
+                  type="button"
+                >
+                  Hủy
+                </button>
+                <button
+                  className={`button ${action === "remove" ? "buttonDanger" : ""}`}
+                  disabled={
+                    submitting ||
+                    (action === "edit" && message === post.message) ||
+                    (action === "reschedule" && !scheduledFor)
+                  }
+                  onClick={() => void submitAction()}
+                  type="button"
+                >
+                  {submitting ? "Đang xử lý…" : actionTitle}
+                </button>
+              </footer>
+            </section>
+          </div>
+        ) : null}
       </section>
     </div>
   );
@@ -1354,6 +1577,93 @@ export function PostWorkspace() {
     }
   }
 
+  async function mutateSelectedPost(
+    action: PostAction,
+    payload?: { message?: string; scheduledFor?: string },
+  ) {
+    const post = selectedPost;
+    if (!post?.localPostId) {
+      showToast({
+        tone: "error",
+        title: "Chưa thể thao tác bài viết",
+        description: "Hãy làm mới dữ liệu Facebook rồi thử lại.",
+      });
+      throw new Error("Missing local post identity");
+    }
+
+    const title =
+      action === "reschedule"
+        ? "Đang đổi giờ đăng"
+        : action === "edit"
+          ? "Đang cập nhật bài viết"
+          : post.kind === "scheduled"
+            ? "Đang hủy lịch đăng"
+            : "Đang xóa bài đăng";
+    const toastId = showToast({
+      tone: "loading",
+      title,
+      description: "Đang gửi yêu cầu và ghi nhận kết quả từ Facebook.",
+      duration: null,
+    });
+
+    try {
+      const endpoint =
+        action === "reschedule"
+          ? `/api/posts/${post.localPostId}/reschedule`
+          : action === "edit"
+            ? `/api/posts/${post.localPostId}/message`
+            : `/api/posts/${post.localPostId}/remote`;
+      const response = await fetch(endpoint, {
+        method: action === "remove" ? "DELETE" : "PATCH",
+        headers: {
+          accept: "application/json",
+          ...(action === "remove"
+            ? {}
+            : { "content-type": "application/json" }),
+        },
+        ...(action === "remove"
+          ? {}
+          : {
+              body: JSON.stringify(
+                action === "reschedule"
+                  ? { scheduledFor: payload?.scheduledFor }
+                  : { message: payload?.message ?? "" },
+              ),
+            }),
+      });
+      await readPayload<{ operation?: { status?: string } }>(response);
+
+      for (const key of remoteMemoryCache.keys()) {
+        if (key.startsWith(`${selectedPageId}:`)) remoteMemoryCache.delete(key);
+      }
+      setSelectedPost(null);
+      forceRefreshRef.current = true;
+      setRefreshIndex((current) => current + 1);
+      updateToast(toastId, {
+        tone: "success",
+        title:
+          action === "reschedule"
+            ? "Đã đổi giờ đăng"
+            : action === "edit"
+              ? "Đã cập nhật bài viết"
+              : post.kind === "scheduled"
+                ? "Đã hủy lịch đăng"
+                : "Đã xóa bài đăng",
+        description: "Facebook đã xác nhận thao tác.",
+        duration: 4_000,
+      });
+    } catch (reason) {
+      updateToast(toastId, {
+        tone: "error",
+        title: "Không thể hoàn tất thao tác",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại sau.",
+        duration: null,
+      });
+      throw reason;
+    }
+  }
+
   const isRemoteTab = activeTab !== "drafts";
   const hasAccessiblePage = pages.some((page) => page.canAccess);
   const empty =
@@ -1539,6 +1849,8 @@ export function PostWorkspace() {
       </section>
       {selectedPost ? (
         <PostDetailDialog
+          key={`${selectedPost.remoteId}:${selectedPost.effectiveAt ?? ""}`}
+          onAction={mutateSelectedPost}
           onClose={() => setSelectedPost(null)}
           page={selectedPage}
           post={selectedPost}

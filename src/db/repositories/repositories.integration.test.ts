@@ -173,6 +173,176 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
     expect(pageAfterRollback).toBeUndefined();
   });
 
+  it("does not resurrect locally removed remote posts during remote cache sync", async () => {
+    const externalPageId = `remote-tombstone-${randomUUID()}`;
+    const rollbackSignal = new Error("EXPECTED_TOMBSTONE_TEST_ROLLBACK");
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const page = await new PageRepository(transaction).upsertManagedPage({
+          externalPageId,
+          name: "Remote Tombstone Integration Page",
+        });
+        const postRepository = new PostRepository(transaction);
+        const remotePostId = `${externalPageId}_remote-1`;
+        const effectiveAt = new Date("2026-08-18T02:00:00.000Z");
+        const windowStart = new Date("2026-08-16T17:00:00.000Z");
+        const windowEnd = new Date("2026-08-23T17:00:00.000Z");
+
+        await postRepository.upsertRemotePosts([
+          {
+            pageId: page.id,
+            remotePostId,
+            kind: "published",
+            message: "Remote post before deletion",
+            effectiveAt,
+            createdAt: effectiveAt,
+            updatedAt: null,
+            snapshot: {
+              imageUrl: "https://example.test/before.jpg",
+              engagement: { reactions: 1, comments: 0, shares: 0 },
+            },
+          },
+        ]);
+        const [remotePost] = await postRepository.listRemoteWindow(
+          page.id,
+          "published",
+          windowStart,
+          windowEnd,
+        );
+        expect(remotePost).toBeDefined();
+
+        await postRepository.markRemoteRemoved(
+          remotePost!.id,
+          page.id,
+          remotePostId,
+          "published",
+        );
+        await transaction.insert(facebookOperations).values({
+          pageId: page.id,
+          postId: remotePost!.id,
+          type: "cancel",
+          status: "succeeded",
+          remotePostId,
+          startedAt: new Date("2026-08-18T03:00:00.000Z"),
+          finishedAt: new Date("2026-08-18T03:00:01.000Z"),
+        });
+        expect(
+          await postRepository.listRemoteWindow(
+            page.id,
+            "published",
+            windowStart,
+            windowEnd,
+          ),
+        ).toHaveLength(0);
+
+        await transaction
+          .update(posts)
+          .set({
+            status: "published",
+            message: "Already resurrected stale row",
+            remoteSnapshot: {
+              engagement: { reactions: 0, comments: 0, shares: 0 },
+            },
+          })
+          .where(eq(posts.id, remotePost!.id));
+        expect(
+          await postRepository.listRemoteWindow(
+            page.id,
+            "published",
+            windowStart,
+            windowEnd,
+          ),
+        ).toHaveLength(1);
+
+        await postRepository.upsertRemotePosts([
+          {
+            pageId: page.id,
+            remotePostId,
+            kind: "published",
+            message: "Stale Facebook stub after deletion",
+            effectiveAt,
+            createdAt: effectiveAt,
+            updatedAt: new Date("2026-08-18T03:00:00.000Z"),
+            snapshot: {
+              engagement: { reactions: 0, comments: 0, shares: 0 },
+            },
+          },
+        ]);
+
+        expect(
+          await postRepository.listRemoteWindow(
+            page.id,
+            "published",
+            windowStart,
+            windowEnd,
+          ),
+        ).toHaveLength(0);
+        await expect(
+          postRepository.findById(remotePost!.id),
+        ).resolves.toMatchObject({
+          status: "deleted_remote",
+          message: "Already resurrected stale row",
+        });
+
+        const videoObjectId = `video-${randomUUID()}`;
+        const videoFeedPostId = `${externalPageId}_video-feed`;
+        const [videoPost] = await transaction
+          .insert(posts)
+          .values({
+            pageId: page.id,
+            remotePostId: videoObjectId,
+            type: "video",
+            message: "Video before deletion",
+            status: "published",
+            publishedAt: effectiveAt,
+          })
+          .returning();
+        expect(videoPost).toBeDefined();
+
+        await postRepository.markRemoteRemoved(
+          videoPost!.id,
+          page.id,
+          videoObjectId,
+          "published",
+          [videoFeedPostId],
+        );
+        await transaction.insert(facebookOperations).values({
+          pageId: page.id,
+          postId: videoPost!.id,
+          type: "cancel",
+          status: "succeeded",
+          remotePostId: videoFeedPostId,
+          startedAt: new Date("2026-08-18T04:00:00.000Z"),
+          finishedAt: new Date("2026-08-18T04:00:01.000Z"),
+        });
+
+        await postRepository.upsertRemotePosts([
+          {
+            pageId: page.id,
+            remotePostId: videoFeedPostId,
+            kind: "published",
+            message: "Stale video feed shell after deletion",
+            effectiveAt,
+            createdAt: effectiveAt,
+            updatedAt: null,
+            snapshot: { mediaType: "video" },
+          },
+        ]);
+        const [videoFeedShell] = await transaction
+          .select()
+          .from(posts)
+          .where(eq(posts.remotePostId, videoFeedPostId));
+        expect(videoFeedShell).toMatchObject({
+          type: "video",
+          status: "deleted_remote",
+        });
+
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  });
+
   it("selects successful images, aged successful videos, and orphaned assets for cleanup", async () => {
     const rollbackSignal = new Error("EXPECTED_CLEANUP_TEST_ROLLBACK");
 

@@ -128,6 +128,24 @@ export class FacebookOperationRepository {
       .where(eq(facebookOperations.id, input.id));
   }
 
+  async markReconciledMutationSucceeded(input: {
+    id: string;
+    remotePostId: string;
+    evidence: Record<string, unknown>;
+  }): Promise<void> {
+    await this.database
+      .update(facebookOperations)
+      .set({
+        status: "succeeded",
+        remotePostId: input.remotePostId,
+        resolution: "remote_updated",
+        resolutionEvidence: input.evidence,
+        resolvedAt: new Date(),
+        finishedAt: new Date(),
+      })
+      .where(eq(facebookOperations.id, input.id));
+  }
+
   async markReconciledFailed(input: {
     id: string;
     evidence: Record<string, unknown>;

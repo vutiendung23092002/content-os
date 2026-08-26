@@ -81,6 +81,9 @@ const updateMutationSchema = z.union([
   z.object({ id: z.string().min(1) }),
 ]);
 const deleteMutationSchema = z.object({ success: z.boolean() });
+const videoPostReferenceSchema = z.object({
+  post_id: z.string().min(1).optional(),
+});
 
 const engagementEdgeSchema = z
   .object({
@@ -524,7 +527,19 @@ export class MetaGraphClient {
     );
   }
 
-  async cancelScheduledPost(remotePostId: string): Promise<void> {
+  async updatePostMessage(
+    remotePostId: string,
+    message: string,
+  ): Promise<void> {
+    updateMutationSchema.parse(
+      await this.request(encodeURIComponent(remotePostId), {
+        method: "POST",
+        body: new URLSearchParams({ message }),
+      }),
+    );
+  }
+
+  async deletePost(remotePostId: string): Promise<void> {
     const result = deleteMutationSchema.parse(
       await this.request(encodeURIComponent(remotePostId), {
         method: "DELETE",
@@ -533,11 +548,24 @@ export class MetaGraphClient {
 
     if (!result.success) {
       throw new AppError({
-        code: "FACEBOOK_CANCEL_REJECTED",
-        message: "Facebook không xác nhận hủy bài hẹn giờ.",
+        code: "FACEBOOK_DELETE_REJECTED",
+        message: "Facebook không xác nhận xóa bài viết.",
         status: 502,
       });
     }
+  }
+
+  async resolveVideoPostId(videoId: string): Promise<string | null> {
+    const result = videoPostReferenceSchema.parse(
+      await this.request(encodeURIComponent(videoId), {
+        query: new URLSearchParams({ fields: "post_id" }),
+      }),
+    );
+    return result.post_id ?? null;
+  }
+
+  async cancelScheduledPost(remotePostId: string): Promise<void> {
+    await this.deletePost(remotePostId);
   }
 
   private async uploadUnpublishedPhotos(

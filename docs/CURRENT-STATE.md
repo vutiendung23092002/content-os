@@ -78,6 +78,8 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
 - Meta thành công nhưng local commit lỗi được giữ cho reconciliation, không đổi thành remote failure.
 - Reconciliation cho publish/schedule đã dùng intent metadata tối thiểu và remote evidence; chỉ một candidate chính xác mới được tự chốt, còn no-match/ambiguous/incomplete/visibility-window đều chuyển `needs_attention`. Admin resolution được audit theo user và không có blind retry.
+- FB-008 đã có API/use-case đổi lịch native cho remote scheduled post. Operation được ghi trước mutation, lịch local chỉ đổi sau readback đúng Post ID/thời gian; timeout được cron đối soát mà không gửi lại mutation.
+- Popup chi tiết bài viết đã có menu `•••` cho bài remote: đổi lịch, sửa caption, hủy lịch, sửa bài đã đăng và xóa bài đã đăng. Các thao tác đi qua API same-origin, operation ledger, popup xác nhận và refetch dữ liệu từ Meta sau mutation.
 - Local UI `/posts` và `/posts/new`.
 - Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh hoặc một video MP4/MOV, preview theo thiết bị, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
 - Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.
@@ -95,7 +97,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 128 tests pass; 3 database integration tests pass và rollback/dọn sạch dữ liệu test.
+- Vitest: 141 tests pass; 3 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -104,14 +106,14 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Private Supabase Storage bucket `post-assets` đã được tạo cho JPEG/PNG/WebP và một video MP4/MOV tối đa 50 MB; upload và cleanup smoke thành công qua localhost lẫn Cloudflare Tunnel.
 - Live write smoke trên Page test Nero Team thành công với một bài có ảnh; operation local ở trạng thái `succeeded` và remote post ID đã được lưu để đối soát.
 - Live smoke đăng ngay/hẹn giờ native nhiều ảnh và video thường trên Page test đã thành công; scheduled preview đọc đầy đủ `attachments/subattachments`.
-- Routes build được: health/config, Page sync/list, draft CRUD, publish và schedule.
+- Routes build được: health/config, Page sync/list, draft CRUD, publish, schedule, reschedule, sửa caption remote và hủy/xóa remote.
 - Secret exposure scan trên client bundle/source/docs/scripts: pass.
 
 ## Chưa implement hoặc chưa xác minh
 
 - Token rotation utility hoàn chỉnh.
-- Phần còn lại của Meta capability smoke: reschedule và cancel trên Page test.
-- Remote reschedule/cancel services.
+- Phần còn lại của Meta capability smoke: reschedule, sửa caption, hủy lịch và xóa bài đã đăng trên Page test.
+- Remote mutation service cho reschedule/edit/cancel/delete đã có mock/unit/typecheck; chưa live smoke đầy đủ trên Page test.
 - Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
 - Token rotation utility, runbook sự cố, metrics/alert và bài kiểm tra backup/restore chưa hoàn chỉnh.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.

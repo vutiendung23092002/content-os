@@ -34,6 +34,8 @@ const requestMetadataSchema = z.object({
   postType: z.enum(["text", "image", "video"]).optional(),
   assetCount: z.number().int().nonnegative().max(10).optional(),
   scheduledFor: z.iso.datetime().nullable().optional(),
+  remotePostId: z.string().trim().min(1).max(256).optional(),
+  previousScheduledFor: z.iso.datetime().optional(),
 });
 
 export const manualResolutionSchema = z.discriminatedUnion("resolution", [
@@ -81,6 +83,17 @@ type ReconciliationPersistence = {
     evidence: Record<string, unknown>;
     resolvedByUserId: string;
   }): Promise<void>;
+  rescheduleSucceeded(input: {
+    operationId: string;
+    postId: string;
+    remotePostId: string;
+    scheduledFor: Date;
+    evidence: Record<string, unknown>;
+  }): Promise<void>;
+  rescheduleNeedsAttention(input: {
+    operationId: string;
+    evidence: Record<string, unknown>;
+  }): Promise<void>;
 };
 
 type ReconciliationReader = Pick<RemotePostReader, "list">;
@@ -89,7 +102,8 @@ export type ReconciliationResult = {
   operationId: string;
   postId: string;
   status: "succeeded" | "failed" | "needs_attention";
-  resolution: "remote_created" | "remote_not_created" | "unresolved";
+  resolution:
+    "remote_created" | "remote_updated" | "remote_not_created" | "unresolved";
   remotePostId?: string;
   reason: string;
 };
@@ -190,6 +204,41 @@ class DatabaseReconciliationPersistence implements ReconciliationPersistence {
       });
     });
   }
+
+  async rescheduleSucceeded(input: {
+    operationId: string;
+    postId: string;
+    remotePostId: string;
+    scheduledFor: Date;
+    evidence: Record<string, unknown>;
+  }) {
+    await runInTransaction(async (transaction) => {
+      const updated = await new PostRepository(transaction).updateScheduledTime(
+        input.postId,
+        input.remotePostId,
+        input.scheduledFor,
+      );
+      if (!updated)
+        throw new Error("Scheduled post changed before reconciliation");
+      await new FacebookOperationRepository(
+        transaction,
+      ).markReconciledMutationSucceeded({
+        id: input.operationId,
+        remotePostId: input.remotePostId,
+        evidence: input.evidence,
+      });
+    });
+  }
+
+  async rescheduleNeedsAttention(input: {
+    operationId: string;
+    evidence: Record<string, unknown>;
+  }) {
+    await new FacebookOperationRepository(getDatabase()).markNeedsAttention(
+      input.operationId,
+      input.evidence,
+    );
+  }
 }
 
 function sha256(value: string): string {
@@ -255,6 +304,10 @@ export class ReconcileFacebookOperationService {
     const operationId = z.uuid().parse(operationIdInput);
     const record = await this.requireReviewable(operationId);
     const metadata = this.metadataFor(record);
+
+    if (record.operation.type === "reschedule") {
+      return this.reconcileReschedule(record, metadata);
+    }
 
     if (record.operation.type === "schedule" && !metadata.scheduledFor) {
       return this.storeAttention(
@@ -323,6 +376,14 @@ export class ReconcileFacebookOperationService {
     const actorUserId = z.uuid().parse(input.actorUserId);
     const resolution = manualResolutionSchema.parse(input.resolution);
     const record = await this.requireReviewable(operationId, true);
+    if (record.operation.type === "reschedule") {
+      throw new AppError({
+        code: "FACEBOOK_OPERATION_MANUAL_RESOLUTION_UNSUPPORTED",
+        message:
+          "Đổi lịch chỉ được chốt khi Facebook trả về đúng Post ID và thời gian mới.",
+        status: 409,
+      });
+    }
     const previousCandidates = evidenceCandidates(
       record.operation.resolutionEvidence,
     );
@@ -414,7 +475,9 @@ export class ReconcileFacebookOperationService {
         status: 404,
       });
     }
-    if (!["publish_now", "schedule"].includes(record.operation.type)) {
+    if (
+      !["publish_now", "schedule", "reschedule"].includes(record.operation.type)
+    ) {
       throw new AppError({
         code: "FACEBOOK_OPERATION_NOT_RECONCILABLE",
         message: "Loại operation này chưa hỗ trợ đối soát create.",
@@ -437,7 +500,7 @@ export class ReconcileFacebookOperationService {
     }
     return record as ReviewRecord & {
       operation: FacebookOperationRecord & {
-        type: "publish_now" | "schedule";
+        type: "publish_now" | "schedule" | "reschedule";
       };
     };
   }
@@ -453,6 +516,94 @@ export class ReconcileFacebookOperationService {
       assetCount: metadata.assetCount ?? record.assetCount,
       scheduledFor:
         metadata.scheduledFor ?? record.post.scheduledAt?.toISOString() ?? null,
+      remotePostId: metadata.remotePostId ?? record.post.remotePostId ?? null,
+      previousScheduledFor:
+        metadata.previousScheduledFor ??
+        record.post.scheduledAt?.toISOString() ??
+        null,
+    };
+  }
+
+  private async reconcileReschedule(
+    record: ReviewRecord,
+    metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
+  ): Promise<ReconciliationResult> {
+    const { remotePostId, scheduledFor } = metadata;
+    if (!remotePostId || !scheduledFor) {
+      return this.storeRescheduleAttention(
+        record,
+        "missing_reschedule_evidence",
+        [],
+      );
+    }
+
+    const scan = await this.readAll(record, "scheduled");
+    const remote = scan.posts.find((post) => post.remoteId === remotePostId);
+    if (!remote) {
+      return this.storeRescheduleAttention(
+        record,
+        scan.complete ? "remote_schedule_missing" : "scan_incomplete",
+        scan.posts,
+      );
+    }
+
+    const actualTime = remote.effectiveAt
+      ? new Date(remote.effectiveAt).getTime()
+      : Number.NaN;
+    const desiredTime = new Date(scheduledFor).getTime();
+    if (
+      !Number.isFinite(actualTime) ||
+      Math.abs(actualTime - desiredTime) > 60_000
+    ) {
+      return this.storeRescheduleAttention(record, "remote_schedule_mismatch", [
+        remote,
+      ]);
+    }
+
+    const evidence = {
+      ...this.buildEvidence(record, "remote_schedule_updated", [remote]),
+      remotePostId,
+      previousScheduledFor: metadata.previousScheduledFor,
+      scheduledFor,
+      remoteScheduledFor: remote.effectiveAt,
+    };
+    await this.persistence.rescheduleSucceeded({
+      operationId: record.operation.id,
+      postId: record.post.id,
+      remotePostId,
+      scheduledFor: new Date(scheduledFor),
+      evidence,
+    });
+    return {
+      operationId: record.operation.id,
+      postId: record.post.id,
+      status: "succeeded",
+      resolution: "remote_updated",
+      remotePostId,
+      reason: "remote_schedule_updated",
+    };
+  }
+
+  private async storeRescheduleAttention(
+    record: ReviewRecord,
+    reason: string,
+    candidates: RemoteFacebookPost[],
+  ): Promise<ReconciliationResult> {
+    await this.persistence.rescheduleNeedsAttention({
+      operationId: record.operation.id,
+      evidence: {
+        ...this.buildEvidence(record, reason, candidates),
+        remotePostId:
+          requestMetadataSchema.safeParse(record.operation.requestMetadata).data
+            ?.remotePostId ?? record.post.remotePostId,
+      },
+    });
+    return {
+      operationId: record.operation.id,
+      postId: record.post.id,
+      status: "needs_attention",
+      resolution: "unresolved",
+      reason,
     };
   }
 

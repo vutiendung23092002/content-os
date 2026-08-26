@@ -76,6 +76,7 @@ function toRemotePost(record: PostRecord): RemoteFacebookPost | null {
   const imageUrl = asNullableString(snapshot.imageUrl) ?? imageUrls[0] ?? null;
 
   return {
+    localPostId: record.id,
     remoteId: record.remotePostId,
     kind: record.status,
     message: record.message,
@@ -323,6 +324,16 @@ export class RemotePostWeekCache {
       windowStart: input.weekStart,
       windowEnd: input.weekEnd,
     });
-    return posts;
+    const storedRecords = await this.postRepository.listRemoteWindow(
+      input.localPageId,
+      input.kind,
+      input.weekStart,
+      input.weekEnd,
+    );
+    return mergeRemotePosts(
+      storedRecords
+        .map(toRemotePost)
+        .filter((post): post is RemoteFacebookPost => post !== null),
+    );
   }
 }

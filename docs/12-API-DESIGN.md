@@ -64,8 +64,9 @@ Mutation yêu cầu same-origin. Super Admin cấp mọi Page; Admin chỉ cấp
 | `DELETE` | `/api/posts/:postId`            | Xóa draft chưa có remote object                |
 | `POST`   | `/api/posts/:postId/publish`    | Đăng ngay qua Meta                             |
 | `POST`   | `/api/posts/:postId/schedule`   | Tạo lịch native trên Facebook                  |
-| `POST`   | `/api/posts/:postId/reschedule` | Đổi thời gian của remote scheduled post        |
-| `POST`   | `/api/posts/:postId/cancel`     | Hủy/xóa remote scheduled post                  |
+| `PATCH`  | `/api/posts/:postId/reschedule` | Đổi thời gian của remote scheduled post        |
+| `PATCH`  | `/api/posts/:postId/message`    | Sửa caption của bài remote đã hẹn/đã đăng      |
+| `DELETE` | `/api/posts/:postId/remote`     | Hủy lịch hoặc xóa bài remote đã đăng           |
 
 Ví dụ schedule request:
 
@@ -76,6 +77,8 @@ Ví dụ schedule request:
 ```
 
 Backend chuyển về UTC, kiểm tra capability/range đã xác nhận và gửi `published=false` cùng `scheduled_publish_time` tới endpoint Meta phù hợp. Response thành công chỉ được trả sau khi remote ID đã được lưu hoặc operation được đánh dấu rõ là cần reconciliation.
+
+Các mutation lên remote post đều tạo operation trước khi gọi Meta, kiểm tra same-origin và quyền Page hiện tại. Local mirror chỉ được cập nhật/tombstone sau khi Meta xác nhận; lỗi timeout/retryable hoặc lỗi local persistence sau remote success được đưa vào ledger để đối soát, không retry mù.
 
 ## 4. Asset
 

@@ -77,6 +77,7 @@ function makeRemote(
   overrides: Partial<RemoteFacebookPost> = {},
 ): RemoteFacebookPost {
   return {
+    localPostId: null,
     remoteId,
     kind: "published",
     message,
@@ -110,6 +111,8 @@ function setup(input?: {
     needsAttention: vi.fn().mockResolvedValue(undefined),
     succeed: vi.fn().mockResolvedValue(undefined),
     fail: vi.fn().mockResolvedValue(undefined),
+    rescheduleSucceeded: vi.fn().mockResolvedValue(undefined),
+    rescheduleNeedsAttention: vi.fn().mockResolvedValue(undefined),
   };
   const reader = {
     list: vi.fn().mockResolvedValue({
@@ -134,6 +137,83 @@ function setup(input?: {
 }
 
 describe("ReconcileFacebookOperationService", () => {
+  it("confirms a timed-out reschedule from the exact remote post and time", async () => {
+    const scheduledFor = "2026-08-25T08:00:00.000Z";
+    const setupResult = setup({
+      operation: makeOperation({
+        type: "reschedule",
+        requestMetadata: {
+          version: 1,
+          remotePostId: "scheduled-1",
+          previousScheduledFor: "2026-08-25T07:00:00.000Z",
+          scheduledFor,
+        },
+      }),
+      post: makePost({
+        status: "scheduled",
+        remotePostId: "scheduled-1",
+        scheduledAt: new Date("2026-08-25T07:00:00.000Z"),
+      }),
+      remotePosts: [
+        makeRemote("scheduled-1", {
+          kind: "scheduled",
+          effectiveAt: scheduledFor,
+        }),
+      ],
+    });
+
+    await expect(setupResult.service.reconcile(operationId)).resolves.toEqual({
+      operationId,
+      postId,
+      status: "succeeded",
+      resolution: "remote_updated",
+      remotePostId: "scheduled-1",
+      reason: "remote_schedule_updated",
+    });
+    expect(setupResult.persistence.rescheduleSucceeded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        remotePostId: "scheduled-1",
+        scheduledFor: new Date(scheduledFor),
+      }),
+    );
+  });
+
+  it("does not retry a reschedule when Facebook still reports the old time", async () => {
+    const setupResult = setup({
+      operation: makeOperation({
+        type: "reschedule",
+        requestMetadata: {
+          version: 1,
+          remotePostId: "scheduled-1",
+          previousScheduledFor: "2026-08-25T07:00:00.000Z",
+          scheduledFor: "2026-08-25T08:00:00.000Z",
+        },
+      }),
+      post: makePost({
+        status: "scheduled",
+        remotePostId: "scheduled-1",
+        scheduledAt: new Date("2026-08-25T07:00:00.000Z"),
+      }),
+      remotePosts: [
+        makeRemote("scheduled-1", {
+          kind: "scheduled",
+          effectiveAt: "2026-08-25T07:00:00.000Z",
+        }),
+      ],
+    });
+
+    await expect(setupResult.service.reconcile(operationId)).resolves.toEqual(
+      expect.objectContaining({
+        status: "needs_attention",
+        reason: "remote_schedule_mismatch",
+      }),
+    );
+    expect(
+      setupResult.persistence.rescheduleNeedsAttention,
+    ).toHaveBeenCalledOnce();
+    expect(setupResult.persistence.rescheduleSucceeded).not.toHaveBeenCalled();
+  });
+
   it("recovers remote success after a local timeout from one exact candidate", async () => {
     const setupResult = setup({
       operation: makeOperation({ status: "pending", finishedAt: null }),

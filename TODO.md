@@ -190,6 +190,12 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: reschedule use-case/API, operation record.
   - Acceptance criteria: Chỉ remote scheduled post hợp lệ được đổi; trạng thái được đọc lại sau mutation.
   - Tests: Success, invalid range, already published, missing remote, permission loss và timeout reconciliation.
+  - [x] API `PATCH /api/posts/:postId/reschedule` kiểm tra same-origin và quyền Page hiện tại.
+  - [x] Ghi operation `reschedule` trước mutation, chỉ cập nhật lịch local sau khi đọc lại đúng Post ID và giờ mới từ Facebook.
+  - [x] Timeout/readback lỗi đi qua FB-010; cron chỉ đọc đối soát, không blind retry mutation.
+  - [x] Unit/route/cron tests cho success, range, published, missing, permission, timeout và readback mismatch.
+  - [x] UI thao tác đổi lịch từ menu `•••` trong popup chi tiết bài hẹn giờ, có xác nhận và refetch remote sau mutation.
+  - [ ] Live smoke đổi lịch trên Page test và xác minh lại trong Facebook Business Suite.
 
 - [ ] FB-009 — Cancel remote scheduled post
   - Priority: P0
@@ -198,6 +204,12 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: cancel use-case/API, tombstone/local state mapping.
   - Acceptance criteria: Người vận hành thấy kết quả xác nhận; retry không xóa nhầm object khác.
   - Tests: Success, already absent, already published, permission failure, double click và timeout.
+  - [x] API `DELETE /api/posts/:postId/remote` kiểm tra same-origin, quyền Page hiện tại và remote mapping trước khi gọi Meta.
+  - [x] Ghi operation trước mutation; local mirror chỉ tombstone sau khi Meta xác nhận.
+  - [x] Retryable/timeout và lỗi local persistence sau remote success đi vào trạng thái `uncertain`, không retry mù.
+  - [x] Unit tests cho success, Meta failure, retryable uncertain và remote-success/local-persist-failure.
+  - [x] UI hủy lịch từ menu `•••` trong popup chi tiết bài hẹn giờ, có popup xác nhận và toast kết quả.
+  - [ ] Live smoke hủy lịch trên Page test và xác minh lại trong Facebook Business Suite.
 
 - [x] FB-010 — Reconcile uncertain operations
   - Priority: P0
@@ -286,6 +298,11 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: scheduled row actions, attention panel, safe confirmation UI.
   - Acceptance criteria: UI refresh từ Meta sau mutation; destructive action có xác nhận; không cho retry mù.
   - Tests: Reschedule/cancel/absent/published/uncertain E2E states.
+  - [x] Menu `•••` trong popup chi tiết bài viết đã có hành động theo trạng thái: bài hẹn giờ có đổi lịch/sửa nội dung/hủy lịch; bài đã đăng có sửa nội dung/xóa bài.
+  - [x] Confirmation dialog Liquid Glass cho từng mutation, khóa thao tác khi đang submit và đóng đúng thứ tự bằng Escape/backdrop.
+  - [x] Smart toast cho thành công/thất bại; sau mutation refetch lại dữ liệu remote theo Page/tab/tuần.
+  - [x] Disable hành động mutation với bài external chưa có local mapping để tránh sửa/xóa nhầm.
+  - [ ] E2E/live smoke trên Page test cho reschedule, edit scheduled, cancel scheduled, edit published và delete published.
 
 ## AI content assistant
 

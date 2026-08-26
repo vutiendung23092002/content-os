@@ -113,6 +113,26 @@ describe("MetaGraphClient", () => {
     expect(body.get("scheduled_publish_time")).toBe("1787277600");
   });
 
+  it("resolves the feed post associated with a Page video", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ post_id: "page-1_122191964246910216" }),
+      );
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    await expect(client.resolveVideoPostId("video-1")).resolves.toBe(
+      "page-1_122191964246910216",
+    );
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("https://graph.test/v99.0/video-1?fields=post_id");
+  });
+
   it("uploads photos without publishing and preserves their order in one feed post", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
