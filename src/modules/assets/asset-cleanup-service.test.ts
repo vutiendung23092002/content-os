@@ -4,7 +4,8 @@ import {
   ASSET_CLEANUP_CLAIM_TIMEOUT_MS,
   AssetCleanupService,
   ORPHAN_ASSET_GRACE_MS,
-  PUBLISHED_ASSET_RETENTION_MS,
+  SUCCESSFUL_IMAGE_RETENTION_MS,
+  SUCCESSFUL_VIDEO_RETENTION_MS,
 } from "./asset-cleanup-service";
 
 function asset(id: string): AssetRecord {
@@ -50,7 +51,12 @@ describe("AssetCleanupService", () => {
     expect(result).toEqual({ scanned: 2, deleted: 2, skipped: 0, failed: 0 });
     expect(repository.listCleanupCandidates).toHaveBeenCalledWith(
       {
-        publishedBefore: new Date(now.getTime() - PUBLISHED_ASSET_RETENTION_MS),
+        successfulImageBefore: new Date(
+          now.getTime() - SUCCESSFUL_IMAGE_RETENTION_MS,
+        ),
+        successfulVideoBefore: new Date(
+          now.getTime() - SUCCESSFUL_VIDEO_RETENTION_MS,
+        ),
         orphanedBefore: new Date(now.getTime() - ORPHAN_ASSET_GRACE_MS),
         claimStaleBefore: new Date(
           now.getTime() - ASSET_CLEANUP_CLAIM_TIMEOUT_MS,

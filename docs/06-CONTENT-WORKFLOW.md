@@ -50,9 +50,10 @@ Luồng hiện tại đăng video thường của Page. Facebook Reel dùng quy 
 ## Media retention
 
 - Draft giữ media cho tới khi draft bị xóa. Asset không còn gắn với post được dọn sau grace period 1 giờ.
-- Bài `published` giữ media 7 ngày tính từ `published_at`, sau đó cleanup chỉ xóa object Supabase và soft-delete metadata.
-- Bài `scheduled` chỉ bắt đầu đếm 7 ngày sau khi sync Facebook xác nhận và chuyển local state thành `published`; không suy đoán theo `scheduled_at`.
-- Bài `failed` hoặc `uncertain` không tự xóa media để còn retry/đối soát.
+- Ảnh của bài `published` hoặc `scheduled` được dọn ở lượt cleanup kế tiếp sau khi operation Facebook có trạng thái `succeeded`.
+- Video của bài `published` hoặc `scheduled` được giữ 24 giờ kể từ lúc operation Facebook hoàn tất thành công, để Meta có thời gian tải và mã hóa file.
+- Bài `draft`, `submitting`, `failed`, `uncertain`, `needs_attention` hoặc thiếu bằng chứng operation thành công không tự xóa media để còn retry/đối soát.
+- Cleanup chỉ xóa object Supabase và soft-delete metadata; nội dung đã nhận trên Facebook không phụ thuộc file nguồn này.
 - Cleanup không gọi API xóa, sửa hoặc ẩn bài trên Facebook.
 
 ## Edit/reschedule

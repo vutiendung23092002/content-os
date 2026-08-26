@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
-import { assets, postAssets, posts } from "@/db/schema";
+import { assets, facebookOperations, postAssets, posts } from "@/db/schema";
 
 export type AssetRecord = typeof assets.$inferSelect;
 
@@ -21,7 +21,8 @@ export type PostAssetRecord = AssetRecord & {
 };
 
 export type AssetCleanupWindow = {
-  publishedBefore: Date;
+  successfulImageBefore: Date;
+  successfulVideoBefore: Date;
   orphanedBefore: Date;
   claimStaleBefore: Date;
 };
@@ -47,9 +48,26 @@ function cleanupEligibility(window: AssetCleanupWindow) {
         inner join ${posts} on ${posts.id} = ${postAssets.postId}
         where ${postAssets.assetId} = ${assets.id}
           and (
-            ${posts.status} <> 'published'
-            or ${posts.publishedAt} is null
-            or ${posts.publishedAt} > ${sql.param(window.publishedBefore, posts.publishedAt)}
+            ${posts.status} not in ('scheduled', 'published')
+            or ${posts.remotePostId} is null
+            or not exists (
+              select 1
+              from ${facebookOperations}
+              where ${facebookOperations.postId} = ${posts.id}
+                and ${facebookOperations.status} = 'succeeded'
+                and ${facebookOperations.finishedAt} is not null
+                and (
+                  (
+                    ${assets.mimeType} like 'video/%'
+                    and ${facebookOperations.finishedAt} <= ${sql.param(window.successfulVideoBefore, facebookOperations.finishedAt)}
+                  )
+                  or
+                  (
+                    ${assets.mimeType} not like 'video/%'
+                    and ${facebookOperations.finishedAt} <= ${sql.param(window.successfulImageBefore, facebookOperations.finishedAt)}
+                  )
+                )
+            )
           )
       )
     )

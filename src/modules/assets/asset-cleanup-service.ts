@@ -8,7 +8,8 @@ import {
 import { AppError } from "@/lib/errors/app-error";
 import { AssetStorage } from "./asset-storage";
 
-export const PUBLISHED_ASSET_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const SUCCESSFUL_IMAGE_RETENTION_MS = 0;
+export const SUCCESSFUL_VIDEO_RETENTION_MS = 24 * 60 * 60 * 1000;
 export const ORPHAN_ASSET_GRACE_MS = 60 * 60 * 1000;
 export const ASSET_CLEANUP_CLAIM_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -58,7 +59,12 @@ export class AssetCleanupService {
   async cleanup(limit = 50): Promise<AssetCleanupResult> {
     const runAt = this.now();
     const window: AssetCleanupWindow = {
-      publishedBefore: new Date(runAt.getTime() - PUBLISHED_ASSET_RETENTION_MS),
+      successfulImageBefore: new Date(
+        runAt.getTime() - SUCCESSFUL_IMAGE_RETENTION_MS,
+      ),
+      successfulVideoBefore: new Date(
+        runAt.getTime() - SUCCESSFUL_VIDEO_RETENTION_MS,
+      ),
       orphanedBefore: new Date(runAt.getTime() - ORPHAN_ASSET_GRACE_MS),
       claimStaleBefore: new Date(
         runAt.getTime() - ASSET_CLEANUP_CLAIM_TIMEOUT_MS,

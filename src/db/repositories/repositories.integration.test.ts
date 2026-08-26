@@ -10,7 +10,13 @@ import { SyncCursorRepository } from "./sync-cursor-repository";
 import { UserPageAssignmentRepository } from "./user-page-assignment-repository";
 import { AssetRepository } from "./asset-repository";
 import { encryptToken } from "@/lib/crypto/token-crypto";
-import { appUsers, assets, posts, userPageAssignments } from "@/db/schema";
+import {
+  appUsers,
+  assets,
+  facebookOperations,
+  posts,
+  userPageAssignments,
+} from "@/db/schema";
 
 const integrationEnabled = Boolean(process.env.DATABASE_URL);
 
@@ -167,7 +173,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
     expect(pageAfterRollback).toBeUndefined();
   });
 
-  it("only selects old published and orphaned assets for cleanup", async () => {
+  it("selects successful images, aged successful videos, and orphaned assets for cleanup", async () => {
     const rollbackSignal = new Error("EXPECTED_CLEANUP_TEST_ROLLBACK");
 
     await expect(
@@ -181,34 +187,95 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         const now = new Date("2026-08-22T04:00:00.000Z");
         const oldCreatedAt = new Date("2026-08-01T00:00:00.000Z");
 
-        async function createAsset(label: string) {
+        async function createAsset(label: string, mimeType = "image/jpeg") {
+          const extension = mimeType.startsWith("video/") ? "mp4" : "jpg";
           const [record] = await transaction
             .insert(assets)
             .values({
               pageId: page.id,
-              storageKey: `integration-cleanup/${randomUUID()}-${label}.jpg`,
-              mimeType: "image/jpeg",
+              storageKey: `integration-cleanup/${randomUUID()}-${label}.${extension}`,
+              mimeType,
               fileSize: 1024,
               checksum: randomBytes(32).toString("hex"),
-              originalFilename: `${label}.jpg`,
+              originalFilename: `${label}.${extension}`,
               createdAt: oldCreatedAt,
             })
             .returning();
           return record!;
         }
 
-        async function createAttached(label: string) {
-          const asset = await createAsset(label);
+        async function createAttached(label: string, mimeType = "image/jpeg") {
+          const asset = await createAsset(label, mimeType);
           const post = await postRepository.createDraft({
             pageId: page.id,
             message: label,
-            type: "image",
+            type: mimeType.startsWith("video/") ? "video" : "image",
             assetIds: [asset.id],
           });
           return { asset, post };
         }
 
-        const oldPublished = await createAttached("old-published");
+        async function markRemoteSuccess(input: {
+          postId: string;
+          status: "published" | "scheduled";
+          finishedAt: Date;
+        }) {
+          const remotePostId = `remote-${randomUUID()}`;
+          await transaction
+            .update(posts)
+            .set({
+              status: input.status,
+              remotePostId,
+              publishedAt:
+                input.status === "published" ? input.finishedAt : null,
+              scheduledAt:
+                input.status === "scheduled"
+                  ? new Date("2026-08-30T04:00:00.000Z")
+                  : null,
+            })
+            .where(eq(posts.id, input.postId));
+          await transaction.insert(facebookOperations).values({
+            pageId: page.id,
+            postId: input.postId,
+            type: input.status === "scheduled" ? "schedule" : "publish_now",
+            status: "succeeded",
+            remotePostId,
+            startedAt: new Date(input.finishedAt.getTime() - 1_000),
+            finishedAt: input.finishedAt,
+          });
+        }
+
+        const publishedImage = await createAttached("published-image");
+        await markRemoteSuccess({
+          postId: publishedImage.post.id,
+          status: "published",
+          finishedAt: new Date("2026-08-22T03:50:00.000Z"),
+        });
+
+        const scheduledImage = await createAttached("scheduled-image");
+        await markRemoteSuccess({
+          postId: scheduledImage.post.id,
+          status: "scheduled",
+          finishedAt: new Date("2026-08-22T03:55:00.000Z"),
+        });
+
+        const agedVideo = await createAttached("aged-video", "video/mp4");
+        await markRemoteSuccess({
+          postId: agedVideo.post.id,
+          status: "scheduled",
+          finishedAt: new Date("2026-08-21T03:00:00.000Z"),
+        });
+
+        const freshVideo = await createAttached("fresh-video", "video/mp4");
+        await markRemoteSuccess({
+          postId: freshVideo.post.id,
+          status: "published",
+          finishedAt: new Date("2026-08-22T02:00:00.000Z"),
+        });
+
+        const publishedWithoutOperation = await createAttached(
+          "published-without-operation",
+        );
         await transaction
           .update(posts)
           .set({
@@ -216,27 +283,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
             remotePostId: `remote-${randomUUID()}`,
             publishedAt: new Date("2026-08-14T04:00:00.000Z"),
           })
-          .where(eq(posts.id, oldPublished.post.id));
-
-        const recentPublished = await createAttached("recent-published");
-        await transaction
-          .update(posts)
-          .set({
-            status: "published",
-            remotePostId: `remote-${randomUUID()}`,
-            publishedAt: new Date("2026-08-16T04:00:00.000Z"),
-          })
-          .where(eq(posts.id, recentPublished.post.id));
-
-        const scheduled = await createAttached("scheduled");
-        await transaction
-          .update(posts)
-          .set({
-            status: "scheduled",
-            remotePostId: `remote-${randomUUID()}`,
-            scheduledAt: new Date("2026-08-10T04:00:00.000Z"),
-          })
-          .where(eq(posts.id, scheduled.post.id));
+          .where(eq(posts.id, publishedWithoutOperation.post.id));
 
         const failed = await createAttached("failed");
         await postRepository.markSubmissionFailed(
@@ -277,7 +324,8 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         ]);
         const orphan = await createAsset("orphan");
         const window = {
-          publishedBefore: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+          successfulImageBefore: now,
+          successfulVideoBefore: new Date(now.getTime() - 24 * 60 * 60 * 1000),
           orphanedBefore: new Date(now.getTime() - 60 * 60 * 1000),
           claimStaleBefore: new Date(now.getTime() - 15 * 60 * 1000),
         };
@@ -288,10 +336,17 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         const candidateIds = new Set(candidates.map((asset) => asset.id));
 
         expect(candidateIds).toEqual(
-          new Set([oldPublished.asset.id, orphan.id]),
+          new Set([
+            publishedImage.asset.id,
+            scheduledImage.asset.id,
+            agedVideo.asset.id,
+            orphan.id,
+          ]),
         );
-        expect(candidateIds.has(recentPublished.asset.id)).toBe(false);
-        expect(candidateIds.has(scheduled.asset.id)).toBe(false);
+        expect(candidateIds.has(freshVideo.asset.id)).toBe(false);
+        expect(candidateIds.has(publishedWithoutOperation.asset.id)).toBe(
+          false,
+        );
         expect(candidateIds.has(failed.asset.id)).toBe(false);
         expect(candidateIds.has(uncertain.asset.id)).toBe(false);
         expect(candidateIds.has(draft.asset.id)).toBe(false);
@@ -301,14 +356,14 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         const claimedAt = new Date("2026-08-22T04:00:01.000Z");
         expect(
           await assetRepository.claimForCleanup(
-            oldPublished.asset.id,
+            publishedImage.asset.id,
             window,
             claimedAt,
           ),
         ).toMatchObject({ cleanupClaimedAt: claimedAt, deletedAt: null });
         expect(
           await assetRepository.restoreCleanupClaim(
-            oldPublished.asset.id,
+            publishedImage.asset.id,
             claimedAt,
           ),
         ).toBe(true);
