@@ -8,7 +8,7 @@ Compose chạy ba service từ cùng một image:
 
 - `app`: Next.js standalone server.
 - `facebook-cron`: gọi tác vụ đối soát Facebook mỗi 10 phút.
-- `asset-cleanup`: dọn media tạm mỗi ngày.
+- `asset-cleanup`: dọn media hết hạn mỗi giờ.
 
 Cloudflare Tunnel tiếp tục chạy như Windows service và chuyển request đến cổng publish của container `app`.
 

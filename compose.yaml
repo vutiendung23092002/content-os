@@ -52,7 +52,7 @@ services:
     command:
       - sh
       - -c
-      - while true; do if node scripts/run-asset-cleanup.mjs; then sleep 86400; else sleep 3600; fi; done
+      - while true; do node scripts/run-asset-cleanup.mjs; sleep 3600; done
     depends_on:
       app:
         condition: service_healthy

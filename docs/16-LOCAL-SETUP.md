@@ -160,7 +160,7 @@ corepack pnpm assets:cleanup
 ```
 
 - `facebook:cron`: đối soát trạng thái bài với Facebook; khuyến nghị mỗi 10 phút.
-- `assets:cleanup`: dọn media tạm đã hết hạn; khuyến nghị mỗi ngày.
+- `assets:cleanup`: dọn media đã hết hạn; nếu tự cấu hình scheduler local thì khuyến nghị mỗi giờ.
 
 Khi chạy trực tiếp bằng Node.js, cấu hình Windows Task Scheduler cho hai lệnh trên. Không chạy thêm Task Scheduler nếu Docker Compose đã chạy các container cron tương ứng.
 
