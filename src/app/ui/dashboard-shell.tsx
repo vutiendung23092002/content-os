@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useEffect,
   useLayoutEffect,
@@ -19,12 +20,6 @@ type IconName =
   | "help"
   | "menu"
   | "chevron";
-
-type Account = {
-  id: string;
-  name: string;
-  avatarUrl?: string;
-};
 
 type SessionViewer = {
   name: string;
@@ -89,14 +84,6 @@ const navGroups: Array<{
     ],
   },
 ];
-
-const pageTitles: Record<string, { eyebrow: string; title: string }> = {
-  "/pages": { eyebrow: "Quản trị", title: "Facebook Pages" },
-  "/posts": { eyebrow: "Nội dung", title: "Bài viết" },
-  "/posts/new": { eyebrow: "Nội dung", title: "Soạn bài mới" },
-  "/admin": { eyebrow: "Quản trị", title: "Nhân sự" },
-  "/guide": { eyebrow: "Hỗ trợ", title: "Hướng dẫn nhanh" },
-};
 
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -176,8 +163,6 @@ function navItemKey(groupLabel: string, itemLabel: string) {
 export function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [account, setAccount] = useState<Account | null>(null);
-  const [accountReady, setAccountReady] = useState(false);
   const [viewer, setViewer] = useState<SessionViewer | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
@@ -188,7 +173,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const [pendingNavigation, setPendingNavigation] =
     useState<PendingNavigation | null>(null);
   const isBarePage = pathname === "/login" || pathname === "/access-pending";
-  const heading = pageTitles[pathname] ?? pageTitles["/posts"]!;
   const activeNavItem = navGroups
     .flatMap((group) =>
       group.items.map((item) => ({
@@ -205,6 +189,45 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     pendingNavigation?.fromPathname === pathname
       ? pendingNavigation.key
       : activeNavKey;
+
+  function trackInternalNavigation(event: ReactMouseEvent<HTMLDivElement>) {
+    const anchor = (event.target as HTMLElement).closest("a");
+    if (
+      !anchor ||
+      event.button !== 0 ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      anchor.target === "_blank" ||
+      anchor.hasAttribute("download")
+    ) {
+      return;
+    }
+
+    const href = anchor.getAttribute("href");
+    if (!href) return;
+
+    const targetUrl = new URL(href, window.location.href);
+    if (targetUrl.origin !== window.location.origin) return;
+
+    const targetNavItem = navGroups
+      .flatMap((group) =>
+        group.items.map((item) => ({
+          groupLabel: group.label,
+          item,
+        })),
+      )
+      .filter(({ item }) => item.href !== "/admin" || viewer?.role !== "member")
+      .find(({ item }) => isItemActive(targetUrl.pathname, item));
+
+    if (!targetNavItem) return;
+
+    setPendingNavigation({
+      fromPathname: pathname,
+      key: navItemKey(targetNavItem.groupLabel, targetNavItem.item.label),
+    });
+  }
 
   useLayoutEffect(() => {
     const nav = sidebarNavRef.current;
@@ -246,24 +269,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     if (isBarePage) return;
 
     let active = true;
-
-    void fetch("/api/facebook/status", {
-      headers: { accept: "application/json" },
-    })
-      .then(async (response) => {
-        const payload = (await response.json()) as {
-          connection?: { account?: Account } | null;
-        };
-        if (active && response.ok) {
-          setAccount(payload.connection?.account ?? null);
-        }
-      })
-      .catch(() => {
-        if (active) setAccount(null);
-      })
-      .finally(() => {
-        if (active) setAccountReady(true);
-      });
 
     void fetch("/api/auth/session", { headers: { accept: "application/json" } })
       .then(async (response) => {
@@ -309,6 +314,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       className={`dashboardFrame ${
         isPostLibraryPage ? "isPostLibraryFrame" : ""
       }`}
+      onClickCapture={trackInternalNavigation}
     >
       <button
         aria-label="Đóng menu"
@@ -316,6 +322,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         onClick={() => setSidebarOpen(false)}
         type="button"
       />
+      <button
+        aria-label="Mở menu"
+        className="mobileSidebarTrigger"
+        onClick={() => setSidebarOpen(true)}
+        type="button"
+      >
+        <Icon name="menu" />
+      </button>
       <aside className={`sidebar ${sidebarOpen ? "isOpen" : ""}`}>
         <Link
           className="wordmark"
@@ -408,123 +422,86 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        <div className="sidebarFooter">
-          <span className={account ? "statusDot" : "statusDot isMuted"} />
-          Meta Graph API
-          <strong>
-            {!accountReady
-              ? "Đang kiểm tra"
-              : account
-                ? "Đã kết nối"
-                : "Cần kiểm tra"}
-          </strong>
+        <div className="sidebarAccountShell" ref={accountMenuRef}>
+          <button
+            aria-controls="account-menu"
+            aria-expanded={accountMenuOpen}
+            aria-haspopup="menu"
+            aria-label={`Mở menu tài khoản ${viewer?.name ?? "Google"}`}
+            className={`topAccount sidebarAccountButton ${
+              accountMenuOpen ? "isOpen" : ""
+            }`}
+            onClick={() => setAccountMenuOpen((current) => !current)}
+            title={viewer?.name ?? "Tài khoản Google"}
+            type="button"
+          >
+            {viewer?.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img alt="" src={viewer.avatarUrl} />
+            ) : (
+              <span className="topAccountAvatar" aria-hidden="true">
+                {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
+              </span>
+            )}
+            <span className="sidebarAccountText">
+              <strong>{viewer?.name ?? "Tài khoản Google"}</strong>
+              <small>
+                {viewer ? roleLabels[viewer.role] : "Đang tải thông tin..."}
+              </small>
+            </span>
+            <Icon name="chevron" />
+          </button>
+
+          {accountMenuOpen ? (
+            <div className="accountMenu" id="account-menu" role="menu">
+              <div className="accountMenuIdentity">
+                {viewer?.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img alt="" src={viewer.avatarUrl} />
+                ) : (
+                  <span aria-hidden="true">
+                    {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
+                  </span>
+                )}
+                <div>
+                  <strong>{viewer?.name ?? "Tài khoản Google"}</strong>
+                  <small>{viewer?.email ?? "Đang tải thông tin..."}</small>
+                  {viewer ? <b>{roleLabels[viewer.role]}</b> : null}
+                </div>
+              </div>
+
+              <form
+                action="/api/auth/logout"
+                method="post"
+                onSubmit={(event) => {
+                  const draftMessage =
+                    pathname === "/posts/new"
+                      ? document.querySelector<HTMLTextAreaElement>("#message")
+                          ?.value
+                      : "";
+                  if (
+                    draftMessage?.trim() &&
+                    !window.confirm("Bạn có nội dung chưa lưu. Vẫn đăng xuất?")
+                  ) {
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <button
+                  className="accountLogoutButton"
+                  role="menuitem"
+                  type="submit"
+                >
+                  <span aria-hidden="true">↪</span>
+                  Đăng xuất
+                </button>
+              </form>
+            </div>
+          ) : null}
         </div>
       </aside>
 
       <div className="workspace">
-        <header className="workspaceTopbar">
-          <div className="topbarHeading">
-            <button
-              aria-label="Mở menu"
-              className="menuButton"
-              onClick={() => setSidebarOpen(true)}
-              type="button"
-            >
-              <Icon name="menu" />
-            </button>
-            <div>
-              <span>{heading.eyebrow}</span>
-              <strong>{heading.title}</strong>
-            </div>
-          </div>
-
-          <div className="topAccountShell" ref={accountMenuRef}>
-            <button
-              aria-controls="account-menu"
-              aria-expanded={accountMenuOpen}
-              aria-haspopup="menu"
-              aria-label={`Mở menu tài khoản ${viewer?.name ?? "Google"}`}
-              className={`topAccount ${accountMenuOpen ? "isOpen" : ""}`}
-              onClick={() => setAccountMenuOpen((current) => !current)}
-              title={viewer?.name ?? "Tài khoản Google"}
-              type="button"
-            >
-              {viewer?.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img alt="" src={viewer.avatarUrl} />
-              ) : (
-                <span className="topAccountAvatar" aria-hidden="true">
-                  {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
-                </span>
-              )}
-            </button>
-
-            {accountMenuOpen ? (
-              <div className="accountMenu" id="account-menu" role="menu">
-                <div className="accountMenuIdentity">
-                  {viewer?.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img alt="" src={viewer.avatarUrl} />
-                  ) : (
-                    <span aria-hidden="true">
-                      {viewer?.name.slice(0, 1).toUpperCase() ?? "G"}
-                    </span>
-                  )}
-                  <div>
-                    <strong>{viewer?.name ?? "Tài khoản Google"}</strong>
-                    <small>{viewer?.email ?? "Đang tải thông tin..."}</small>
-                    {viewer ? <b>{roleLabels[viewer.role]}</b> : null}
-                  </div>
-                </div>
-
-                {viewer?.role !== "member" ? (
-                  <Link
-                    className="accountMenuItem"
-                    href="/admin"
-                    onClick={() => setAccountMenuOpen(false)}
-                    role="menuitem"
-                  >
-                    <Icon name="settings" />
-                    <span>
-                      <strong>Nhân sự & phân quyền</strong>
-                      <small>Quản lý tài khoản được phép truy cập</small>
-                    </span>
-                  </Link>
-                ) : null}
-
-                <form
-                  action="/api/auth/logout"
-                  method="post"
-                  onSubmit={(event) => {
-                    const draftMessage =
-                      pathname === "/posts/new"
-                        ? document.querySelector<HTMLTextAreaElement>(
-                            "#message",
-                          )?.value
-                        : "";
-                    if (
-                      draftMessage?.trim() &&
-                      !window.confirm(
-                        "Bạn có nội dung chưa lưu. Vẫn đăng xuất?",
-                      )
-                    ) {
-                      event.preventDefault();
-                    }
-                  }}
-                >
-                  <button
-                    className="accountLogoutButton"
-                    role="menuitem"
-                    type="submit"
-                  >
-                    <span aria-hidden="true">↪</span>
-                    Đăng xuất
-                  </button>
-                </form>
-              </div>
-            ) : null}
-          </div>
-        </header>
         <div className="workspaceContent">{children}</div>
       </div>
     </div>

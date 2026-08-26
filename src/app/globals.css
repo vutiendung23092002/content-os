@@ -272,31 +272,98 @@ a {
   font-weight: 750;
 }
 
-.sidebarFooter {
-  display: grid;
-  grid-template-columns: auto 1fr;
+.sidebarAccountShell {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 0.4rem 0.55rem;
+  justify-content: stretch;
   margin-top: auto;
-  padding: 0.85rem 0.7rem;
-  color: var(--muted);
-  background: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 82%),
-    rgb(247 243 255 / 70%)
-  );
-  border: 1px solid var(--glass-border);
-  border-radius: 0.9rem;
-  box-shadow: 0 12px 30px rgb(57 37 98 / 7%);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  font-size: 0.72rem;
+  padding: 0;
 }
 
-.sidebarFooter strong {
-  grid-column: 2;
-  color: var(--green);
-  font-size: 0.7rem;
+.topAccount.sidebarAccountButton {
+  width: 100%;
+  height: auto;
+  min-height: 3rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  padding: 0.32rem 0.45rem;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 90%),
+    rgb(250 246 255 / 82%)
+  );
+  border-color: rgb(220 210 235 / 70%);
+  border-radius: 0.78rem;
+  box-shadow:
+    0 5px 16px rgb(61 39 101 / 5%),
+    inset 0 1px 0 rgb(255 255 255 / 96%);
+}
+
+.topAccount.sidebarAccountButton img,
+.topAccount.sidebarAccountButton .topAccountAvatar {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.sidebarAccountText {
+  min-width: 0;
+  display: grid;
+  gap: 0.08rem;
+  text-align: left;
+}
+
+.sidebarAccountText strong,
+.sidebarAccountText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarAccountText strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.sidebarAccountText small {
+  color: var(--subtle);
+  font-size: 0.6rem;
+  font-weight: 580;
+}
+
+.topAccount.sidebarAccountButton > svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--subtle);
+  transform: rotate(90deg);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.topAccount.sidebarAccountButton.isOpen > svg {
+  transform: rotate(-90deg);
+}
+
+.topAccount.sidebarAccountButton:hover,
+.topAccount.sidebarAccountButton.isOpen {
+  background: linear-gradient(
+    135deg,
+    rgb(249 245 255 / 94%),
+    rgb(255 246 250 / 90%)
+  );
+  border-color: rgb(190 166 230 / 62%);
+  box-shadow:
+    0 6px 18px rgb(61 39 101 / 7%),
+    inset 0 1px 0 white;
+  transform: none;
+}
+
+.sidebarAccountShell .accountMenu {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 0.6rem);
+  left: 0;
+  width: 100%;
 }
 
 .statusDot {
@@ -314,13 +381,15 @@ a {
   box-shadow: 0 0 0 3px rgb(170 165 181 / 12%);
 }
 
-.sidebarBackdrop {
+.sidebarBackdrop,
+.mobileSidebarTrigger {
   display: none;
 }
 
 .workspace {
   min-width: 0;
   max-width: 100%;
+  min-height: 100vh;
 }
 
 .workspaceTopbar {
@@ -4228,8 +4297,32 @@ a.postDetailPermalink:focus-visible {
     opacity: 1;
   }
 
-  .menuButton {
+  .mobileSidebarTrigger {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 24;
+    width: 2.6rem;
+    height: 2.6rem;
     display: grid;
+    place-items: center;
+    padding: 0;
+    color: var(--ink);
+    background: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 96%),
+      rgb(249 245 255 / 92%)
+    );
+    border: 1px solid var(--glass-border);
+    border-radius: 0.8rem;
+    box-shadow: var(--glass-shadow-sm);
+    backdrop-filter: blur(18px) saturate(155%);
+    -webkit-backdrop-filter: blur(18px) saturate(155%);
+    cursor: pointer;
+  }
+
+  .workspaceContent {
+    padding-top: 4.35rem;
   }
 
   .quickActionGrid {
@@ -4242,39 +4335,8 @@ a.postDetailPermalink:focus-visible {
 }
 
 @media (max-width: 680px) {
-  .workspaceTopbar {
-    min-height: 3.4rem;
-  }
-
-  .topbarHeading > div {
-    display: none;
-  }
-
-  .topAccountText small {
-    display: none;
-  }
-
-  .topAccountText {
-    width: 6.5rem;
-    min-width: 0;
-  }
-
-  .topAccountText strong {
-    display: block;
-    max-width: 100%;
-  }
-
-  .topAccount {
-    width: 2.45rem;
-    height: 2.45rem;
-  }
-
-  .topAccount > svg {
-    display: none;
-  }
-
   .workspaceContent {
-    padding: 1rem;
+    padding: 4.35rem 1rem 1rem;
   }
 
   .postControlBar,
@@ -6477,9 +6539,9 @@ a.postDetailPermalink:focus-visible {
   border-radius: 999px;
 }
 
-.sidebarFooter,
 .topAccount,
-.menuButton {
+.menuButton,
+.mobileSidebarTrigger {
   background: linear-gradient(
     145deg,
     rgb(255 255 255 / 96%),
@@ -6494,7 +6556,8 @@ a.postDetailPermalink:focus-visible {
 }
 
 .topAccount:hover,
-.menuButton:hover {
+.menuButton:hover,
+.mobileSidebarTrigger:hover {
   border-color: rgb(187 160 235 / 68%);
   box-shadow:
     0 13px 28px rgb(61 39 101 / 13%),
@@ -7007,7 +7070,8 @@ a.postDetailPermalink:focus-visible {
   .quickActionCard:hover,
   .navItem:hover,
   .topAccount:hover,
-  .menuButton:hover {
+  .menuButton:hover,
+  .mobileSidebarTrigger:hover {
     transform: none;
   }
 }
@@ -7061,7 +7125,7 @@ a.postDetailPermalink:focus-visible {
   min-height: 0;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -7123,6 +7187,12 @@ a.postDetailPermalink:focus-visible {
 .isPostLibraryFrame .postLoadingState {
   min-height: 0;
   flex: 1;
+}
+
+@media (max-width: 900px) {
+  .isPostLibraryFrame .workspaceContent {
+    padding-top: 4.35rem;
+  }
 }
 
 @media (max-width: 760px) {
