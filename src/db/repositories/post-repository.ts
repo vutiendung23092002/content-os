@@ -1,4 +1,16 @@
-import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
 import { facebookOperations, postAssets, posts } from "@/db/schema";
 
@@ -27,8 +39,17 @@ export type RemotePostCacheInput = {
   snapshot: Record<string, unknown>;
 };
 
+export type MarkMissingRemotePostsInput = {
+  pageId: string;
+  kind: "published" | "scheduled";
+  windowStart: Date;
+  windowEnd: Date;
+  seenRemotePostIds: string[];
+  missingGraceBefore: Date;
+};
+
 export class PostRepository {
-  constructor(private readonly database: DatabaseExecutor) {}
+  constructor(private readonly database: DatabaseExecutor) { }
 
   async createDraft(input: CreateDraftInput): Promise<PostRecord> {
     const [record] = await this.database
@@ -224,6 +245,54 @@ export class PostRepository {
         ),
       )
       .orderBy(desc(effectiveAt));
+  }
+
+  async markMissingRemotePosts(
+    input: MarkMissingRemotePostsInput,
+  ): Promise<number> {
+    const syncedAt = new Date();
+
+    const effectiveAt =
+      input.kind === "scheduled" ? posts.scheduledAt : posts.publishedAt;
+
+    const missingRemoteFilter =
+      input.seenRemotePostIds.length > 0
+        ? notInArray(posts.remotePostId, input.seenRemotePostIds)
+        : sql<boolean>`true`;
+
+    const updated = await this.database
+      .update(posts)
+      .set({
+        status:
+          input.kind === "scheduled"
+            ? "canceled"
+            : "deleted_remote",
+        lastSyncedAt: syncedAt,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        updatedAt: syncedAt,
+      })
+      .where(
+        and(
+          eq(posts.pageId, input.pageId),
+          eq(posts.status, input.kind),
+          gte(effectiveAt, input.windowStart),
+          lt(effectiveAt, input.windowEnd),
+
+          // Bài local không còn xuất hiện trong snapshot Meta.
+          missingRemoteFilter,
+
+          // Tránh tombstone một post vừa mới được tạo mà Meta
+          // chưa kịp expose qua /posts hoặc /scheduled_posts.
+          or(
+            isNotNull(posts.lastSyncedAt),
+            lte(posts.updatedAt, input.missingGraceBefore),
+          ),
+        ),
+      )
+      .returning({ id: posts.id });
+
+    return updated.length;
   }
 
   async claimDraftForSubmission(id: string): Promise<PostRecord | undefined> {

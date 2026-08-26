@@ -343,6 +343,180 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
     ).rejects.toBe(rollbackSignal);
   });
 
+
+  it("tombstones both the canonical video feed post and its legacy video object alias", async () => {
+    const rollbackSignal = new Error(
+      "EXPECTED_VIDEO_ALIAS_TEST_ROLLBACK",
+    );
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const page = await new PageRepository(
+          transaction,
+        ).upsertManagedPage({
+          externalPageId: `video-alias-${randomUUID()}`,
+          name: "Video Alias Integration Page",
+        });
+
+        const postRepository = new PostRepository(transaction);
+        const effectiveAt = new Date("2026-08-18T02:00:00.000Z");
+
+        const videoObjectId = `video-${randomUUID()}`;
+        const feedPostId = `${page.externalPageId}_${randomUUID()}`;
+
+        const [legacyVideoRow] = await transaction
+          .insert(posts)
+          .values({
+            pageId: page.id,
+            remotePostId: videoObjectId,
+            type: "video",
+            message: "Same video",
+            status: "published",
+            publishedAt: effectiveAt,
+          })
+          .returning();
+
+        const [canonicalFeedRow] = await transaction
+          .insert(posts)
+          .values({
+            pageId: page.id,
+            remotePostId: feedPostId,
+            type: "video",
+            message: "Same video",
+            status: "published",
+            publishedAt: effectiveAt,
+            remoteSnapshot: {
+              mediaType: "video",
+              permalinkUrl: "https://facebook.example/video",
+            },
+          })
+          .returning();
+
+        expect(legacyVideoRow).toBeDefined();
+        expect(canonicalFeedRow).toBeDefined();
+
+        await postRepository.markRemoteRemoved(
+          canonicalFeedRow!.id,
+          page.id,
+          feedPostId,
+          "published",
+          [videoObjectId],
+        );
+
+        await expect(
+          postRepository.findById(canonicalFeedRow!.id),
+        ).resolves.toMatchObject({
+          remotePostId: feedPostId,
+          status: "deleted_remote",
+        });
+
+        await expect(
+          postRepository.findById(legacyVideoRow!.id),
+        ).resolves.toMatchObject({
+          remotePostId: videoObjectId,
+          status: "deleted_remote",
+        });
+
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  });
+
+  it("marks an old missing remote post deleted but preserves a recent post inside the visibility grace period", async () => {
+    const rollbackSignal = new Error(
+      "EXPECTED_MISSING_REMOTE_TEST_ROLLBACK",
+    );
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const page = await new PageRepository(
+          transaction,
+        ).upsertManagedPage({
+          externalPageId: `missing-remote-${randomUUID()}`,
+          name: "Missing Remote Integration Page",
+        });
+
+        const postRepository = new PostRepository(transaction);
+
+        const windowStart = new Date("2026-08-16T17:00:00.000Z");
+        const windowEnd = new Date("2026-08-23T17:00:00.000Z");
+        const missingGraceBefore = new Date("2026-08-23T16:50:00.000Z");
+
+        const oldRemotePostId = `old-${randomUUID()}`;
+        const recentRemotePostId = `recent-${randomUUID()}`;
+
+        const [oldPost] = await transaction
+          .insert(posts)
+          .values({
+            pageId: page.id,
+            remotePostId: oldRemotePostId,
+            type: "text",
+            message: "Old remote post no longer on Facebook",
+            status: "published",
+            publishedAt: new Date("2026-08-18T02:00:00.000Z"),
+            updatedAt: new Date("2026-08-18T03:00:00.000Z"),
+          })
+          .returning();
+
+        const [recentPost] = await transaction
+          .insert(posts)
+          .values({
+            pageId: page.id,
+            remotePostId: recentRemotePostId,
+            type: "text",
+            message: "Fresh post still inside Meta visibility grace",
+            status: "published",
+            publishedAt: new Date("2026-08-23T16:45:00.000Z"),
+            updatedAt: new Date("2026-08-23T16:55:00.000Z"),
+          })
+          .returning();
+
+        expect(oldPost).toBeDefined();
+        expect(recentPost).toBeDefined();
+
+        await postRepository.markMissingRemotePosts({
+          pageId: page.id,
+          kind: "published",
+          windowStart,
+          windowEnd,
+          seenRemotePostIds: [],
+          missingGraceBefore,
+        });
+
+        await expect(
+          postRepository.findById(oldPost!.id),
+        ).resolves.toMatchObject({
+          remotePostId: oldRemotePostId,
+          status: "deleted_remote",
+        });
+
+        await expect(
+          postRepository.findById(recentPost!.id),
+        ).resolves.toMatchObject({
+          remotePostId: recentRemotePostId,
+          status: "published",
+        });
+
+        const activePosts = await postRepository.listRemoteWindow(
+          page.id,
+          "published",
+          windowStart,
+          windowEnd,
+        );
+
+        expect(
+          activePosts.map((post) => post.remotePostId),
+        ).toContain(recentRemotePostId);
+
+        expect(
+          activePosts.map((post) => post.remotePostId),
+        ).not.toContain(oldRemotePostId);
+
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  });
+
   it("selects successful images, aged successful videos, and orphaned assets for cleanup", async () => {
     const rollbackSignal = new Error("EXPECTED_CLEANUP_TEST_ROLLBACK");
 

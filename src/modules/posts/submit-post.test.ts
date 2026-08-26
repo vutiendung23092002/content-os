@@ -36,6 +36,9 @@ function setup() {
     }),
     publishVideo: vi.fn().mockResolvedValue("remote-video-1"),
     scheduleVideo: vi.fn().mockResolvedValue("remote-video-scheduled-1"),
+    resolveVideoPostId: vi
+      .fn()
+      .mockResolvedValue("page-external-1_video-post-1"),
   };
   const clientFactory = vi.fn().mockReturnValue(client);
   const service = new SubmitPostService(
@@ -205,6 +208,9 @@ describe("SubmitPostService", () => {
       }),
       publishVideo: vi.fn().mockResolvedValue("remote-video-1"),
       scheduleVideo: vi.fn().mockResolvedValue("remote-video-scheduled-1"),
+      resolveVideoPostId: vi
+        .fn()
+        .mockResolvedValue("page-external-1_video-post-1"),
     };
     const assetUrls = {
       createSignedUrls: vi
@@ -390,9 +396,12 @@ describe("SubmitPostService", () => {
     );
   });
 
-  it("publishes a video through the dedicated Page video method", async () => {
+  it("publishes a video and stores the canonical PagePost id", async () => {
     const setupResult = setup();
-    vi.mocked(setupResult.persistence.prepare).mockResolvedValue({
+
+    vi.mocked(
+      setupResult.persistence.prepare,
+    ).mockResolvedValue({
       ...prepared,
       postType: "video",
       media: [
@@ -403,23 +412,63 @@ describe("SubmitPostService", () => {
         },
       ],
     });
+
+    vi.mocked(
+      setupResult.client.publishVideo,
+    ).mockResolvedValue("remote-video-1");
+
+    vi.mocked(
+      setupResult.client.resolveVideoPostId,
+    ).mockResolvedValue(
+      "page-external-1_video-post-1",
+    );
+
     const assetUrls = {
-      createSignedUrls: vi.fn().mockResolvedValue(["https://signed/video"]),
+      createSignedUrls: vi
+        .fn()
+        .mockResolvedValue([
+          "https://signed/video",
+        ]),
     };
+
     const service = new SubmitPostService(
       setupResult.persistence,
       () => setupResult.client,
-      () => new Date("2026-08-20T00:00:00.000Z"),
+      () =>
+        new Date(
+          "2026-08-20T00:00:00.000Z",
+        ),
       assetUrls,
     );
 
     await service.publish(postId);
 
-    expect(setupResult.client.publishVideo).toHaveBeenCalledWith({
+    expect(
+      setupResult.client.publishVideo,
+    ).toHaveBeenCalledWith({
       pageId: "page-external-1",
       description: "Caption",
       fileUrl: "https://signed/video",
     });
-    expect(setupResult.client.publishPost).not.toHaveBeenCalled();
+
+    expect(
+      setupResult.client.resolveVideoPostId,
+    ).toHaveBeenCalledWith(
+      "remote-video-1",
+    );
+
+    expect(
+      setupResult.persistence.succeed,
+    ).toHaveBeenCalledWith({
+      operationId: "operation-1",
+      postId,
+      remotePostId:
+        "page-external-1_video-post-1",
+      remoteMediaIds: [
+        "remote-video-1",
+      ],
+      kind: "publish_now",
+      scheduledFor: undefined,
+    });
   });
 });

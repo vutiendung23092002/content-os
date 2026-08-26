@@ -10,10 +10,7 @@ import {
   PageRepository,
   type PageRecord,
 } from "@/db/repositories/page-repository";
-import {
-  PostRepository,
-  type RemotePostCacheInput,
-} from "@/db/repositories/post-repository";
+
 import { AppError } from "@/lib/errors/app-error";
 import { logger } from "@/lib/logger";
 import {
@@ -21,6 +18,8 @@ import {
   type RemoteFacebookPost,
   type RemotePostKind,
 } from "./remote-post-reader";
+
+import { RemotePostMirror } from "./remote-post-mirror";
 
 const JOB_KEY = "facebook.remote-post-sync";
 const LEASE_MS = 5 * 60 * 1000;
@@ -66,7 +65,8 @@ type PageStore = {
   }): Promise<PageRecord[]>;
 };
 
-type PostStore = Pick<PostRepository, "upsertRemotePosts">;
+// type PostStore = Pick<PostRepository, "upsertRemotePosts">;
+type RemotePostMirrorPort = Pick<RemotePostMirror, "replaceWindow">;
 type Reader = Pick<RemotePostReader, "list">;
 
 export type FacebookSyncCronResult = {
@@ -76,28 +76,6 @@ export type FacebookSyncCronResult = {
   nextCursor: string | null;
 };
 
-function toCacheInput(
-  pageId: string,
-  post: RemoteFacebookPost,
-): RemotePostCacheInput {
-  return {
-    pageId,
-    remotePostId: post.remoteId,
-    kind: post.kind,
-    message: post.message,
-    effectiveAt: post.effectiveAt ? new Date(post.effectiveAt) : null,
-    createdAt: post.createdAt ? new Date(post.createdAt) : null,
-    updatedAt: post.updatedAt ? new Date(post.updatedAt) : null,
-    snapshot: {
-      permalinkUrl: post.permalinkUrl,
-      imageUrl: post.imageUrl,
-      imageUrls: post.imageUrls,
-      mediaType: post.mediaType,
-      engagement: post.engagement,
-      source: post.source,
-    },
-  };
-}
 
 function safeError(error: unknown): Record<string, unknown> {
   return {
@@ -114,13 +92,13 @@ export class FacebookSyncCronService {
   constructor(
     private readonly jobs: JobStore = new CronJobRepository(getDatabase()),
     private readonly pages: PageStore = new PageRepository(getDatabase()),
-    private readonly posts: PostStore = new PostRepository(getDatabase()),
+    private readonly mirror: RemotePostMirrorPort = new RemotePostMirror(),
     private readonly reader: Reader = new RemotePostReader(),
     private readonly now: () => Date = () => new Date(),
     private readonly delay: (milliseconds: number) => Promise<void> = (
       milliseconds,
     ) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  ) {}
+  ) { }
 
   async run(pageLimit = DEFAULT_PAGE_LIMIT): Promise<FacebookSyncCronResult> {
     const owner = randomUUID();
@@ -241,46 +219,95 @@ export class FacebookSyncCronService {
     window: { since: Date; until: Date },
   ): Promise<number> {
     let after: string | undefined;
-    let mirrored = 0;
-    const seen = new Set<string>();
 
-    for (let remotePage = 0; remotePage < MAX_REMOTE_PAGES; remotePage += 1) {
+    const collected: RemoteFacebookPost[] = [];
+    const seenCursors = new Set<string>();
+
+    for (
+      let remotePage = 0;
+      remotePage < MAX_REMOTE_PAGES;
+      remotePage += 1
+    ) {
       const result = await this.readWithRetry({
         localPageId: pageId,
         kind,
         after,
         limit: 100,
-        window: kind === "published" ? window : undefined,
+
+        // Published API hỗ trợ since/until trực tiếp.
+        // Scheduled thì lấy danh sách rồi filter local bên dưới.
+        window:
+          kind === "published"
+            ? window
+            : undefined,
       });
+
       const inWindow = result.posts.filter((post) => {
-        if (!post.effectiveAt) return false;
-        const timestamp = new Date(post.effectiveAt).getTime();
+        if (!post.effectiveAt) {
+          return false;
+        }
+
+        const timestamp = new Date(
+          post.effectiveAt,
+        ).getTime();
+
         return (
           timestamp >= window.since.getTime() &&
           timestamp < window.until.getTime()
         );
       });
-      await this.posts.upsertRemotePosts(
-        inWindow.map((post) => toCacheInput(pageId, post)),
-      );
-      mirrored += inWindow.length;
 
-      if (!result.after || result.posts.length === 0) return mirrored;
-      if (seen.has(result.after)) {
+      collected.push(...inWindow);
+
+      /*
+       * Không còn cursor nghĩa là đã đọc hết snapshot.
+       *
+       * Chỉ lúc này mới được reconcile local DB,
+       * vì giờ ta mới chắc collected[] là toàn bộ dữ liệu
+       * Facebook trong window.
+       */
+      if (!result.after || result.posts.length === 0) {
+        const mirrored =
+          await this.mirror.replaceWindow({
+            pageId,
+            kind,
+            windowStart: window.since,
+            windowEnd: window.until,
+            posts: collected,
+          });
+
+        return mirrored.mirrored;
+      }
+
+      /*
+       * Facebook trả lại cursor đã gặp trước đó.
+       * Không được dùng snapshot chưa hoàn chỉnh
+       * để đánh dấu bài local là deleted_remote.
+       */
+      if (seenCursors.has(result.after)) {
         throw new AppError({
           code: "FACEBOOK_SYNC_CURSOR_LOOP",
-          message: "Facebook trả về cursor lặp lại.",
+          message:
+            "Facebook trả về cursor lặp lại.",
           status: 502,
           retryable: true,
         });
       }
-      seen.add(result.after);
+
+      seenCursors.add(result.after);
       after = result.after;
     }
 
+    /*
+     * Chạy hết MAX_REMOTE_PAGES mà vẫn còn cursor
+     * nghĩa là snapshot chưa complete.
+     *
+     * Tuyệt đối không gọi replaceWindow().
+     */
     throw new AppError({
       code: "FACEBOOK_SYNC_PAGE_LIMIT",
-      message: "Facebook sync vượt giới hạn phân trang an toàn.",
+      message:
+        "Facebook sync vượt giới hạn phân trang an toàn.",
       status: 503,
       retryable: true,
     });

@@ -77,6 +77,9 @@ export type SubmissionMetaClient = {
     fileUrl: string;
     scheduledFor: Date;
   }): Promise<string>;
+  resolveVideoPostId(
+    videoId: string,
+  ): Promise<string | null>;
 };
 
 export type SubmissionAssetUrlProvider = {
@@ -257,13 +260,13 @@ export class SubmitPostService {
     private readonly clientFactory: (
       pageAccessToken: string,
     ) => SubmissionMetaClient = (pageAccessToken) =>
-      new MetaGraphClient({
-        graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
-        accessToken: pageAccessToken,
-      }),
+        new MetaGraphClient({
+          graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
+          accessToken: pageAccessToken,
+        }),
     private readonly now: () => Date = () => new Date(),
     private readonly assetUrls: SubmissionAssetUrlProvider = new AssetStorage(),
-  ) {}
+  ) { }
 
   async publish(postId: string): Promise<SubmissionResult> {
     return this.submit({ postId: z.uuid().parse(postId), kind: "publish_now" });
@@ -304,11 +307,12 @@ export class SubmitPostService {
       const mediaUrls =
         prepared.media.length > 0
           ? await this.assetUrls.createSignedUrls(
-              prepared.media.map((asset) => asset.storageKey),
-            )
+            prepared.media.map((asset) => asset.storageKey),
+          )
           : [];
       if (prepared.postType === "video") {
         const fileUrl = mediaUrls[0];
+
         if (!fileUrl || prepared.media.length !== 1) {
           throw new AppError({
             code: "VIDEO_ASSET_INVALID",
@@ -316,33 +320,64 @@ export class SubmitPostService {
             status: 400,
           });
         }
-        remotePostId =
+
+        const videoId =
           input.kind === "schedule" && input.scheduledFor
             ? await client.scheduleVideo({
-                pageId: prepared.externalPageId,
-                description: prepared.message,
-                fileUrl,
-                scheduledFor: input.scheduledFor,
-              })
+              pageId: prepared.externalPageId,
+              description: prepared.message,
+              fileUrl,
+              scheduledFor: input.scheduledFor,
+            })
             : await client.publishVideo({
-                pageId: prepared.externalPageId,
-                description: prepared.message,
-                fileUrl,
-              });
+              pageId: prepared.externalPageId,
+              description: prepared.message,
+              fileUrl,
+            });
+
+        /*
+         * Video ID là identity của media object.
+         * Luôn giữ nó trong post_assets.remote_media_id.
+         */
+        remoteMediaIds = [videoId];
+
+        /*
+         * Fallback an toàn.
+         *
+         * Nếu Meta chưa expose post_id hoặc lookup lỗi,
+         * vẫn giữ Video ID làm remotePostId tạm thời.
+         */
+        remotePostId = videoId;
+
+        try {
+          const feedPostId =
+            await client.resolveVideoPostId(videoId);
+
+          if (feedPostId) {
+            remotePostId = feedPostId;
+          }
+        } catch {
+          /*
+           * Không throw.
+           *
+           * Meta đã tạo video thành công.
+           * Việc resolve Feed Post ID chỉ là bước normalize identity.
+           */
+        }
       } else {
         const receipt =
           input.kind === "schedule" && input.scheduledFor
             ? await client.schedulePost({
-                pageId: prepared.externalPageId,
-                message: prepared.message,
-                scheduledFor: input.scheduledFor,
-                mediaUrls,
-              })
+              pageId: prepared.externalPageId,
+              message: prepared.message,
+              scheduledFor: input.scheduledFor,
+              mediaUrls,
+            })
             : await client.publishPost({
-                pageId: prepared.externalPageId,
-                message: prepared.message,
-                mediaUrls,
-              });
+              pageId: prepared.externalPageId,
+              message: prepared.message,
+              mediaUrls,
+            });
         remotePostId = receipt.remotePostId;
         remoteMediaIds = receipt.remoteMediaIds;
       }
@@ -351,11 +386,11 @@ export class SubmitPostService {
         error instanceof AppError
           ? error
           : new AppError({
-              code: "FACEBOOK_SUBMISSION_ERROR",
-              message: "Không thể hoàn tất thao tác với Facebook.",
-              status: 502,
-              cause: error,
-            });
+            code: "FACEBOOK_SUBMISSION_ERROR",
+            message: "Không thể hoàn tất thao tác với Facebook.",
+            status: 502,
+            cause: error,
+          });
       const uncertain = normalized.retryable;
 
       await this.persistence.fail({
