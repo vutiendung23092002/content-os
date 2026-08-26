@@ -52,9 +52,7 @@ function asImageUrls(value: unknown): string[] {
     : [];
 }
 
-function asEngagement(
-  value: unknown,
-): RemoteFacebookPost["engagement"] {
+function asEngagement(value: unknown): RemoteFacebookPost["engagement"] {
   if (!value || typeof value !== "object") return null;
 
   const record = value as Record<string, unknown>;
@@ -74,13 +72,10 @@ function asEngagement(
   };
 }
 
-function toRemotePost(
-  record: PostRecord,
-): RemoteFacebookPost | null {
+function toRemotePost(record: PostRecord): RemoteFacebookPost | null {
   if (
     !record.remotePostId ||
-    (record.status !== "published" &&
-      record.status !== "scheduled")
+    (record.status !== "published" && record.status !== "scheduled")
   ) {
     return null;
   }
@@ -88,15 +83,10 @@ function toRemotePost(
   const snapshot = record.remoteSnapshot as RemoteSnapshot;
 
   const effectiveAt =
-    record.status === "scheduled"
-      ? record.scheduledAt
-      : record.publishedAt;
+    record.status === "scheduled" ? record.scheduledAt : record.publishedAt;
 
   const imageUrls = asImageUrls(snapshot.imageUrls);
-  const imageUrl =
-    asNullableString(snapshot.imageUrl) ??
-    imageUrls[0] ??
-    null;
+  const imageUrl = asNullableString(snapshot.imageUrl) ?? imageUrls[0] ?? null;
 
   return {
     localPostId: record.id,
@@ -104,10 +94,8 @@ function toRemotePost(
     kind: record.status,
     message: record.message,
     effectiveAt: effectiveAt?.toISOString() ?? null,
-    createdAt:
-      record.remoteCreatedAt?.toISOString() ?? null,
-    updatedAt:
-      record.remoteUpdatedAt?.toISOString() ?? null,
+    createdAt: record.remoteCreatedAt?.toISOString() ?? null,
+    updatedAt: record.remoteUpdatedAt?.toISOString() ?? null,
     permalinkUrl: asNullableString(snapshot.permalinkUrl),
     imageUrl,
     imageUrls,
@@ -122,31 +110,20 @@ function toRemotePost(
   };
 }
 
-function syncType(
-  kind: RemotePostKind,
-  weekStart: Date,
-): string {
+function syncType(kind: RemotePostKind, weekStart: Date): string {
   const version =
-    kind === "scheduled"
-      ? `:v${SCHEDULED_CACHE_FORMAT_VERSION}`
-      : "";
+    kind === "scheduled" ? `:v${SCHEDULED_CACHE_FORMAT_VERSION}` : "";
 
   return `remote_posts:${kind}${version}:week:${weekStart.toISOString()}`;
 }
 
-function remotePostIdentity(
-  remoteId: string,
-): string {
+function remotePostIdentity(remoteId: string): string {
   const separator = remoteId.lastIndexOf("_");
 
-  return separator >= 0
-    ? remoteId.slice(separator + 1)
-    : remoteId;
+  return separator >= 0 ? remoteId.slice(separator + 1) : remoteId;
 }
 
-function remotePostCompleteness(
-  post: RemoteFacebookPost,
-): number {
+function remotePostCompleteness(post: RemoteFacebookPost): number {
   return (
     (post.remoteId.includes("_") ? 2 : 0) +
     (post.permalinkUrl ? 4 : 0) +
@@ -156,30 +133,19 @@ function remotePostCompleteness(
   );
 }
 
-function normalizedPostMessage(
-  post: RemoteFacebookPost,
-): string {
-  return post.message
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase();
+function normalizedPostMessage(post: RemoteFacebookPost): string {
+  return post.message.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
-function postEffectiveTime(
-  post: RemoteFacebookPost,
-): number | null {
+function postEffectiveTime(post: RemoteFacebookPost): number | null {
   if (!post.effectiveAt) return null;
 
   const timestamp = new Date(post.effectiveAt).getTime();
 
-  return Number.isFinite(timestamp)
-    ? timestamp
-    : null;
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function isIncompleteSubmission(
-  post: RemoteFacebookPost,
-): boolean {
+function isIncompleteSubmission(post: RemoteFacebookPost): boolean {
   return (
     !post.permalinkUrl &&
     !post.imageUrl &&
@@ -193,27 +159,21 @@ function isSameFacebookSubmission(
   second: RemoteFacebookPost,
 ): boolean {
   if (
-    remotePostIdentity(first.remoteId) ===
-    remotePostIdentity(second.remoteId)
+    remotePostIdentity(first.remoteId) === remotePostIdentity(second.remoteId)
   ) {
     return true;
   }
 
-  const firstMessage =
-    normalizedPostMessage(first);
+  const firstMessage = normalizedPostMessage(first);
 
-  const secondMessage =
-    normalizedPostMessage(second);
+  const secondMessage = normalizedPostMessage(second);
 
-  const firstTime =
-    postEffectiveTime(first);
+  const firstTime = postEffectiveTime(first);
 
-  const secondTime =
-    postEffectiveTime(second);
+  const secondTime = postEffectiveTime(second);
 
   const hasOneIncompleteRecord =
-    isIncompleteSubmission(first) !==
-    isIncompleteSubmission(second);
+    isIncompleteSubmission(first) !== isIncompleteSubmission(second);
 
   return (
     first.mediaType === second.mediaType &&
@@ -226,16 +186,13 @@ function isSameFacebookSubmission(
   );
 }
 
-function mergeRemotePosts(
-  posts: RemoteFacebookPost[],
-): RemoteFacebookPost[] {
+function mergeRemotePosts(posts: RemoteFacebookPost[]): RemoteFacebookPost[] {
   const records: RemoteFacebookPost[] = [];
 
   for (const post of posts) {
-    const existingIndex =
-      records.findIndex((current) =>
-        isSameFacebookSubmission(current, post),
-      );
+    const existingIndex = records.findIndex((current) =>
+      isSameFacebookSubmission(current, post),
+    );
 
     if (existingIndex < 0) {
       records.push(post);
@@ -244,10 +201,7 @@ function mergeRemotePosts(
 
     const existing = records[existingIndex]!;
 
-    if (
-      remotePostCompleteness(post) >=
-      remotePostCompleteness(existing)
-    ) {
+    if (remotePostCompleteness(post) >= remotePostCompleteness(existing)) {
       records[existingIndex] = post;
     }
   }
@@ -257,17 +211,17 @@ function mergeRemotePosts(
 
 export class RemotePostWeekCache {
   constructor(
-    private readonly reader: RemotePostReaderPort =
-      new RemotePostReader(),
+    private readonly reader: RemotePostReaderPort = new RemotePostReader(),
 
-    private readonly postRepository: PostRepositoryPort =
-      new PostRepository(getDatabase()),
+    private readonly postRepository: PostRepositoryPort = new PostRepository(
+      getDatabase(),
+    ),
 
-    private readonly syncRepository: SyncCursorRepositoryPort =
-      new SyncCursorRepository(getDatabase()),
+    private readonly syncRepository: SyncCursorRepositoryPort = new SyncCursorRepository(
+      getDatabase(),
+    ),
 
-    private readonly mirror: RemotePostMirrorPort =
-      new RemotePostMirror(),
+    private readonly mirror: RemotePostMirrorPort = new RemotePostMirror(),
   ) {}
 
   async list(input: {
@@ -284,62 +238,41 @@ export class RemotePostWeekCache {
     const weekEnd = new Date(input.weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
-    const type = syncType(
-      input.kind,
-      input.weekStart,
+    const type = syncType(input.kind, input.weekStart);
+
+    const [state, cachedRecords] = await Promise.all([
+      this.syncRepository.find(input.localPageId, type),
+
+      this.postRepository.listRemoteWindow(
+        input.localPageId,
+        input.kind,
+        input.weekStart,
+        weekEnd,
+      ),
+    ]);
+
+    const cachedPosts = mergeRemotePosts(
+      cachedRecords
+        .map(toRemotePost)
+        .filter((post): post is RemoteFacebookPost => post !== null),
     );
 
-    const [state, cachedRecords] =
-      await Promise.all([
-        this.syncRepository.find(
-          input.localPageId,
-          type,
-        ),
-
-        this.postRepository.listRemoteWindow(
-          input.localPageId,
-          input.kind,
-          input.weekStart,
-          weekEnd,
-        ),
-      ]);
-
-    const cachedPosts =
-      mergeRemotePosts(
-        cachedRecords
-          .map(toRemotePost)
-          .filter(
-            (
-              post,
-            ): post is RemoteFacebookPost =>
-              post !== null,
-          ),
-      );
-
-    const hasSnapshot =
-      Boolean(state?.lastSuccessAt);
+    const hasSnapshot = Boolean(state?.lastSuccessAt);
 
     const stale =
       !state?.lastSuccessAt ||
-      Date.now() -
-        state.lastSuccessAt.getTime() >
-        CACHE_TTL_MS;
+      Date.now() - state.lastSuccessAt.getTime() > CACHE_TTL_MS;
 
-    if (
-      hasSnapshot &&
-      !input.forceRefresh
-    ) {
+    if (hasSnapshot && !input.forceRefresh) {
       return {
         posts: cachedPosts,
-        fetchedAt:
-          state!.lastSuccessAt!.toISOString(),
+        fetchedAt: state!.lastSuccessAt!.toISOString(),
         stale,
         cacheStatus: "hit",
       };
     }
 
-    const key =
-      `${input.localPageId}:${type}`;
+    const key = `${input.localPageId}:${type}`;
 
     let sync = inFlightSyncs.get(key);
 
@@ -348,9 +281,7 @@ export class RemotePostWeekCache {
         ...input,
         weekEnd,
         syncType: type,
-      }).finally(() =>
-        inFlightSyncs.delete(key),
-      );
+      }).finally(() => inFlightSyncs.delete(key));
 
       inFlightSyncs.set(key, sync);
     }
@@ -359,8 +290,7 @@ export class RemotePostWeekCache {
 
     return {
       posts,
-      fetchedAt:
-        new Date().toISOString(),
+      fetchedAt: new Date().toISOString(),
       stale: false,
       cacheStatus: "refreshed",
     };
@@ -377,33 +307,24 @@ export class RemotePostWeekCache {
 
     const collected: RemoteFacebookPost[] = [];
 
-    const seenCursors =
-      new Set<string>();
+    const seenCursors = new Set<string>();
 
     let snapshotComplete = false;
 
-    for (
-      let pageNumber = 0;
-      pageNumber < MAX_SYNC_PAGES;
-      pageNumber += 1
-    ) {
-      const result =
-        await this.reader.list({
-          localPageId:
-            input.localPageId,
-          kind: input.kind,
-          after,
-          limit: 100,
-          window:
-            input.kind === "published"
-              ? {
-                  since:
-                    input.weekStart,
-                  until:
-                    input.weekEnd,
-                }
-              : undefined,
-        });
+    for (let pageNumber = 0; pageNumber < MAX_SYNC_PAGES; pageNumber += 1) {
+      const result = await this.reader.list({
+        localPageId: input.localPageId,
+        kind: input.kind,
+        after,
+        limit: 100,
+        window:
+          input.kind === "published"
+            ? {
+                since: input.weekStart,
+                until: input.weekEnd,
+              }
+            : undefined,
+      });
 
       collected.push(...result.posts);
 
@@ -421,14 +342,10 @@ export class RemotePostWeekCache {
         break;
       }
 
-      if (
-        seenCursors.has(result.after)
-      ) {
+      if (seenCursors.has(result.after)) {
         throw new AppError({
-          code:
-            "FACEBOOK_SYNC_CURSOR_LOOP",
-          message:
-            "Facebook trả về cursor lặp lại khi đồng bộ bài viết.",
+          code: "FACEBOOK_SYNC_CURSOR_LOOP",
+          message: "Facebook trả về cursor lặp lại khi đồng bộ bài viết.",
           status: 502,
           retryable: true,
         });
@@ -440,32 +357,23 @@ export class RemotePostWeekCache {
 
     if (!snapshotComplete) {
       throw new AppError({
-        code:
-          "FACEBOOK_SYNC_PAGE_LIMIT",
-        message:
-          "Facebook sync vượt giới hạn phân trang an toàn.",
+        code: "FACEBOOK_SYNC_PAGE_LIMIT",
+        message: "Facebook sync vượt giới hạn phân trang an toàn.",
         status: 503,
         retryable: true,
       });
     }
 
-    const posts = mergeRemotePosts(
-      collected,
-    ).filter((post) => {
+    const posts = mergeRemotePosts(collected).filter((post) => {
       if (!post.effectiveAt) {
         return false;
       }
 
-      const effectiveAt =
-        new Date(
-          post.effectiveAt,
-        ).getTime();
+      const effectiveAt = new Date(post.effectiveAt).getTime();
 
       return (
-        effectiveAt >=
-          input.weekStart.getTime() &&
-        effectiveAt <
-          input.weekEnd.getTime()
+        effectiveAt >= input.weekStart.getTime() &&
+        effectiveAt < input.weekEnd.getTime()
       );
     });
 
@@ -484,23 +392,17 @@ export class RemotePostWeekCache {
       windowEnd: input.weekEnd,
     });
 
-    const storedRecords =
-      await this.postRepository.listRemoteWindow(
-        input.localPageId,
-        input.kind,
-        input.weekStart,
-        input.weekEnd,
-      );
+    const storedRecords = await this.postRepository.listRemoteWindow(
+      input.localPageId,
+      input.kind,
+      input.weekStart,
+      input.weekEnd,
+    );
 
     return mergeRemotePosts(
       storedRecords
         .map(toRemotePost)
-        .filter(
-          (
-            post,
-          ): post is RemoteFacebookPost =>
-            post !== null,
-        ),
+        .filter((post): post is RemoteFacebookPost => post !== null),
     );
   }
 }

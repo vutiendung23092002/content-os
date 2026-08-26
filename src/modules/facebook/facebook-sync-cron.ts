@@ -76,7 +76,6 @@ export type FacebookSyncCronResult = {
   nextCursor: string | null;
 };
 
-
 function safeError(error: unknown): Record<string, unknown> {
   return {
     code: error instanceof AppError ? error.code : "FACEBOOK_SYNC_FAILED",
@@ -98,7 +97,7 @@ export class FacebookSyncCronService {
     private readonly delay: (milliseconds: number) => Promise<void> = (
       milliseconds,
     ) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  ) { }
+  ) {}
 
   async run(pageLimit = DEFAULT_PAGE_LIMIT): Promise<FacebookSyncCronResult> {
     const owner = randomUUID();
@@ -223,11 +222,7 @@ export class FacebookSyncCronService {
     const collected: RemoteFacebookPost[] = [];
     const seenCursors = new Set<string>();
 
-    for (
-      let remotePage = 0;
-      remotePage < MAX_REMOTE_PAGES;
-      remotePage += 1
-    ) {
+    for (let remotePage = 0; remotePage < MAX_REMOTE_PAGES; remotePage += 1) {
       const result = await this.readWithRetry({
         localPageId: pageId,
         kind,
@@ -236,10 +231,7 @@ export class FacebookSyncCronService {
 
         // Published API hỗ trợ since/until trực tiếp.
         // Scheduled thì lấy danh sách rồi filter local bên dưới.
-        window:
-          kind === "published"
-            ? window
-            : undefined,
+        window: kind === "published" ? window : undefined,
       });
 
       const inWindow = result.posts.filter((post) => {
@@ -247,9 +239,7 @@ export class FacebookSyncCronService {
           return false;
         }
 
-        const timestamp = new Date(
-          post.effectiveAt,
-        ).getTime();
+        const timestamp = new Date(post.effectiveAt).getTime();
 
         return (
           timestamp >= window.since.getTime() &&
@@ -267,14 +257,13 @@ export class FacebookSyncCronService {
        * Facebook trong window.
        */
       if (!result.after || result.posts.length === 0) {
-        const mirrored =
-          await this.mirror.replaceWindow({
-            pageId,
-            kind,
-            windowStart: window.since,
-            windowEnd: window.until,
-            posts: collected,
-          });
+        const mirrored = await this.mirror.replaceWindow({
+          pageId,
+          kind,
+          windowStart: window.since,
+          windowEnd: window.until,
+          posts: collected,
+        });
 
         return mirrored.mirrored;
       }
@@ -287,8 +276,7 @@ export class FacebookSyncCronService {
       if (seenCursors.has(result.after)) {
         throw new AppError({
           code: "FACEBOOK_SYNC_CURSOR_LOOP",
-          message:
-            "Facebook trả về cursor lặp lại.",
+          message: "Facebook trả về cursor lặp lại.",
           status: 502,
           retryable: true,
         });
@@ -306,8 +294,7 @@ export class FacebookSyncCronService {
      */
     throw new AppError({
       code: "FACEBOOK_SYNC_PAGE_LIMIT",
-      message:
-        "Facebook sync vượt giới hạn phân trang an toàn.",
+      message: "Facebook sync vượt giới hạn phân trang an toàn.",
       status: 503,
       retryable: true,
     });

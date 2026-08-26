@@ -50,12 +50,12 @@ function jobStore(cursor: string | null = null) {
  */
 function mirrorStore() {
   return {
-    replaceWindow: vi.fn().mockImplementation(
-      async (input: { posts: unknown[] }) => ({
+    replaceWindow: vi
+      .fn()
+      .mockImplementation(async (input: { posts: unknown[] }) => ({
         mirrored: input.posts.length,
         tombstoned: 0,
-      }),
-    ),
+      })),
   };
 }
 
@@ -113,42 +113,35 @@ describe("FacebookSyncCronService", () => {
     const jobs = jobStore("page-1");
 
     const pages = {
-      listActiveBatch: vi
-        .fn()
-        .mockResolvedValue([page("page-2")]),
+      listActiveBatch: vi.fn().mockResolvedValue([page("page-2")]),
     };
 
     const mirror = mirrorStore();
 
     const reader = {
-      list: vi.fn().mockImplementation(
-        async ({ kind }: { kind: string }) =>
-          kind === "published"
-            ? {
-                ...emptyRemotePage(),
-                posts: [
-                  {
-                    localPostId: null,
-                    remoteId: "external-page_123",
-                    kind: "published",
-                    message:
-                      "Facebook đã tự đăng khi app offline",
-                    effectiveAt:
-                      "2026-08-25T03:55:00.000Z",
-                    createdAt:
-                      "2026-08-25T03:55:00.000Z",
-                    updatedAt: null,
-                    permalinkUrl:
-                      "https://facebook.example/post/123",
-                    imageUrl: null,
-                    imageUrls: [],
-                    mediaType: "text",
-                    engagement: null,
-                    source: "facebook",
-                  },
-                ],
-              }
-            : emptyRemotePage(),
+      list: vi.fn().mockImplementation(async ({ kind }: { kind: string }) =>
+        kind === "published"
+          ? {
+              ...emptyRemotePage(),
+              posts: [
+                {
+                  localPostId: null,
+                  remoteId: "external-page_123",
+                  kind: "published",
+                  message: "Facebook đã tự đăng khi app offline",
+                  effectiveAt: "2026-08-25T03:55:00.000Z",
+                  createdAt: "2026-08-25T03:55:00.000Z",
+                  updatedAt: null,
+                  permalinkUrl: "https://facebook.example/post/123",
+                  imageUrl: null,
+                  imageUrls: [],
+                  mediaType: "text",
+                  engagement: null,
+                  source: "facebook",
+                },
+              ],
+            }
+          : emptyRemotePage(),
       ),
     };
 
@@ -160,9 +153,7 @@ describe("FacebookSyncCronService", () => {
       () => now,
     ).run(5);
 
-    expect(
-      pages.listActiveBatch,
-    ).toHaveBeenCalledWith({
+    expect(pages.listActiveBatch).toHaveBeenCalledWith({
       afterId: "page-1",
       limit: 5,
     });
@@ -173,18 +164,11 @@ describe("FacebookSyncCronService", () => {
      * Snapshot published đã đọc xong nên cron đưa
      * toàn bộ window vào RemotePostMirror.
      */
-    expect(
-      mirror.replaceWindow,
-    ).toHaveBeenNthCalledWith(1, {
+    expect(mirror.replaceWindow).toHaveBeenNthCalledWith(1, {
       pageId: "page-2",
       kind: "published",
-      windowStart: new Date(
-        now.getTime() -
-          8 * 24 * 60 * 60 * 1000,
-      ),
-      windowEnd: new Date(
-        now.getTime() + 60_000,
-      ),
+      windowStart: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+      windowEnd: new Date(now.getTime() + 60_000),
       posts: [
         expect.objectContaining({
           remoteId: "external-page_123",
@@ -200,9 +184,7 @@ describe("FacebookSyncCronService", () => {
      *
      * Vì vậy replaceWindow PHẢI được gọi với posts: [].
      */
-    expect(
-      mirror.replaceWindow,
-    ).toHaveBeenNthCalledWith(
+    expect(mirror.replaceWindow).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         pageId: "page-2",
@@ -211,9 +193,7 @@ describe("FacebookSyncCronService", () => {
       }),
     );
 
-    expect(
-      mirror.replaceWindow,
-    ).toHaveBeenCalledTimes(2);
+    expect(mirror.replaceWindow).toHaveBeenCalledTimes(2);
 
     expect(result).toMatchObject({
       status: "completed",
@@ -227,9 +207,7 @@ describe("FacebookSyncCronService", () => {
     const jobs = jobStore();
 
     const pages = {
-      listActiveBatch: vi
-        .fn()
-        .mockResolvedValue([page("page-1")]),
+      listActiveBatch: vi.fn().mockResolvedValue([page("page-1")]),
     };
 
     const mirror = mirrorStore();
@@ -239,13 +217,10 @@ describe("FacebookSyncCronService", () => {
       remoteId: "external-page_101",
       kind: "published" as const,
       message: "Bài trang đầu",
-      effectiveAt:
-        "2026-08-25T03:50:00.000Z",
-      createdAt:
-        "2026-08-25T03:50:00.000Z",
+      effectiveAt: "2026-08-25T03:50:00.000Z",
+      createdAt: "2026-08-25T03:50:00.000Z",
       updatedAt: null,
-      permalinkUrl:
-        "https://facebook.example/post/101",
+      permalinkUrl: "https://facebook.example/post/101",
       imageUrl: null,
       imageUrls: [],
       mediaType: "text" as const,
@@ -257,10 +232,8 @@ describe("FacebookSyncCronService", () => {
       ...firstPost,
       remoteId: "external-page_102",
       message: "Bài trang hai",
-      effectiveAt:
-        "2026-08-25T03:55:00.000Z",
-      createdAt:
-        "2026-08-25T03:55:00.000Z",
+      effectiveAt: "2026-08-25T03:55:00.000Z",
+      createdAt: "2026-08-25T03:55:00.000Z",
     };
 
     const reader = {
@@ -282,9 +255,7 @@ describe("FacebookSyncCronService", () => {
         })
 
         // scheduled
-        .mockResolvedValueOnce(
-          emptyRemotePage(),
-        ),
+        .mockResolvedValueOnce(emptyRemotePage()),
     };
 
     await new FacebookSyncCronService(
@@ -302,38 +273,30 @@ describe("FacebookSyncCronService", () => {
      * Nếu code gọi replaceWindow sau page 1,
      * test này sẽ fail.
      */
-    expect(
-      mirror.replaceWindow,
-    ).toHaveBeenNthCalledWith(
+    expect(mirror.replaceWindow).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         pageId: "page-1",
         kind: "published",
         posts: [
           expect.objectContaining({
-            remoteId:
-              "external-page_101",
+            remoteId: "external-page_101",
           }),
           expect.objectContaining({
-            remoteId:
-              "external-page_102",
+            remoteId: "external-page_102",
           }),
         ],
       }),
     );
 
-    expect(
-      mirror.replaceWindow,
-    ).toHaveBeenCalledTimes(2);
+    expect(mirror.replaceWindow).toHaveBeenCalledTimes(2);
   });
 
   it("does not reconcile an incomplete snapshot when pagination fails", async () => {
     const jobs = jobStore();
 
     const pages = {
-      listActiveBatch: vi
-        .fn()
-        .mockResolvedValue([page("page-1")]),
+      listActiveBatch: vi.fn().mockResolvedValue([page("page-1")]),
     };
 
     const mirror = mirrorStore();
@@ -343,10 +306,8 @@ describe("FacebookSyncCronService", () => {
       remoteId: "external-page_101",
       kind: "published" as const,
       message: "Trang đầu",
-      effectiveAt:
-        "2026-08-25T03:50:00.000Z",
-      createdAt:
-        "2026-08-25T03:50:00.000Z",
+      effectiveAt: "2026-08-25T03:50:00.000Z",
+      createdAt: "2026-08-25T03:50:00.000Z",
       updatedAt: null,
       permalinkUrl: null,
       imageUrl: null,
@@ -385,19 +346,16 @@ describe("FacebookSyncCronService", () => {
         ),
     };
 
-    const service =
-      new FacebookSyncCronService(
-        jobs,
-        pages,
-        mirror,
-        reader,
-        () => now,
-        async () => undefined,
-      );
+    const service = new FacebookSyncCronService(
+      jobs,
+      pages,
+      mirror,
+      reader,
+      () => now,
+      async () => undefined,
+    );
 
-    await expect(
-      service.run(5),
-    ).rejects.toMatchObject({
+    await expect(service.run(5)).rejects.toMatchObject({
       code: "GRAPH_TEMPORARY",
     });
 
@@ -408,13 +366,9 @@ describe("FacebookSyncCronService", () => {
      * nếu không các post nằm ở page 2 trở đi
      * có thể bị tombstone nhầm.
      */
-    expect(
-      mirror.replaceWindow,
-    ).not.toHaveBeenCalled();
+    expect(mirror.replaceWindow).not.toHaveBeenCalled();
 
-    expect(
-      jobs.checkpoint,
-    ).not.toHaveBeenCalled();
+    expect(jobs.checkpoint).not.toHaveBeenCalled();
 
     expect(jobs.fail).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -432,47 +386,39 @@ describe("FacebookSyncCronService", () => {
     const pages = {
       listActiveBatch: vi
         .fn()
-        .mockResolvedValue([
-          page("page-1"),
-          page("page-2"),
-        ]),
+        .mockResolvedValue([page("page-1"), page("page-2")]),
     };
 
     const mirror = mirrorStore();
 
     const reader = {
-      list: vi.fn().mockImplementation(
-        async ({
-          localPageId,
-        }: {
-          localPageId: string;
-        }) => {
-          if (localPageId === "page-2") {
-            throw new AppError({
-              code: "GRAPH_TEMPORARY",
-              message: "temporary",
-              retryable: true,
-            });
-          }
+      list: vi
+        .fn()
+        .mockImplementation(
+          async ({ localPageId }: { localPageId: string }) => {
+            if (localPageId === "page-2") {
+              throw new AppError({
+                code: "GRAPH_TEMPORARY",
+                message: "temporary",
+                retryable: true,
+              });
+            }
 
-          return emptyRemotePage();
-        },
-      ),
+            return emptyRemotePage();
+          },
+        ),
     };
 
-    const service =
-      new FacebookSyncCronService(
-        jobs,
-        pages,
-        mirror,
-        reader,
-        () => now,
-        async () => undefined,
-      );
+    const service = new FacebookSyncCronService(
+      jobs,
+      pages,
+      mirror,
+      reader,
+      () => now,
+      async () => undefined,
+    );
 
-    await expect(
-      service.run(5),
-    ).rejects.toMatchObject({
+    await expect(service.run(5)).rejects.toMatchObject({
       code: "GRAPH_TEMPORARY",
     });
 
@@ -484,13 +430,9 @@ describe("FacebookSyncCronService", () => {
      *
      * nên Page 1 được checkpoint.
      */
-    expect(
-      jobs.checkpoint,
-    ).toHaveBeenCalledTimes(1);
+    expect(jobs.checkpoint).toHaveBeenCalledTimes(1);
 
-    expect(
-      jobs.checkpoint,
-    ).toHaveBeenCalledWith(
+    expect(jobs.checkpoint).toHaveBeenCalledWith(
       expect.objectContaining({
         cursor: "page-1",
       }),
@@ -507,9 +449,7 @@ describe("FacebookSyncCronService", () => {
      *
      * tổng = 4.
      */
-    expect(
-      reader.list,
-    ).toHaveBeenCalledTimes(4);
+    expect(reader.list).toHaveBeenCalledTimes(4);
 
     /*
      * Chỉ page-1 có snapshot hoàn chỉnh:
@@ -518,9 +458,7 @@ describe("FacebookSyncCronService", () => {
      *
      * page-2 chưa complete nên không được mirror.
      */
-    expect(
-      mirror.replaceWindow,
-    ).toHaveBeenCalledTimes(2);
+    expect(mirror.replaceWindow).toHaveBeenCalledTimes(2);
 
     expect(jobs.fail).toHaveBeenCalledWith(
       expect.objectContaining({

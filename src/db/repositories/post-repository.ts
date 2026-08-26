@@ -49,7 +49,7 @@ export type MarkMissingRemotePostsInput = {
 };
 
 export class PostRepository {
-  constructor(private readonly database: DatabaseExecutor) { }
+  constructor(private readonly database: DatabaseExecutor) {}
 
   async createDraft(input: CreateDraftInput): Promise<PostRecord> {
     const [record] = await this.database
@@ -263,10 +263,7 @@ export class PostRepository {
     const updated = await this.database
       .update(posts)
       .set({
-        status:
-          input.kind === "scheduled"
-            ? "canceled"
-            : "deleted_remote",
+        status: input.kind === "scheduled" ? "canceled" : "deleted_remote",
         lastSyncedAt: syncedAt,
         lastErrorCode: null,
         lastErrorMessage: null,

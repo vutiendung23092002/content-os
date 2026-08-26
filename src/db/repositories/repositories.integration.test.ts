@@ -343,17 +343,12 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
     ).rejects.toBe(rollbackSignal);
   });
 
-
   it("tombstones both the canonical video feed post and its legacy video object alias", async () => {
-    const rollbackSignal = new Error(
-      "EXPECTED_VIDEO_ALIAS_TEST_ROLLBACK",
-    );
+    const rollbackSignal = new Error("EXPECTED_VIDEO_ALIAS_TEST_ROLLBACK");
 
     await expect(
       runInTransaction(async (transaction) => {
-        const page = await new PageRepository(
-          transaction,
-        ).upsertManagedPage({
+        const page = await new PageRepository(transaction).upsertManagedPage({
           externalPageId: `video-alias-${randomUUID()}`,
           name: "Video Alias Integration Page",
         });
@@ -423,15 +418,11 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
   });
 
   it("marks an old missing remote post deleted but preserves a recent post inside the visibility grace period", async () => {
-    const rollbackSignal = new Error(
-      "EXPECTED_MISSING_REMOTE_TEST_ROLLBACK",
-    );
+    const rollbackSignal = new Error("EXPECTED_MISSING_REMOTE_TEST_ROLLBACK");
 
     await expect(
       runInTransaction(async (transaction) => {
-        const page = await new PageRepository(
-          transaction,
-        ).upsertManagedPage({
+        const page = await new PageRepository(transaction).upsertManagedPage({
           externalPageId: `missing-remote-${randomUUID()}`,
           name: "Missing Remote Integration Page",
         });
@@ -504,13 +495,13 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           windowEnd,
         );
 
-        expect(
-          activePosts.map((post) => post.remotePostId),
-        ).toContain(recentRemotePostId);
+        expect(activePosts.map((post) => post.remotePostId)).toContain(
+          recentRemotePostId,
+        );
 
-        expect(
-          activePosts.map((post) => post.remotePostId),
-        ).not.toContain(oldRemotePostId);
+        expect(activePosts.map((post) => post.remotePostId)).not.toContain(
+          oldRemotePostId,
+        );
 
         throw rollbackSignal;
       }),
