@@ -44,7 +44,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Lỗi có stable code/request ID; không log header, token, signed URL hoặc full caption.
   - Tests: Redaction table tests và snapshot error contract.
 
-- [ ] FOUND-006 — Protect internal application access
+- [x] FOUND-006 — Protect internal application access
   - Priority: P0
   - Goal: Đảm bảo chỉ tài khoản Google được duyệt mới truy cập UI/API nội bộ.
   - Depends on: FOUND-002, FOUND-004.
@@ -61,6 +61,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Giảm auth waterfall khi vào Nhân sự bằng verified JWT claims, server-provided initial data và loading boundary tức thời.
   - [x] Đưa nội dung onboarding sang Hướng dẫn nhanh; bỏ trang Tổng quan độc lập và chuyển `/`, đăng nhập mặc định sang `/posts`.
   - [x] Bổ sung `FACEBOOK_CRON_SECRET` riêng cho cron FB-011; không dùng chung secret dọn asset hay credential người dùng.
+  - [x] Bỏ topbar dư thừa, đưa menu tài khoản xuống sidebar và đồng bộ indicator điều hướng cho cả link trong nội dung trang.
 
 ## Database
 
@@ -330,7 +331,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
 
 ## Image publishing extension
 
-- [ ] ASSET-001 — Private object storage
+- [x] ASSET-001 — Private object storage
   - Priority: P2
   - Goal: Cấu hình private bucket và signed upload lifecycle.
   - Depends on: FOUND-004, DB-002.
@@ -338,7 +339,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Object private mặc định; URL ngắn hạn; key không do client tùy ý quyết định.
   - Tests: Signature expiry, unauthorized access, object-key validation và cleanup protection.
   - [x] Adapter private Supabase Storage, upload server-only, signed URL ngắn hạn và metadata/checksum trong `assets`.
-  - [x] Tạo bucket private `post-assets`, giới hạn 10 MB cho JPEG/PNG/WebP và smoke upload/cleanup thành công qua localhost lẫn Cloudflare Tunnel.
+  - [x] Tạo bucket private `post-assets`, hỗ trợ JPEG/PNG/WebP và một video MP4/MOV tối đa 50 MB; smoke upload/cleanup thành công qua localhost lẫn Cloudflare Tunnel.
 
 - [x] ASSET-002 — Multi-image upload and preview
   - Priority: P2
@@ -363,7 +364,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Xác minh read-only dữ liệu Page test: 1 lượt đăng ngay và 2 lượt hẹn giờ nhiều ảnh đã có remote post ID thành công.
   - [x] FB-010 đối soát operation `uncertain` bằng evidence từ remote thay vì tự retry.
 
-- [ ] ASSET-005 — Page video publishing
+- [x] ASSET-005 — Page video publishing
   - Priority: P1
   - Goal: Đăng ngay hoặc hẹn giờ native một video thường của Facebook Page.
   - [x] Signed upload trực tiếp lên private Supabase Storage và cleanup asset dở dang.
@@ -371,18 +372,18 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Meta adapter dùng Page `/videos` với `file_url`, `description`, `published=false` và `scheduled_publish_time` khi hẹn giờ.
   - [x] Composer có lựa chọn Ảnh/Video, preview video và trạng thái Facebook đang xử lý mã hóa.
   - [x] Cập nhật bucket `post-assets` lên 50 MB và allow MIME video trên Supabase Cloud.
-  - [ ] Live smoke đăng ngay/hẹn giờ chỉ trên Page test được cho phép, rồi đối soát remote video ID và trạng thái mã hóa.
+  - [x] Live smoke đăng ngay/hẹn giờ chỉ trên Page test được cho phép, rồi đối soát remote video ID và trạng thái mã hóa.
   - [ ] Reel publishing là task riêng qua `video_reels`, không coi video thường là Reel.
 
-- [ ] ASSET-004 — Private image lifecycle cleanup
+- [x] ASSET-004 — Private image lifecycle cleanup
   - Priority: P1
   - Goal: Không giữ ảnh vô hạn nhưng không làm mất dữ liệu cần retry hoặc đối soát.
   - Depends on: ASSET-001, ASSET-002, FB-007.
-  - [x] Cleanup service giữ draft/scheduled/failed/uncertain, dọn orphan quá 1 giờ và published quá 7 ngày.
+  - [x] Cleanup service giữ trạng thái chưa thành công/chưa chắc chắn, dọn orphan quá 1 giờ, dọn ảnh sau Meta success và giữ video thêm 24 giờ.
   - [x] Claim lease 15 phút, rollback claim khi Storage lỗi, soft-delete metadata sau khi object đã xóa.
   - [x] Endpoint `GET/POST /api/cron/assets/cleanup` dùng dedicated bearer secret; không gọi mutation Facebook.
-  - [x] Unit test và Supabase transaction integration test cho published/recent/scheduled/failed/uncertain/draft/orphan.
-  - [ ] Cấu hình `ASSET_CLEANUP_SECRET`, scheduler chạy hằng ngày và storage integration smoke trước khi đóng task.
+  - [x] Unit test và Supabase transaction integration test cho ảnh/video thành công, scheduled, thiếu operation, failed, uncertain, draft và orphan.
+  - [x] Cấu hình `ASSET_CLEANUP_SECRET`, scheduler Docker chạy mỗi giờ và storage integration smoke trước khi đóng task.
 
 ## Operations and release
 

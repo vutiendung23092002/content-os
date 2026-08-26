@@ -1,11 +1,11 @@
 # CURRENT STATE
 
-**Kiểm tra tại:** 2026-08-22
+**Kiểm tra tại:** 2026-08-26
 **Workspace:** `C:\Users\Dung\Documents\Project\han-content-os`
 
 ## Kết luận
 
-Implementation foundation đã bắt đầu. Repository hiện có ứng dụng Next.js chạy/build được, Supabase PostgreSQL schema đã migrate, security primitives và Meta Graph adapter. Meta token thật mới chỉ được dùng cho lần đọc `/me/accounts`; chưa tạo, sửa hoặc xóa bài Facebook.
+MVP nội bộ đã chạy được bằng Docker Compose với Supabase Cloud và Cloudflare Tunnel. Luồng đăng ngay/hẹn giờ native cho ảnh, nhiều ảnh và video thường đã được xác minh trên Page test; cron chỉ đồng bộ/đối soát và không tự đăng bài tại giờ hẹn.
 
 ## Toolchain đã pin
 
@@ -34,6 +34,7 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 - Phân quyền Page theo tài khoản Google; Super Admin có toàn bộ Page, Admin/Nhân viên chỉ dùng Page được gán và API chặn truy cập chéo Page.
 - Màn Nhân sự có thống kê, directory tài khoản và drawer tìm/gán Page với Liquid Glass nền đục.
 - Design system Liquid Glass đã được áp dụng toàn bộ giao diện, gồm sidebar/topbar, dashboard, form, bảng, timeline, dropdown và modal; lớp kính giữ độ đục cao để không nhìn xuyên dữ liệu.
+- Topbar đã được bỏ; tài khoản Google nằm ở cuối sidebar, menu chỉ giữ thông tin tài khoản và đăng xuất. Indicator sidebar theo cả click trực tiếp lẫn điều hướng từ link trong nội dung.
 - Mọi tài khoản đã duyệt có thể kiểm tra/thêm Page bằng ID nhưng không tự nhận quyền sử dụng; Admin/Super Admin có thể gỡ Page khỏi danh mục bằng soft-delete nội bộ, thu hồi assignment và không tác động Facebook.
 
 ### Database
@@ -81,8 +82,9 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh hoặc một video MP4/MOV, preview theo thiết bị, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
 - Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.
 - Video dùng signed upload trực tiếp lên private Supabase Storage, sau đó Meta adapter gửi signed `file_url` vào Page `/videos`; video thường và Reel được tách riêng.
-- Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy: orphan quá 1 giờ hoặc bài published quá 7 ngày; scheduled/failed/uncertain được giữ nguyên. Migration cleanup `0003_steep_hex.sql` và reconciliation `0005_exotic_shinko_yamashiro.sql` đã áp dụng trên Supabase.
+- Asset cleanup đã có endpoint cron riêng, lease chống chạy chồng và policy tối ưu quota: orphan quá 1 giờ; ảnh dọn ở lượt kế tiếp sau khi Facebook xác nhận thành công; video giữ thêm 24 giờ; trạng thái chưa thành công/chưa chắc chắn được bảo vệ. Migration cleanup `0003_steep_hex.sql` và reconciliation `0005_exotic_shinko_yamashiro.sql` đã áp dụng trên Supabase.
 - FB-011 có hai cron read-only đồng bộ published/native scheduled và đối soát operation bất định. `cron_jobs` giữ lease/cursor, retry hữu hạn và không có publish worker; migration `0006_faithful_spitfire.sql` đã áp dụng lên Supabase.
+- Docker Compose chạy `facebook-cron` mỗi 10 phút và `asset-cleanup` mỗi giờ; log thực tế xác nhận cả hai job hoàn tất thành công.
 - UI `/posts` đọc trực tiếp bài đã đăng/hẹn giờ theo Page, hỗ trợ phân trang, làm mới và chuyển đổi giữa dạng bảng với timeline tuần.
 - Timeline cache theo Page/tab/tuần ở client và mirror bài remote vào Supabase; published sync dùng `since/until`, request trùng được hợp nhất và dữ liệu stale hiển thị trước khi refresh nền.
 
@@ -99,18 +101,20 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
 - Read-only week-window smoke trên Graph API `v26.0`: Hân Korea trả 81 bài đúng tuần trong một request `limit=100`, không có trang tiếp theo và toàn bộ timestamp nằm trong `since/until`.
 - Live cache smoke với cùng 81 bài: refresh từ Meta khoảng 5,5 giây; đọc lại snapshot tuần từ Supabase khoảng 0,43 giây.
-- Private Supabase Storage bucket `post-assets` đã được tạo với giới hạn 10 MB cho JPEG/PNG/WebP; upload và cleanup smoke thành công qua localhost lẫn Cloudflare Tunnel.
+- Private Supabase Storage bucket `post-assets` đã được tạo cho JPEG/PNG/WebP và một video MP4/MOV tối đa 50 MB; upload và cleanup smoke thành công qua localhost lẫn Cloudflare Tunnel.
 - Live write smoke trên Page test Nero Team thành công với một bài có ảnh; operation local ở trạng thái `succeeded` và remote post ID đã được lưu để đối soát.
+- Live smoke đăng ngay/hẹn giờ native nhiều ảnh và video thường trên Page test đã thành công; scheduled preview đọc đầy đủ `attachments/subattachments`.
 - Routes build được: health/config, Page sync/list, draft CRUD, publish và schedule.
 - Secret exposure scan trên client bundle/source/docs/scripts: pass.
 
 ## Chưa implement hoặc chưa xác minh
 
 - Token rotation utility hoàn chỉnh.
-- Phần còn lại của Meta capability smoke: native schedule, reschedule và cancel trên Page test.
+- Phần còn lại của Meta capability smoke: reschedule và cancel trên Page test.
 - Remote reschedule/cancel services.
-- Scheduler host cho FB-011 cần được bật bằng `corepack pnpm facebook:cron`; Cloudflare Access vẫn là lớp hardening tùy chọn.
-- AI content assistant; multi-image và native schedule vẫn cần capability smoke đầy đủ trên Page test.
+- Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
+- Token rotation utility, runbook sự cố, metrics/alert và bài kiểm tra backup/restore chưa hoàn chỉnh.
+- AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
 ## Secret cần cấu hình tiếp theo
 
@@ -132,7 +136,7 @@ INITIAL_ADMIN_EMAIL
 
 `APP_ACCESS_SECRET` là tùy chọn server-to-server, không cung cấp cho nhân sự.
 
-Đã đến capability gate. Trước lần gọi Meta thật cần cấu hình:
+Meta integration cần các biến server-only sau:
 
 ```text
 FACEBOOK_APP_ID

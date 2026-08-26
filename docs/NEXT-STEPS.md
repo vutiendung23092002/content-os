@@ -1,47 +1,40 @@
 # NEXT STEPS
 
-Foundation tasks `FOUND-001` đến `FOUND-005` đã hoàn thành. Các bước tiếp theo theo thứ tự an toàn:
+Han Content OS đã có luồng MVP nội bộ cho đăng ngay/hẹn giờ native Facebook với ảnh, nhiều ảnh và video thường; Google allowlist, phân quyền Page, Docker runtime, cron đồng bộ và cleanup Storage đều đã hoạt động.
 
-Supabase connection/migration `DB-001`, `DB-002`, repository `DB-003` và draft CRUD `POST-001` đã hoàn thành. Meta adapter, sync và submit flow đã có mock tests nhưng chưa gọi Facebook thật.
+Các bước còn lại được ưu tiên theo rủi ro và giá trị vận hành:
 
-## 1. FOUND-006 — Hoàn thiện internal access
+## 1. FB-008, FB-009 và POST-005 — Quản lý bài hẹn giờ
 
-Google OAuth + allowlist đã được triển khai bằng Supabase Auth. Việc còn lại trước khi test thật là bật Google provider trong Supabase, cấu hình public URL/callback và điền `INITIAL_ADMIN_EMAIL`. FB-011 đã có `FACEBOOK_CRON_SECRET` riêng; Cloudflare Access vẫn là lớp hardening tùy chọn ở edge.
+- Thêm đổi lịch cho remote scheduled post.
+- Thêm hủy lịch bằng API chính thức của Meta.
+- Có popup xác nhận, operation ledger, refetch remote sau mutation và trạng thái `needs_attention` khi kết quả không chắc chắn.
+- Chỉ chạy live mutation trên Page test sau khi được cho phép rõ ràng; unit/contract test dùng mock trước.
 
-## 2. SEC-002 — Hoàn thiện Page token lifecycle
+Đây là khoảng trống chức năng chính còn lại của phạm vi quản lý bài viết ban đầu.
 
-Nối AES-256-GCM service vào Page credential repository và bổ sung key rotation test ở database layer.
+## 2. SEC-003 và SEC-004 — Hardening mutation/credential
 
-## 3. Chọn Page test
+- Audit same-origin/CSRF guard trên toàn bộ API thay đổi dữ liệu.
+- Rate limit publish, schedule, upload và API quản trị.
+- Chuẩn hóa giới hạn caption, timestamp, request body và file.
+- Hoàn thiện công cụ/quy trình rotate Facebook token và `TOKEN_ENCRYPTION_KEY` mà không log plaintext.
 
-Người vận hành chọn một trong các Page có `CREATE_CONTENT` và `MANAGE`. Không dùng Page chỉ có `ANALYZE`, `ADVERTISE`.
+## 3. Đóng các task Meta/UI đã triển khai
 
-## 4. FB-001 — Capability smoke test
+Audit acceptance criteria và E2E còn thiếu trước khi đóng `FB-001` đến `FB-007`, `POST-003` và `POST-004`. Không đánh dấu hoàn thành chỉ dựa trên việc giao diện đã hiển thị; cần lưu evidence từ Page test và xác minh mirror/cursor/trạng thái lỗi.
 
-Pin Graph API version trên Page test và xác minh discover Page, publish text, native schedule, list, reschedule, cancel.
+## 4. OBS-001, OBS-002 và DEPLOY — Production readiness
 
-## 5. FB-002 — Xác minh Meta adapter
+- Metrics/alert cho credential lỗi, cron lỗi, sync stale và operation `uncertain`.
+- Runbook cho token hết hạn, lịch biến mất, Meta timeout và cron ngừng chạy.
+- Test container tự khởi động sau reboot, health check, database backup/restore và secret scan.
+- Chạy full quality gate trên bản build sẽ phát hành.
 
-Bổ sung published list, reschedule, cancel, field contracts và capability-specific error mapping.
+## 5. Tính năng sau MVP
 
-## 6. FB-003 — Sync managed Pages thật
+- AI hỗ trợ caption/rewrite/CTA/hashtag theo cơ chế human-in-the-loop, không tự đăng.
+- Dashboard thống kê khi đã chốt đúng chỉ số cần theo dõi.
+- Reel publishing chỉ triển khai qua flow `video_reels` riêng khi có nhu cầu xác nhận.
 
-Upsert Page metadata và encrypted Page token trong một transaction an toàn.
-
-## 7. POST-002 — Hoàn thiện draft editor UI
-
-Xây Page selector, editor, validation và trạng thái lưu.
-
-## 8. FB-004 — Publish text now trên Page test
-
-Nối draft với operation ledger và Meta remote ID; timeout chuyển sang `uncertain`.
-
-## 9. FB-005 — Native scheduled text post trên Page test
-
-Gửi schedule ngay cho Meta, refetch remote scheduled post và không tạo due-time worker.
-
-## 10. FB-006/FB-007 — Published và scheduled lists
-
-Đồng bộ remote-first, có cursor, `lastSyncedAt` và stale/error state rõ ràng.
-
-Acceptance criteria và tests đầy đủ nằm trong root [TODO.md](../TODO.md).
+Acceptance criteria và test chi tiết nằm trong root [TODO.md](../TODO.md). Trạng thái đã xác minh nằm trong [CURRENT-STATE.md](CURRENT-STATE.md).
