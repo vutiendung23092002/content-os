@@ -80,6 +80,7 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Reconciliation cho publish/schedule đã dùng intent metadata tối thiểu và remote evidence; chỉ một candidate chính xác mới được tự chốt, còn no-match/ambiguous/incomplete/visibility-window đều chuyển `needs_attention`. Admin resolution được audit theo user và không có blind retry.
 - FB-008 đã có API/use-case đổi lịch native cho remote scheduled post. Operation được ghi trước mutation, lịch local chỉ đổi sau readback đúng Post ID/thời gian; timeout được cron đối soát mà không gửi lại mutation.
 - Popup chi tiết bài viết đã có menu `•••` cho bài remote: đổi lịch, sửa caption, hủy lịch, sửa bài đã đăng và xóa bài đã đăng. Các thao tác đi qua API same-origin, operation ledger, popup xác nhận và refetch dữ liệu từ Meta sau mutation.
+- Live smoke trên Page test đã xác nhận đổi lịch, sửa bài hẹn giờ, hủy lịch, sửa bài đã đăng, xóa bài đã đăng, persisted mirror và Timeline tự cập nhật sau publish; `FB-008`, `FB-009`, `POST-003`, `POST-004` và `POST-005` đã đóng.
 - Local UI `/posts` và `/posts/new`.
 - Composer `/posts/new` đã có Page picker kèm avatar, caption editor chừa sẵn AI tools, upload tối đa 10 ảnh hoặc một video MP4/MOV, preview theo thiết bị, lưu draft, đăng ngay và hẹn giờ native Facebook với bước xác nhận cuối.
 - Ảnh được lưu trong private Supabase Storage, metadata/checksum nằm trong `assets`, thứ tự nằm trong `post_assets`; Meta adapter dùng unpublished photos và `attached_media` cho bài nhiều ảnh.

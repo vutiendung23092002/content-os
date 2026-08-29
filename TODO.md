@@ -183,7 +183,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Phản ánh lịch tạo/sửa/xóa ngoài tool; không xóa local record ngay sau một lần missing.
   - Tests: Pagination, external schedule, changed time, removed remote, repeat sync và timeout stale-state behavior.
 
-- [ ] FB-008 — Reschedule remote post
+- [x] FB-008 — Reschedule remote post
   - Priority: P0
   - Goal: Đổi `scheduled_publish_time` của bài đang scheduled trên Facebook.
   - Depends on: FB-005, FB-007.
@@ -195,9 +195,9 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Timeout/readback lỗi đi qua FB-010; cron chỉ đọc đối soát, không blind retry mutation.
   - [x] Unit/route/cron tests cho success, range, published, missing, permission, timeout và readback mismatch.
   - [x] UI thao tác đổi lịch từ menu `•••` trong popup chi tiết bài hẹn giờ, có xác nhận và refetch remote sau mutation.
-  - [ ] Live smoke đổi lịch trên Page test và xác minh lại trong Facebook Business Suite.
+  - [x] Live smoke đổi lịch trên Page test và xác minh lại trong Facebook Business Suite.
 
-- [ ] FB-009 — Cancel remote scheduled post
+- [x] FB-009 — Cancel remote scheduled post
   - Priority: P0
   - Goal: Hủy/xóa lịch remote qua API chính thức đã xác minh.
   - Depends on: FB-005, FB-007.
@@ -209,7 +209,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Retryable/timeout và lỗi local persistence sau remote success đi vào trạng thái `uncertain`, không retry mù.
   - [x] Unit tests cho success, Meta failure, retryable uncertain và remote-success/local-persist-failure.
   - [x] UI hủy lịch từ menu `•••` trong popup chi tiết bài hẹn giờ, có popup xác nhận và toast kết quả.
-  - [ ] Live smoke hủy lịch trên Page test và xác minh lại trong Facebook Business Suite.
+  - [x] Live smoke hủy lịch trên Page test và xác minh lại trong Facebook Business Suite.
 
 - [x] FB-010 — Reconcile uncertain operations
   - Priority: P0
@@ -257,7 +257,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Composer Liquid Glass có Page picker kèm avatar, caption editor, vùng AI dự kiến, upload tối đa 10 ảnh, kéo thả đổi thứ tự và preview bố cục.
   - [x] Bổ sung lựa chọn Video thường của Page, preview trong composer và không cho trộn ảnh/video trong cùng draft.
 
-- [ ] POST-003 — Published and scheduled list UI
+- [x] POST-003 — Published and scheduled list UI
   - Priority: P0
   - Goal: Hiển thị hai danh sách remote với lần sync gần nhất.
   - Depends on: FB-006, FB-007.
@@ -277,9 +277,9 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Tự giãn chiều cao từng khung giờ Timeline để các card đăng gần nhau không chồng lấn.
   - [x] Tự phân trang để tải đủ dữ liệu của tuần đang xem trên Timeline; bỏ nút tải thêm thủ công khỏi chế độ này.
   - [x] Cache theo Page/tab/tuần ở trình duyệt, mirror tuần trong Supabase, lọc Meta bằng `since/until` và stale-while-refresh để quay lại tab không phải tải lại.
-  - [ ] Hoàn thiện persisted sync/mirror và E2E đầy đủ sau FB-006/FB-007 trước khi đóng task POST-003.
+  - [x] Hoàn thiện persisted sync/mirror và E2E đầy đủ sau FB-006/FB-007 trước khi đóng task POST-003.
 
-- [ ] POST-004 — Publish and schedule controls
+- [x] POST-004 — Publish and schedule controls
   - Priority: P0
   - Goal: Cho operator xác nhận đăng ngay hoặc chọn lịch native.
   - Depends on: POST-002, FB-004, FB-005.
@@ -289,9 +289,9 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Có lựa chọn đăng ngay/native schedule, API giữ giới hạn 20 phút–29 ngày; nút "Sớm nhất" chủ động chọn sau ít nhất 25 phút để có khoảng đệm tải ảnh, và có confirmation cuối trước mọi thao tác Meta.
   - [x] UI gọi draft trước rồi mới submit, giữ operation ledger và không tự retry khi kết quả remote không chắc chắn.
   - [x] Live publish một bài có ảnh trên Page test Nero Team; operation thành công và lưu remote post ID để đối soát.
-  - [ ] Chạy capability smoke trên Page test và E2E thật trước khi đóng task.
+  - [x] Chạy capability smoke trên Page test và E2E thật trước khi đóng task.
 
-- [ ] POST-005 — Reschedule, cancel and attention UI
+- [x] POST-005 — Reschedule, cancel and attention UI
   - Priority: P0
   - Goal: Quản lý remote scheduled post và các operation cần xử lý.
   - Depends on: POST-003, FB-008, FB-009, FB-010.
@@ -302,7 +302,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Confirmation dialog Liquid Glass cho từng mutation, khóa thao tác khi đang submit và đóng đúng thứ tự bằng Escape/backdrop.
   - [x] Smart toast cho thành công/thất bại; sau mutation refetch lại dữ liệu remote theo Page/tab/tuần.
   - [x] Disable hành động mutation với bài external chưa có local mapping để tránh sửa/xóa nhầm.
-  - [ ] E2E/live smoke trên Page test cho reschedule, edit scheduled, cancel scheduled, edit published và delete published.
+  - [x] E2E/live smoke trên Page test cho reschedule, edit scheduled, cancel scheduled, edit published và delete published.
 
 ## AI content assistant
 
