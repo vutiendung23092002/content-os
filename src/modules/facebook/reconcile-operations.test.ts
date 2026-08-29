@@ -87,6 +87,7 @@ function makeRemote(
     permalinkUrl: null,
     imageUrl: null,
     imageUrls: [],
+    remoteMediaIds: [],
     mediaType: "text",
     engagement: null,
     source: "facebook",

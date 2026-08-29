@@ -30,6 +30,32 @@ type CompletedRemoval = PreparedMutation & {
   deletedRemotePostId: string;
 };
 
+export function collectRemoteMediaIdsForMutation(
+  assetRemoteMediaIds: Array<string | null>,
+  remoteSnapshot: unknown,
+): string[] {
+  const snapshotIds: unknown[] =
+    remoteSnapshot &&
+    typeof remoteSnapshot === "object" &&
+    !Array.isArray(remoteSnapshot) &&
+    Array.isArray((remoteSnapshot as Record<string, unknown>).remoteMediaIds)
+      ? ((remoteSnapshot as Record<string, unknown>)
+          .remoteMediaIds as unknown[])
+      : [];
+
+  return [
+    ...new Set(
+      [...assetRemoteMediaIds, ...snapshotIds]
+        .filter(
+          (remoteMediaId): remoteMediaId is string =>
+            typeof remoteMediaId === "string" &&
+            remoteMediaId.trim().length > 0,
+        )
+        .map((remoteMediaId) => remoteMediaId.trim()),
+    ),
+  ];
+}
+
 export type RemotePostMutationClient = {
   updatePostMessage(remotePostId: string, message: string): Promise<void>;
 
@@ -98,11 +124,10 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
         post.id,
       );
 
-      const remoteMediaIds = assets
-        .map((asset) => asset.remoteMediaId)
-        .filter((remoteMediaId): remoteMediaId is string =>
-          Boolean(remoteMediaId),
-        );
+      const remoteMediaIds = collectRemoteMediaIdsForMutation(
+        assets.map((asset) => asset.remoteMediaId),
+        post.remoteSnapshot,
+      );
 
       const page = await new PageRepository(transaction).findById(post.pageId);
 

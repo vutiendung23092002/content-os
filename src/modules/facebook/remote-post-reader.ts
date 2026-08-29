@@ -23,6 +23,7 @@ export type RemoteFacebookPost = {
   permalinkUrl: string | null;
   imageUrl: string | null;
   imageUrls: string[];
+  remoteMediaIds: string[];
   mediaType: "text" | "image" | "video";
   engagement: {
     reactions: number;
@@ -156,6 +157,24 @@ function getMediaType(post: {
   return post.full_picture || attachments.length > 0 ? "image" : "text";
 }
 
+function getRemoteMediaIds(post: {
+  attachments?: {
+    data: Array<{
+      target?: { id: string };
+      subattachments?: { data: Array<{ target?: { id: string } }> };
+    }>;
+  };
+}): string[] {
+  const ids = (post.attachments?.data ?? []).flatMap((attachment) => [
+    ...(attachment.target?.id ? [attachment.target.id] : []),
+    ...(attachment.subattachments?.data.flatMap((item) =>
+      item.target?.id ? [item.target.id] : [],
+    ) ?? []),
+  ]);
+
+  return [...new Set(ids)];
+}
+
 export class RemotePostReader {
   constructor(
     private readonly access: RemotePostAccess = new DatabaseRemotePostAccess(),
@@ -212,6 +231,7 @@ export class RemotePostReader {
             permalinkUrl: null,
             imageUrl: imageUrls[0] ?? null,
             imageUrls,
+            remoteMediaIds: getRemoteMediaIds(post),
             mediaType: getMediaType(post),
             engagement: null,
             source: "facebook",
@@ -250,6 +270,7 @@ export class RemotePostReader {
           permalinkUrl: post.permalink_url ?? null,
           imageUrl: imageUrls[0] ?? null,
           imageUrls,
+          remoteMediaIds: getRemoteMediaIds(post),
           mediaType: getMediaType(post),
           engagement: {
             reactions: post.reactions?.summary?.total_count ?? 0,

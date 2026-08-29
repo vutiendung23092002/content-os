@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors/app-error";
 import {
+  collectRemoteMediaIdsForMutation,
   RemotePostMutationService,
   type RemotePostMutationClient,
   type RemotePostMutationPersistence,
@@ -62,6 +63,19 @@ function setup() {
 }
 
 describe("RemotePostMutationService", () => {
+  it("prepares canonical video aliases from the remote snapshot when assets are absent", () => {
+    expect(
+      collectRemoteMediaIdsForMutation([], {
+        remoteMediaIds: [
+          "video-object-1",
+          "video-object-1",
+          "  video-object-2  ",
+          null,
+        ],
+      }),
+    ).toEqual(["video-object-1", "video-object-2"]);
+  });
+
   it("updates a remote post message and persists only after Meta succeeds", async () => {
     const context = setup();
 

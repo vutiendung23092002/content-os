@@ -130,10 +130,44 @@ describe("RemotePostReader", () => {
         "https://images.test/post-1-b.jpg",
       ],
       mediaType: "image",
+      remoteMediaIds: [],
       source: "facebook",
     });
     expect(result.after).toBe("next-page");
     expect(JSON.stringify(result)).not.toContain("secret-page-token");
+  });
+
+  it("keeps the video object id exposed by a published attachment target", async () => {
+    const setup = createSetup();
+    vi.mocked(setup.client.getPublishedPosts).mockResolvedValue({
+      posts: [
+        {
+          id: "page-123_feed-post-1",
+          message: "Video post",
+          created_time: "2026-08-21T02:00:00+0000",
+          attachments: {
+            data: [
+              {
+                media_type: "video_inline",
+                target: { id: "video-object-1" },
+              },
+            ],
+          },
+        },
+      ],
+      after: undefined,
+    });
+
+    const result = await setup.reader.list({
+      localPageId,
+      kind: "published",
+    });
+
+    expect(result.posts[0]).toMatchObject({
+      remoteId: "page-123_feed-post-1",
+      mediaType: "video",
+      remoteMediaIds: ["video-object-1"],
+    });
   });
 
   it("normalizes a Unix scheduled time without calling a mutation method", async () => {
@@ -158,6 +192,7 @@ describe("RemotePostReader", () => {
         "https://images.test/scheduled-2.jpg",
       ],
       mediaType: "image",
+      remoteMediaIds: [],
     });
     expect(setup.client.getPublishedPosts).not.toHaveBeenCalled();
   });

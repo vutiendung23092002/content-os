@@ -9,7 +9,7 @@ import type { RemoteFacebookPost, RemotePostKind } from "./remote-post-reader";
 
 const MISSING_REMOTE_GRACE_MS = 10 * 60 * 1000;
 
-function toCacheInput(
+export function toRemotePostCacheInput(
   pageId: string,
   post: RemoteFacebookPost,
 ): RemotePostCacheInput {
@@ -25,6 +25,7 @@ function toCacheInput(
       permalinkUrl: post.permalinkUrl,
       imageUrl: post.imageUrl,
       imageUrls: post.imageUrls,
+      remoteMediaIds: post.remoteMediaIds,
       mediaType: post.mediaType,
       engagement: post.engagement,
       source: post.source,
@@ -65,7 +66,7 @@ export class RemotePostMirror {
       const repository = new PostRepository(transaction);
 
       await repository.upsertRemotePosts(
-        remotePosts.map((post) => toCacheInput(input.pageId, post)),
+        remotePosts.map((post) => toRemotePostCacheInput(input.pageId, post)),
       );
 
       const tombstoned = await repository.markMissingRemotePosts({

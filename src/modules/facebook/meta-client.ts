@@ -101,9 +101,16 @@ const attachmentMediaSchema = z
   })
   .optional();
 
+const attachmentTargetSchema = z
+  .object({
+    id: graphIdSchema,
+  })
+  .optional();
+
 const subattachmentSchema = z.object({
   media_type: z.string().optional(),
   media: attachmentMediaSchema,
+  target: attachmentTargetSchema,
 });
 
 const attachmentsSchema = z
@@ -112,6 +119,7 @@ const attachmentsSchema = z
       z.object({
         media_type: z.string().optional(),
         media: attachmentMediaSchema,
+        target: attachmentTargetSchema,
         subattachments: z
           .object({ data: z.array(subattachmentSchema) })
           .optional(),
@@ -467,7 +475,7 @@ export class MetaGraphClient {
   async getScheduledPosts(pageId: string, after?: string, limit = 50) {
     const query = new URLSearchParams({
       fields:
-        "id,message,scheduled_publish_time,is_published,created_time,full_picture,attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+        "id,message,scheduled_publish_time,is_published,created_time,full_picture,attachments{media_type,media,target{id},subattachments.limit(10){media_type,media,target{id}}}",
       limit: String(Math.min(Math.max(limit, 1), 100)),
     });
     if (after) query.set("after", after);
@@ -492,7 +500,7 @@ export class MetaGraphClient {
   ) {
     const query = new URLSearchParams({
       fields:
-        "id,message,created_time,updated_time,permalink_url,is_published,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares,attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+        "id,message,created_time,updated_time,permalink_url,is_published,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares,attachments{media_type,media,target{id},subattachments.limit(10){media_type,media,target{id}}}",
       limit: String(Math.min(Math.max(limit, 1), 100)),
     });
     if (after) query.set("after", after);

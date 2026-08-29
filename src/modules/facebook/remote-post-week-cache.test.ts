@@ -22,6 +22,7 @@ function remotePost(id: string, effectiveAt: string): RemoteFacebookPost {
     permalinkUrl: `https://facebook.test/${id}`,
     imageUrl: null,
     imageUrls: [],
+    remoteMediaIds: [],
     mediaType: "text",
     engagement: {
       reactions: 3,
@@ -58,6 +59,7 @@ function storedRemotePost(post: RemoteFacebookPost, index = 1): PostRecord {
       permalinkUrl: post.permalinkUrl,
       imageUrl: post.imageUrl,
       imageUrls: post.imageUrls,
+      remoteMediaIds: post.remoteMediaIds,
       mediaType: post.mediaType,
       engagement: post.engagement,
       source: post.source,

@@ -38,6 +38,7 @@ type RemoteSnapshot = {
   permalinkUrl?: unknown;
   imageUrl?: unknown;
   imageUrls?: unknown;
+  remoteMediaIds?: unknown;
   mediaType?: unknown;
   engagement?: unknown;
 };
@@ -49,6 +50,19 @@ function asNullableString(value: unknown): string | null {
 function asImageUrls(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function asRemoteMediaIds(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [
+        ...new Set(
+          value.filter(
+            (item): item is string =>
+              typeof item === "string" && item.trim().length > 0,
+          ),
+        ),
+      ]
     : [];
 }
 
@@ -99,6 +113,7 @@ function toRemotePost(record: PostRecord): RemoteFacebookPost | null {
     permalinkUrl: asNullableString(snapshot.permalinkUrl),
     imageUrl,
     imageUrls,
+    remoteMediaIds: asRemoteMediaIds(snapshot.remoteMediaIds),
     mediaType:
       snapshot.mediaType === "video" ||
       snapshot.mediaType === "image" ||

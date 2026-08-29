@@ -295,6 +295,7 @@ describe("MetaGraphClient", () => {
                     data: [
                       {
                         media_type: "photo",
+                        target: { id: "photo-object-1" },
                         media: {
                           image: { src: "https://images.test/photo-1.jpg" },
                         },
@@ -335,6 +336,10 @@ describe("MetaGraphClient", () => {
     expect(
       result.posts[0]?.attachments?.data[0]?.subattachments?.data,
     ).toHaveLength(2);
+    expect(
+      result.posts[0]?.attachments?.data[0]?.subattachments?.data[0]?.target
+        ?.id,
+    ).toBe("photo-object-1");
     expect(result.after).toBe("safe-cursor");
     expect(JSON.stringify(result)).not.toContain("access_token");
     expect(new URL(String(url)).searchParams.get("limit")).toBe("50");
@@ -345,7 +350,7 @@ describe("MetaGraphClient", () => {
       "reactions.limit(0).summary(true)",
     );
     expect(new URL(String(url)).searchParams.get("fields")).toContain(
-      "attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+      "attachments{media_type,media,target{id},subattachments.limit(10){media_type,media,target{id}}}",
     );
     expect(init?.method ?? "GET").toBe("GET");
     expect(init?.body).toBeUndefined();
@@ -430,7 +435,7 @@ describe("MetaGraphClient", () => {
     ).toHaveLength(2);
     expect(new URL(String(url)).searchParams.get("limit")).toBe("100");
     expect(new URL(String(url)).searchParams.get("fields")).toContain(
-      "attachments{media_type,media,subattachments.limit(10){media_type,media}}",
+      "attachments{media_type,media,target{id},subattachments.limit(10){media_type,media,target{id}}}",
     );
     expect(init?.method ?? "GET").toBe("GET");
     expect(init?.body).toBeUndefined();
