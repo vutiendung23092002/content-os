@@ -56,6 +56,26 @@ export function collectRemoteMediaIdsForMutation(
   ];
 }
 
+function collectVideoRemoteMediaIds(
+  prepared: PreparedMutation,
+  deletedRemotePostId: string,
+): string[] {
+  if (prepared.postType !== "video") {
+    return prepared.remoteMediaIds;
+  }
+
+  const derivedAliases = [prepared.remotePostId, deletedRemotePostId].flatMap(
+    (remotePostId) => {
+      const separatorIndex = remotePostId.lastIndexOf("_");
+      const suffix = remotePostId.slice(separatorIndex + 1).trim();
+
+      return separatorIndex >= 0 && suffix.length > 0 ? [suffix] : [];
+    },
+  );
+
+  return [...new Set([...prepared.remoteMediaIds, ...derivedAliases])];
+}
+
 export type RemotePostMutationClient = {
   updatePostMessage(remotePostId: string, message: string): Promise<void>;
 
@@ -370,6 +390,7 @@ export class RemotePostMutationService {
     const completed = {
       ...prepared,
       deletedRemotePostId,
+      remoteMediaIds: collectVideoRemoteMediaIds(prepared, deletedRemotePostId),
     };
 
     await this.persistRemoteSuccess(prepared.operationId, () =>

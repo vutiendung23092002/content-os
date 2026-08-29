@@ -179,6 +179,31 @@ describe("RemotePostMutationService", () => {
     expect(context.persistence.removeSucceeded).toHaveBeenCalledWith({
       ...video,
       deletedRemotePostId: "page-1_122191964246910216",
+      remoteMediaIds: ["122191964246910216"],
+    });
+  });
+
+  it("derives the production video id alias from a canonical feed post id", async () => {
+    const context = setup();
+    const feedPostId = "641287252408644_122192676482910216";
+    const videoObjectId = "122192676482910216";
+    const video = {
+      ...prepared,
+      remotePostId: feedPostId,
+      remoteMediaIds: [],
+      postType: "video" as const,
+      status: "published" as const,
+    };
+
+    vi.mocked(context.persistence.prepare).mockResolvedValue(video);
+
+    await context.service.remove(postId);
+
+    expect(context.client.deletePost).toHaveBeenCalledWith(feedPostId);
+    expect(context.persistence.removeSucceeded).toHaveBeenCalledWith({
+      ...video,
+      deletedRemotePostId: feedPostId,
+      remoteMediaIds: [videoObjectId],
     });
   });
 

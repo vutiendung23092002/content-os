@@ -5915,34 +5915,22 @@ a.postDetailPermalink:focus-visible {
   display: grid;
   place-items: center;
   margin-left: auto;
+  padding: 0;
   color: #65676b;
-  background:
-    radial-gradient(circle at 30% 10%, rgb(255 255 255 / 90%), transparent 60%),
-    linear-gradient(145deg, rgb(255 255 255 / 92%), rgb(247 243 252 / 90%));
-  border: 1px solid rgb(225 216 238 / 92%);
-  border-radius: 999px;
-  box-shadow:
-    0 8px 18px rgb(48 31 82 / 7%),
-    inset 0 1px 0 white;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 800;
   letter-spacing: 0.08rem;
-  transition:
-    color 160ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
+  transition: color 160ms ease;
 }
 
 .facebookPreviewMenu:hover:not(:disabled),
 .facebookPreviewMenu[aria-expanded="true"] {
   color: var(--purple);
-  border-color: rgb(173 143 229 / 74%);
-  box-shadow:
-    0 10px 24px rgb(91 49 164 / 13%),
-    inset 0 1px 0 white;
-  transform: translateY(-1px);
 }
 
 .facebookPreviewMenu:disabled {

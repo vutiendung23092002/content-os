@@ -11,6 +11,11 @@ import {
 } from "react";
 import { useToast } from "@/app/ui/toast-provider";
 import {
+  canUsePostListMemoryCache,
+  clearPostListRevalidation,
+  needsPostListRevalidation,
+} from "./post-list-revalidation";
+import {
   addDays,
   getAdaptiveTimelineTop,
   getDayIndexInWeek,
@@ -129,15 +134,30 @@ function excerpt(message: string, length = 96): string {
     : normalized;
 }
 
+function remotePostIdentity(remoteId: string): string {
+  const separator = remoteId.lastIndexOf("_");
+
+  return separator >= 0 ? remoteId.slice(separator + 1) : remoteId;
+}
+
+function withoutRemotePostAliases(
+  posts: RemotePostDto[],
+  removedRemoteId: string,
+): RemotePostDto[] {
+  const removedIdentity = remotePostIdentity(removedRemoteId);
+
+  return posts.filter(
+    (post) => remotePostIdentity(post.remoteId) !== removedIdentity,
+  );
+}
+
 function mergePosts(
   current: RemotePostDto[],
   incoming: RemotePostDto[],
 ): RemotePostDto[] {
   const records: RemotePostDto[] = [];
   for (const post of [...current, ...incoming]) {
-    const separator = post.remoteId.lastIndexOf("_");
-    const identity =
-      separator >= 0 ? post.remoteId.slice(separator + 1) : post.remoteId;
+    const identity = remotePostIdentity(post.remoteId);
     const normalizedMessage = post.message
       .trim()
       .replace(/\s+/g, " ")
@@ -151,11 +171,7 @@ function mergePosts(
       post.imageUrls.length === 0 &&
       !post.engagement;
     const existingIndex = records.findIndex((candidate) => {
-      const candidateSeparator = candidate.remoteId.lastIndexOf("_");
-      const candidateIdentity =
-        candidateSeparator >= 0
-          ? candidate.remoteId.slice(candidateSeparator + 1)
-          : candidate.remoteId;
+      const candidateIdentity = remotePostIdentity(candidate.remoteId);
       if (candidateIdentity === identity) return true;
 
       const candidateTime = candidate.effectiveAt
@@ -1309,6 +1325,7 @@ export function PostWorkspace() {
   const [selectedPost, setSelectedPost] = useState<RemotePostDto | null>(null);
   const loadedKeyRef = useRef("");
   const forceRefreshRef = useRef(false);
+  const revalidateOnMountRef = useRef(true);
   const refreshToastRef = useRef<string | null>(null);
   const selectedPage = pages.find((page) => page.id === selectedPageId);
 
@@ -1363,6 +1380,10 @@ export function PostWorkspace() {
       const requestKey = `${selectedPageId}:${activeTab}:${viewMode}${timelineKey}`;
       const forceRefresh = forceRefreshRef.current;
       forceRefreshRef.current = false;
+      const revalidateAfterSubmission = needsPostListRevalidation(
+        selectedPageId,
+        activeTab,
+      );
       setLoadFailed(false);
       const cacheKey =
         activeTab === "drafts"
@@ -1386,7 +1407,14 @@ export function PostWorkspace() {
         setAfter(null);
       }
 
-      if (memoryIsFresh && !forceRefresh) {
+      if (
+        canUsePostListMemoryCache({
+          memoryIsFresh: Boolean(memoryIsFresh),
+          forceRefresh,
+          revalidateAfterSubmission,
+          revalidateOnMount: revalidateOnMountRef.current,
+        })
+      ) {
         setLoadingPosts(false);
         setRefreshingPosts(false);
         return;
@@ -1404,6 +1432,8 @@ export function PostWorkspace() {
           const payload = await readPayload<{ drafts?: DraftDto[] }>(response);
           setDrafts(payload.drafts ?? []);
           setRemotePosts([]);
+          clearPostListRevalidation(selectedPageId, activeTab);
+          revalidateOnMountRef.current = false;
           loadedKeyRef.current = requestKey;
           if (refreshToastRef.current) {
             updateToast(refreshToastRef.current, {
@@ -1440,6 +1470,8 @@ export function PostWorkspace() {
         setRemotePosts(loadedPosts);
         setDrafts([]);
         setAfter(nextAfter);
+        clearPostListRevalidation(selectedPageId, activeTab);
+        revalidateOnMountRef.current = false;
         loadedKeyRef.current = requestKey;
         if (cacheKey) {
           remoteMemoryCache.set(cacheKey, {
@@ -1633,12 +1665,27 @@ export function PostWorkspace() {
       });
       await readPayload<{ operation?: { status?: string } }>(response);
 
-      for (const key of remoteMemoryCache.keys()) {
-        if (key.startsWith(`${selectedPageId}:`)) remoteMemoryCache.delete(key);
+      if (action === "remove") {
+        setRemotePosts((current) =>
+          withoutRemotePostAliases(current, post.remoteId),
+        );
+        for (const [key, entry] of remoteMemoryCache.entries()) {
+          if (!key.startsWith(`${selectedPageId}:`)) continue;
+          remoteMemoryCache.set(key, {
+            ...entry,
+            posts: withoutRemotePostAliases(entry.posts, post.remoteId),
+          });
+        }
+      } else {
+        for (const key of remoteMemoryCache.keys()) {
+          if (key.startsWith(`${selectedPageId}:`)) {
+            remoteMemoryCache.delete(key);
+          }
+        }
+        forceRefreshRef.current = true;
+        setRefreshIndex((current) => current + 1);
       }
       setSelectedPost(null);
-      forceRefreshRef.current = true;
-      setRefreshIndex((current) => current + 1);
       updateToast(toastId, {
         tone: "success",
         title:

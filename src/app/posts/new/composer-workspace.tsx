@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useToast } from "@/app/ui/toast-provider";
+import { markPostListForRevalidation } from "../post-list-revalidation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import {
   isImageMimeType,
@@ -927,6 +928,15 @@ export function ComposerWorkspace() {
         }
         await readPayload(await fetch(endpoint, options));
       }
+
+      markPostListForRevalidation(
+        pageId,
+        action === "draft"
+          ? "drafts"
+          : action === "publish"
+            ? "published"
+            : "scheduled",
+      );
 
       for (const item of media) URL.revokeObjectURL(item.previewUrl);
       setMedia([]);
