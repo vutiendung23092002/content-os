@@ -2,14 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors/app-error";
 
 const mocks = vi.hoisted(() => ({
-  assertRequestPostAccess: vi.fn(),
+  authorizeRequestPostAccess: vi.fn(),
   assertSameOrigin: vi.fn(),
   deleteDraft: vi.fn(),
   updateDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/access/page-access", () => ({
-  assertRequestPostAccess: mocks.assertRequestPostAccess,
+  assertRequestPostAccess: vi.fn(),
+  authorizeRequestPostAccess: mocks.authorizeRequestPostAccess,
 }));
 vi.mock("@/lib/access/same-origin", () => ({
   assertSameOrigin: mocks.assertSameOrigin,
@@ -62,7 +63,7 @@ describe("draft mutation route security", () => {
 
       expect(response.status).toBe(403);
       expect(mocks.assertSameOrigin).toHaveBeenCalledOnce();
-      expect(mocks.assertRequestPostAccess).not.toHaveBeenCalled();
+      expect(mocks.authorizeRequestPostAccess).not.toHaveBeenCalled();
       expect(mocks.updateDraft).not.toHaveBeenCalled();
       expect(mocks.deleteDraft).not.toHaveBeenCalled();
     },

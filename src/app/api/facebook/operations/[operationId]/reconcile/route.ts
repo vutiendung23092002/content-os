@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireAdmin } from "@/lib/auth/session";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { assertEmptyBody, parseJsonBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import {
   manualResolutionSchema,
   ReconcileFacebookOperationService,
@@ -14,7 +16,12 @@ export async function POST(request: Request, context: RouteContext) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
   try {
     assertSameOrigin(request);
-    await requireAdmin();
+    const actor = await requireAdmin();
+    await assertMutationRateLimit({
+      actor,
+      action: "facebook:operation:reconcile",
+    });
+    await assertEmptyBody(request);
     const { operationId } = await context.params;
     const result = await new ReconcileFacebookOperationService().reconcile(
       operationId,
@@ -30,8 +37,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     assertSameOrigin(request);
     const actor = await requireAdmin();
+    await assertMutationRateLimit({
+      actor,
+      action: "facebook:operation:resolve",
+    });
     const { operationId } = await context.params;
-    const resolution = manualResolutionSchema.parse(await request.json());
+    const resolution = await parseJsonBody(request, manualResolutionSchema);
     const result =
       await new ReconcileFacebookOperationService().resolveManually({
         operationId,

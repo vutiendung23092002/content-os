@@ -8,10 +8,12 @@ import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireAdmin } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors/app-error";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { assertEmptyBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 
 export const dynamic = "force-dynamic";
 
-const paramsSchema = z.object({ pageId: z.uuid() });
+const paramsSchema = z.object({ pageId: z.uuid() }).strict();
 
 export async function DELETE(
   request: Request,
@@ -21,8 +23,14 @@ export async function DELETE(
 
   try {
     assertSameOrigin(request);
-    await requireAdmin();
+    const actor = await requireAdmin();
     const { pageId } = paramsSchema.parse(await context.params);
+    await assertMutationRateLimit({
+      actor,
+      pageId,
+      action: "page:delete",
+    });
+    await assertEmptyBody(request);
 
     const removedPage = await runInTransaction(async (transaction) => {
       const pageRepository = new PageRepository(transaction);

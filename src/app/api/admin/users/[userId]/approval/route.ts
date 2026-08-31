@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireAdmin } from "@/lib/auth/session";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { parseJsonBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import {
   AdminUserService,
   approvalInputSchema,
@@ -15,8 +17,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     assertSameOrigin(request);
     const actor = await requireAdmin();
+    await assertMutationRateLimit({ actor, action: "admin:user:approval" });
     const { userId } = await context.params;
-    const input = approvalInputSchema.parse(await request.json());
+    const input = await parseJsonBody(request, approvalInputSchema);
     const user = await new AdminUserService().setApproval({
       actor,
       userId,

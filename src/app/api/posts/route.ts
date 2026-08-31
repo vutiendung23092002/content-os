@@ -8,6 +8,8 @@ import { toDraftDto } from "@/modules/posts/draft-service";
 import { createDraftSchema } from "@/modules/posts/draft-service";
 import { PageAccessService } from "@/modules/auth/page-access-service";
 import { assertSameOrigin } from "@/lib/access/same-origin";
+import { parseJsonBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +43,13 @@ export async function POST(request: Request) {
 
   try {
     assertSameOrigin(request);
-    const input = createDraftSchema.parse(await request.json());
-    await assertRequestPageAccess(request, input.pageId);
+    const input = await parseJsonBody(request, createDraftSchema);
+    const actor = await assertRequestPageAccess(request, input.pageId);
+    await assertMutationRateLimit({
+      actor,
+      pageId: input.pageId,
+      action: "post:draft:create",
+    });
     const draft = await createDraftService().create(input);
     return NextResponse.json(
       { draft: toDraftDto(draft), requestId },

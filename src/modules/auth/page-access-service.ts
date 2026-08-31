@@ -8,12 +8,14 @@ import type { Viewer } from "@/lib/auth/types";
 import { AppError } from "@/lib/errors/app-error";
 import { assertCanChangeApproval } from "./admin-policy";
 
-export const pageAssignmentInputSchema = z.object({
-  pageIds: z
-    .array(z.uuid())
-    .max(500)
-    .transform((ids) => [...new Set(ids)]),
-});
+export const pageAssignmentInputSchema = z
+  .object({
+    pageIds: z
+      .array(z.uuid())
+      .max(500)
+      .transform((ids) => [...new Set(ids)]),
+  })
+  .strict();
 
 export class PageAccessService {
   private readonly pages: Pick<PageRepository, "findById" | "listActive">;

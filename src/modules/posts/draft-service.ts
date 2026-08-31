@@ -23,6 +23,7 @@ export const createDraftSchema = z
     message: z.string().max(100_000).default(""),
     assetIds: z.array(z.uuid()).max(10).default([]),
   })
+  .strict()
   .superRefine((value, context) => {
     if (value.message.trim().length === 0 && value.assetIds.length === 0) {
       context.addIssue({
@@ -40,10 +41,12 @@ export const createDraftSchema = z
     }
   });
 
-export const updateDraftSchema = z.object({
-  message: draftMessageSchema,
-  expectedUpdatedAt: z.iso.datetime().optional(),
-});
+export const updateDraftSchema = z
+  .object({
+    message: draftMessageSchema,
+    expectedUpdatedAt: z.iso.datetime().optional(),
+  })
+  .strict();
 
 export type PageReader = {
   findById(id: string): Promise<PageRecord | undefined>;

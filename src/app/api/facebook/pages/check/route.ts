@@ -5,6 +5,8 @@ import { assertInternalAccess } from "@/lib/access/internal-access";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireServerEnv } from "@/lib/env/server";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { parseJsonBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import {
   manualPageIdSchema,
   toSafeManualPage,
@@ -13,15 +15,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const requestSchema = z.object({ pageId: manualPageIdSchema });
+const requestSchema = z.object({ pageId: manualPageIdSchema }).strict();
 
 export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
     assertSameOrigin(request);
-    await assertInternalAccess(request);
-    const input = requestSchema.parse(await request.json());
+    const actor = await assertInternalAccess(request);
+    const input = await parseJsonBody(request, requestSchema);
+    await assertMutationRateLimit({
+      actor,
+      pageId: input.pageId,
+      action: "facebook:page:check",
+    });
     const verification = await verifyManualPage({
       pageId: input.pageId,
       graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),

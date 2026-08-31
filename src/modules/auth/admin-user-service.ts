@@ -18,18 +18,24 @@ import {
 import { PageRepository } from "@/db/repositories/page-repository";
 import { UserPageAssignmentRepository } from "@/db/repositories/user-page-assignment-repository";
 
-export const allowlistInputSchema = z.object({
-  email: z.email().transform(normalizeEmail),
-  role: z.enum(["admin", "member"]).default("member"),
-});
+export const allowlistInputSchema = z
+  .object({
+    email: z.email().transform(normalizeEmail),
+    role: z.enum(["admin", "member"]).default("member"),
+  })
+  .strict();
 
-export const approvalInputSchema = z.object({
-  status: z.enum(["approved", "rejected", "suspended"]),
-});
+export const approvalInputSchema = z
+  .object({
+    status: z.enum(["approved", "rejected", "suspended"]),
+  })
+  .strict();
 
-export const roleInputSchema = z.object({
-  role: z.enum(["admin", "member"]),
-});
+export const roleInputSchema = z
+  .object({
+    role: z.enum(["admin", "member"]),
+  })
+  .strict();
 
 export class AdminUserService {
   private readonly users = new AppUserRepository(getDatabase());

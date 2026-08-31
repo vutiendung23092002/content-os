@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "@/lib/errors/app-error";
 
 const mocks = vi.hoisted(() => ({
   assertSameOrigin: vi.fn(),
-  assertRequestPostAccess: vi.fn(),
+  authorizeRequestPostAccess: vi.fn(),
+  assertMutationRateLimit: vi.fn(),
   reschedule: vi.fn(),
 }));
 
@@ -10,7 +12,10 @@ vi.mock("@/lib/access/same-origin", () => ({
   assertSameOrigin: mocks.assertSameOrigin,
 }));
 vi.mock("@/lib/access/page-access", () => ({
-  assertRequestPostAccess: mocks.assertRequestPostAccess,
+  authorizeRequestPostAccess: mocks.authorizeRequestPostAccess,
+}));
+vi.mock("@/lib/security/mutation-rate-limit", () => ({
+  assertMutationRateLimit: mocks.assertMutationRateLimit,
 }));
 vi.mock("@/modules/posts/reschedule-post", () => ({
   ReschedulePostService: class {
@@ -40,7 +45,11 @@ function request(body: unknown) {
 describe("post reschedule API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.assertRequestPostAccess.mockResolvedValue({ id: "viewer-1" });
+    mocks.authorizeRequestPostAccess.mockResolvedValue({
+      post: { pageId: "018f0d44-35f0-7b63-99d2-c1b9222cd061" },
+      viewer: { id: "viewer-1" },
+    });
+    mocks.assertMutationRateLimit.mockResolvedValue(undefined);
     mocks.reschedule.mockResolvedValue({
       operationId: "operation-1",
       postId,
@@ -55,9 +64,12 @@ describe("post reschedule API", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.assertSameOrigin).toHaveBeenCalledOnce();
-    expect(mocks.assertRequestPostAccess).toHaveBeenCalledWith(
+    expect(mocks.authorizeRequestPostAccess).toHaveBeenCalledWith(
       expect.any(Request),
       postId,
+    );
+    expect(mocks.assertMutationRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "post:reschedule" }),
     );
     expect(mocks.reschedule).toHaveBeenCalledWith(postId, scheduledFor);
   });
@@ -69,6 +81,55 @@ describe("post reschedule API", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(mocks.reschedule).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON before calling the use-case", async () => {
+    const malformed = new Request(
+      `https://social.example/api/posts/${postId}/reschedule`,
+      {
+        method: "PATCH",
+        body: "{",
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+    const response = await PATCH(malformed, context);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: "MALFORMED_JSON" },
+    });
+    expect(mocks.reschedule).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized JSON body before calling the use-case", async () => {
+    const oversized = request({
+      scheduledFor,
+      padding: "x".repeat(128 * 1024),
+    });
+
+    const response = await PATCH(oversized, context);
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({
+      error: { code: "PAYLOAD_TOO_LARGE" },
+    });
+    expect(mocks.reschedule).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 without calling the use-case when the limit is exceeded", async () => {
+    mocks.assertMutationRateLimit.mockRejectedValueOnce(
+      new AppError({
+        code: "RATE_LIMIT_EXCEEDED",
+        message: "Too many mutations",
+        status: 429,
+      }),
+    );
+
+    const response = await PATCH(request({ scheduledFor }), context);
+
+    expect(response.status).toBe(429);
     expect(mocks.reschedule).not.toHaveBeenCalled();
   });
 });

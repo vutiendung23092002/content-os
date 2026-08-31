@@ -20,6 +20,13 @@ export async function assertRequestPostAccess(
   request: Request,
   postId: string,
 ) {
+  return (await authorizeRequestPostAccess(request, postId)).post;
+}
+
+export async function authorizeRequestPostAccess(
+  request: Request,
+  postId: string,
+) {
   const post = await new PostRepository(getDatabase()).findById(postId);
   if (!post) {
     throw new AppError({
@@ -28,6 +35,6 @@ export async function assertRequestPostAccess(
       status: 404,
     });
   }
-  await assertRequestPageAccess(request, post.pageId);
-  return post;
+  const viewer = await assertRequestPageAccess(request, post.pageId);
+  return { post, viewer };
 }

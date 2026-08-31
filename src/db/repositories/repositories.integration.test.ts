@@ -9,6 +9,7 @@ import { PostRepository } from "./post-repository";
 import { SyncCursorRepository } from "./sync-cursor-repository";
 import { UserPageAssignmentRepository } from "./user-page-assignment-repository";
 import { AssetRepository } from "./asset-repository";
+import { MutationRateLimitRepository } from "./mutation-rate-limit-repository";
 import { encryptToken } from "@/lib/crypto/token-crypto";
 import {
   appUsers,
@@ -41,6 +42,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         const assignmentRepository = new UserPageAssignmentRepository(
           transaction,
         );
+        const rateLimits = new MutationRateLimitRepository(transaction);
 
         const page = await pageRepository.upsertManagedPage({
           externalPageId,
@@ -116,6 +118,17 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
             approvalStatus: "approved",
           })
           .returning();
+
+        const rateLimitWindowStart = new Date();
+        const rateLimitInput = {
+          actorId: user!.id,
+          pageScope: page.id,
+          action: "post:publish",
+          windowStart: rateLimitWindowStart,
+          expiresAt: new Date(rateLimitWindowStart.getTime() + 60_000),
+        };
+        expect(await rateLimits.increment(rateLimitInput)).toBe(1);
+        expect(await rateLimits.increment(rateLimitInput)).toBe(2);
         await operationRepository.markNeedsAttention(operation.id, {
           reason: "integration_no_match",
           candidates: [],

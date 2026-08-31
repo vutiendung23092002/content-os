@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireAdmin } from "@/lib/auth/session";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { parseJsonBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import {
   PageAccessService,
   pageAssignmentInputSchema,
@@ -32,8 +34,9 @@ export async function PUT(request: Request, context: RouteContext) {
   try {
     assertSameOrigin(request);
     const actor = await requireAdmin();
+    await assertMutationRateLimit({ actor, action: "admin:user:pages" });
     const { userId } = await context.params;
-    const input = pageAssignmentInputSchema.parse(await request.json());
+    const input = await parseJsonBody(request, pageAssignmentInputSchema);
     const assignment = await new PageAccessService().replaceAssignments({
       actor,
       userId,

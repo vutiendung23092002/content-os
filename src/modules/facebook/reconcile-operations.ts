@@ -39,15 +39,19 @@ const requestMetadataSchema = z.object({
 });
 
 export const manualResolutionSchema = z.discriminatedUnion("resolution", [
-  z.object({
-    resolution: z.literal("remote_created"),
-    remotePostId: z.string().trim().min(1).max(256),
-    note: z.string().trim().min(10).max(500),
-  }),
-  z.object({
-    resolution: z.literal("remote_not_created"),
-    note: z.string().trim().min(10).max(500),
-  }),
+  z
+    .object({
+      resolution: z.literal("remote_created"),
+      remotePostId: z.string().trim().min(1).max(256),
+      note: z.string().trim().min(10).max(500),
+    })
+    .strict(),
+  z
+    .object({
+      resolution: z.literal("remote_not_created"),
+      note: z.string().trim().min(10).max(500),
+    })
+    .strict(),
 ]);
 
 type ReviewRecord = {

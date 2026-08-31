@@ -7,6 +7,8 @@ import {
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireServerEnv } from "@/lib/env/server";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { assertEmptyBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import { MetaGraphClient } from "@/modules/facebook/meta-client";
 import { syncManagedPages } from "@/modules/facebook/sync-managed-pages";
 
@@ -17,7 +19,11 @@ export async function POST(request: Request) {
 
   try {
     if (!hasConfiguredSecretAccess(request)) assertSameOrigin(request);
-    await assertInternalAdminAccess(request);
+    const actor = await assertInternalAdminAccess(request);
+    if (actor) {
+      await assertMutationRateLimit({ actor, action: "facebook:pages:sync" });
+      await assertEmptyBody(request);
+    }
     const client = new MetaGraphClient({
       graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
       accessToken: requireServerEnv("FACEBOOK_USER_ACCESS_TOKEN"),

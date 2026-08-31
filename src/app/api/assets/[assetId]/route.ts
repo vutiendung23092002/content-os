@@ -6,6 +6,8 @@ import { assertRequestPageAccess } from "@/lib/access/page-access";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { AppError } from "@/lib/errors/app-error";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { assertEmptyBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import { AssetCleanupService } from "@/modules/assets/asset-cleanup-service";
 
 type RouteContext = { params: Promise<{ assetId: string }> };
@@ -25,7 +27,13 @@ export async function DELETE(request: Request, context: RouteContext) {
         status: 404,
       });
     }
-    await assertRequestPageAccess(request, asset.pageId);
+    const actor = await assertRequestPageAccess(request, asset.pageId);
+    await assertMutationRateLimit({
+      actor,
+      pageId: asset.pageId,
+      action: "asset:delete",
+    });
+    await assertEmptyBody(request);
     const deleted = await new AssetCleanupService().deleteUnattached(asset.id);
     if (!deleted) {
       throw new AppError({

@@ -30,6 +30,7 @@ describe("database schema", () => {
         "aiGenerations",
         "syncCursors",
         "cronJobs",
+        "mutationRateLimits",
       ]),
     );
   });

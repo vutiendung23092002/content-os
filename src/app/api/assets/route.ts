@@ -7,6 +7,8 @@ import { assertRequestPageAccess } from "@/lib/access/page-access";
 import { AppError } from "@/lib/errors/app-error";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { assertSameOrigin } from "@/lib/access/same-origin";
+import { parseMultipartBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import { AssetStorage } from "@/modules/assets/asset-storage";
 import { AssetCleanupService } from "@/modules/assets/asset-cleanup-service";
 import { validateImageBytes } from "@/modules/assets/image-validator";
@@ -18,7 +20,13 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const pageIdSchema = z.uuid();
+const uploadSchema = z
+  .object({
+    pageId: z.uuid(),
+    file: z.instanceof(File),
+  })
+  .strict();
+const MAX_IMAGE_MULTIPART_BYTES = MAX_IMAGE_FILE_SIZE + 1024 * 1024;
 export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
   let uploadedStorageKey: string | undefined;
@@ -26,10 +34,19 @@ export async function POST(request: Request) {
 
   try {
     assertSameOrigin(request);
-    const formData = await request.formData();
-    const pageId = pageIdSchema.parse(formData.get("pageId"));
-    const file = formData.get("file");
-    await assertRequestPageAccess(request, pageId);
+    const formData = await parseMultipartBody(
+      request,
+      MAX_IMAGE_MULTIPART_BYTES,
+    );
+    const { pageId, file } = uploadSchema.parse(
+      Object.fromEntries(formData.entries()),
+    );
+    const actor = await assertRequestPageAccess(request, pageId);
+    await assertMutationRateLimit({
+      actor,
+      pageId,
+      action: "asset:image:upload",
+    });
 
     if (!(file instanceof File)) {
       throw new AppError({

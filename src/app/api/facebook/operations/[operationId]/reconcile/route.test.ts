@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   assertSameOrigin: vi.fn(),
   requireAdmin: vi.fn(),
+  assertMutationRateLimit: vi.fn(),
   reconcile: vi.fn(),
   resolveManually: vi.fn(),
 }));
@@ -11,6 +12,9 @@ vi.mock("@/lib/access/same-origin", () => ({
   assertSameOrigin: mocks.assertSameOrigin,
 }));
 vi.mock("@/lib/auth/session", () => ({ requireAdmin: mocks.requireAdmin }));
+vi.mock("@/lib/security/mutation-rate-limit", () => ({
+  assertMutationRateLimit: mocks.assertMutationRateLimit,
+}));
 vi.mock("@/modules/facebook/reconcile-operations", async (importOriginal) => {
   const original =
     await importOriginal<
@@ -51,6 +55,7 @@ describe("Facebook operation reconciliation API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireAdmin.mockResolvedValue({ id: actorId, role: "admin" });
+    mocks.assertMutationRateLimit.mockResolvedValue(undefined);
     mocks.reconcile.mockResolvedValue({
       operationId,
       status: "needs_attention",

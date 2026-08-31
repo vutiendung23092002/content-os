@@ -12,6 +12,7 @@ const expectedTables = [
   "cron_jobs",
   "facebook_connection",
   "facebook_operations",
+  "mutation_rate_limits",
   "page_credentials",
   "pages",
   "post_assets",

@@ -453,6 +453,34 @@ export const cronJobs = applicationSchema.table(
   (table) => [index("cron_jobs_lease_expiry_idx").on(table.leaseExpiresAt)],
 );
 
+export const mutationRateLimits = applicationSchema.table(
+  "mutation_rate_limits",
+  {
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    pageScope: text("page_scope").notNull(),
+    action: text("action").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    requestCount: integer("request_count").notNull().default(1),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.actorId,
+        table.pageScope,
+        table.action,
+        table.windowStart,
+      ],
+    }),
+    index("mutation_rate_limits_expiry_idx").on(table.expiresAt),
+  ],
+);
+
 export const schema = {
   appUsers,
   facebookConnection,
@@ -466,4 +494,5 @@ export const schema = {
   aiGenerations,
   syncCursors,
   cronJobs,
+  mutationRateLimits,
 };

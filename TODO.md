@@ -107,7 +107,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Chỉ Meta adapter được yêu cầu plaintext; key tách khỏi database; tamper bị phát hiện.
   - Tests: Encrypt/decrypt, wrong key, tamper, key-version và rotation tests.
 
-- [ ] SEC-003 — Mutation protection and input limits
+- [x] SEC-003 — Mutation protection and input limits
   - Priority: P0
   - Goal: Bảo vệ publish/schedule/cancel và AI endpoints khỏi request giả/lạm dụng.
   - Depends on: FOUND-006.
@@ -116,8 +116,11 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Tests: CSRF, oversized payload, invalid timezone và rate-limit tests.
   - [x] Audit toàn bộ browser mutation cho publish, schedule, draft/remote edit-delete, asset upload-delete và quản trị user/Page; mọi route đều có authorization cùng same-origin, còn cron giữ bearer riêng.
   - [x] Thêm regression audit tự động để route `POST`/`PUT`/`PATCH`/`DELETE` mới không được thiếu CSRF hoặc machine-auth boundary và authorization boundary.
-  - [ ] Bổ sung rate limit theo actor/Page/loại mutation.
-  - [ ] Chuẩn hóa raw request body limit và strict input schema cho các mutation còn lại.
+  - [x] Rate limit browser mutation theo actor/Page/action bằng atomic fixed-window counter trong PostgreSQL; scope không gắn Page dùng `global`.
+  - [x] Giới hạn raw JSON/multipart body trước parse; chuẩn hóa lỗi payload quá lớn, JSON malformed và content type sai.
+  - [x] Toàn bộ JSON mutation schema dùng strict Zod; bodyless mutation chỉ chấp nhận body rỗng.
+  - [x] Giữ nguyên cron bearer và configured machine-secret behavior; rate limiter chỉ chạy khi có browser actor.
+  - [x] Regression tests cho rate-limit exceeded, oversized/malformed/unknown-field payload và mutation hợp lệ.
 
 - [ ] SEC-004 — Credential rotation and incident runbook
   - Priority: P1

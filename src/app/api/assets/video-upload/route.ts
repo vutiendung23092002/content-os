@@ -7,6 +7,8 @@ import { assertRequestPageAccess } from "@/lib/access/page-access";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { AppError } from "@/lib/errors/app-error";
 import { toErrorResponse } from "@/lib/errors/api-error";
+import { parseJsonBody } from "@/lib/http/request-body";
+import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
 import { getAssetBucketName } from "@/lib/supabase/admin";
 import { AssetStorage } from "@/modules/assets/asset-storage";
 import { AssetCleanupService } from "@/modules/assets/asset-cleanup-service";
@@ -18,23 +20,32 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const intentSchema = z.object({
-  action: z.literal("create"),
-  pageId: z.uuid(),
-  fileName: z.string().trim().min(1).max(255),
-  mimeType: z.string().trim().min(1),
-  fileSize: z.number().int().positive().max(MAX_VIDEO_FILE_SIZE),
-});
+const intentSchema = z
+  .object({
+    action: z.literal("create"),
+    pageId: z.uuid(),
+    fileName: z.string().trim().min(1).max(255),
+    mimeType: z.string().trim().min(1),
+    fileSize: z.number().int().positive().max(MAX_VIDEO_FILE_SIZE),
+  })
+  .strict();
 
-const completeSchema = z.object({
-  action: z.literal("complete"),
-  assetId: z.uuid(),
-  pageId: z.uuid(),
-  storageKey: z.string().min(1).max(1024),
-  fileName: z.string().trim().min(1).max(255),
-  mimeType: z.string().trim().min(1),
-  fileSize: z.number().int().positive().max(MAX_VIDEO_FILE_SIZE),
-});
+const completeSchema = z
+  .object({
+    action: z.literal("complete"),
+    assetId: z.uuid(),
+    pageId: z.uuid(),
+    storageKey: z.string().min(1).max(1024),
+    fileName: z.string().trim().min(1).max(255),
+    mimeType: z.string().trim().min(1),
+    fileSize: z.number().int().positive().max(MAX_VIDEO_FILE_SIZE),
+  })
+  .strict();
+
+const requestSchema = z.discriminatedUnion("action", [
+  intentSchema,
+  completeSchema,
+]);
 
 function validateVideo(mimeType: string, fileSize: number) {
   if (!isVideoMimeType(mimeType)) {
@@ -59,20 +70,17 @@ export async function POST(request: Request) {
 
   try {
     assertSameOrigin(request);
-    const body: unknown = await request.json();
-
-    if (typeof body !== "object" || body === null || !("action" in body)) {
-      throw new AppError({
-        code: "VIDEO_UPLOAD_REQUEST_INVALID",
-        message: "Yêu cầu tải video không hợp lệ.",
-        status: 400,
-      });
-    }
+    const body = await parseJsonBody(request, requestSchema);
 
     if (body.action === "create") {
-      const input = intentSchema.parse(body);
+      const input = body;
       validateVideo(input.mimeType, input.fileSize);
-      await assertRequestPageAccess(request, input.pageId);
+      const actor = await assertRequestPageAccess(request, input.pageId);
+      await assertMutationRateLimit({
+        actor,
+        pageId: input.pageId,
+        action: "asset:video:create",
+      });
 
       const now = new Date();
       const storageKey = `${input.pageId}/${now.getUTCFullYear()}/${String(
@@ -103,9 +111,14 @@ export async function POST(request: Request) {
       });
     }
 
-    const input = completeSchema.parse(body);
+    const input = body;
     validateVideo(input.mimeType, input.fileSize);
-    await assertRequestPageAccess(request, input.pageId);
+    const actor = await assertRequestPageAccess(request, input.pageId);
+    await assertMutationRateLimit({
+      actor,
+      pageId: input.pageId,
+      action: "asset:video:complete",
+    });
     if (!input.storageKey.startsWith(`${input.pageId}/`)) {
       throw new AppError({
         code: "VIDEO_STORAGE_KEY_INVALID",

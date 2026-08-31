@@ -21,7 +21,10 @@ const mutationExport = /^export async function (?:POST|PUT|PATCH|DELETE)\b/m;
 const csrfOrMachineGuard =
   /assertSameOrigin|assertFacebookCronAccess|assertAssetCleanupAccess/;
 const authorizationGuard =
-  /assertRequestPageAccess|assertRequestPostAccess|assertInternalAccess|assertInternalAdminAccess|requireAdmin|assertFacebookCronAccess|assertAssetCleanupAccess|createSupabaseServerClient/;
+  /assertRequestPageAccess|assertRequestPostAccess|authorizeRequestPostAccess|assertInternalAccess|assertInternalAdminAccess|requireAdmin|assertFacebookCronAccess|assertAssetCleanupAccess|createSupabaseServerClient/;
+const browserRateLimitBoundary = /assertMutationRateLimit/;
+const boundedBodyBoundary =
+  /parseJsonBody|parseMultipartBody|assertEmptyBody|assertFacebookCronAccess|assertAssetCleanupAccess/;
 
 describe("API mutation security audit", () => {
   const mutationRoutes = routeFiles(apiRoot).filter((path) =>
@@ -39,6 +42,27 @@ describe("API mutation security audit", () => {
     "%s declares an authorization boundary",
     (_name, path) => {
       expect(readFileSync(path, "utf8")).toMatch(authorizationGuard);
+    },
+  );
+
+  const businessMutationRoutes = mutationRoutes.filter(
+    (path) =>
+      relative(apiRoot, path).split(/[\\/]/)[0] !== "cron" &&
+      relative(apiRoot, path) !== join("auth", "logout", "route.ts"),
+  );
+
+  it.each(
+    businessMutationRoutes.map((path) => [relative(apiRoot, path), path]),
+  )("%s declares a mutation rate limit boundary", (_name, path) => {
+    expect(readFileSync(path, "utf8")).toMatch(browserRateLimitBoundary);
+  });
+
+  it.each(mutationRoutes.map((path) => [relative(apiRoot, path), path]))(
+    "%s declares a bounded or machine-auth body boundary",
+    (_name, path) => {
+      const name = relative(apiRoot, path);
+      if (name === join("auth", "logout", "route.ts")) return;
+      expect(readFileSync(path, "utf8")).toMatch(boundedBodyBoundary);
     },
   );
 });
