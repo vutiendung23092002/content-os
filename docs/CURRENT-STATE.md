@@ -70,14 +70,14 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Native text schedule bằng `published=false` và `scheduled_publish_time`.
 - Đọc scheduled posts và cursor an toàn.
 - Đọc published posts, reschedule và cancel contracts.
-- Timeout và normalized error không trả raw provider message.
+- Timeout, 4xx/5xx/429 và malformed response được chuẩn hóa; error/DTO không trả raw provider message, token hoặc provider pagination URL.
 - `/api/facebook/status` chỉ trả boolean cấu hình, không trả secret.
 
 ### Repository và local application
 
 - Repository cho Page, encrypted Page credential, draft và Facebook operation.
 - Transaction boundary đã chạy integration test thật trên Supabase và rollback sạch dữ liệu test.
-- Page sync service phân trang, mã hóa Page token trước persistence và chỉ trả safe DTO.
+- Page sync service đọc hết pagination trước persistence, mã hóa Page token và chỉ trả safe DTO; Page managed biến mất khỏi snapshot hoàn chỉnh được đánh dấu `permission_missing` mà không ảnh hưởng Page thêm thủ công.
 - Draft create/list/get/update/delete service và API.
 - Publish-now/native-schedule orchestration có operation ledger, double-submit claim và mock Meta client.
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
@@ -103,7 +103,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 284 tests pass; 8 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm isolated credential-rotation drill, expired-credential lock/recovery và crypto lock không bị rotation tự unlock.
+- Vitest: 290 tests pass; 12 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm credential rotation/recovery, managed-Page reconciliation, duplicate submission claim và published/scheduled remote mirror behavior.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -117,8 +117,8 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 
 ## Chưa implement hoặc chưa xác minh
 
-- Phần còn lại của Meta capability smoke: reschedule, sửa caption, hủy lịch và xóa bài đã đăng trên Page test.
-- Remote mutation service cho reschedule/edit/cancel/delete đã có mock/unit/typecheck; chưa live smoke đầy đủ trên Page test.
+- `FB-002`, `FB-003`, `FB-004`, `FB-006` và `FB-007` đã đủ code/test/live-read evidence để đóng. `FB-001` và `FB-005` vẫn mở vì chưa có capability report tập trung từ một pinned `v26.0` Page-test run chốt plain-text publish, exact permission/access tier, scheduling range/timezone và cleanup evidence.
+- Live smoke cho reschedule/edit/cancel/delete đã hoàn tất trên Page test; không cần chạy lại destructive Facebook mutations cho audit này.
 - Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
 - Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness. Code, CLI, automated integration drill và incident recovery runbook của SEC-004 đã hoàn thành; SEC-004 vẫn mở cho đến khi operator thực hiện và lưu evidence của rotation drill trên môi trường staging thật.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.

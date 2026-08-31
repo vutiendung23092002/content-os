@@ -307,19 +307,33 @@ describe("RemotePostWeekCache", () => {
       ],
       engagement: null,
     };
+    const scheduledPost2: RemoteFacebookPost = {
+      ...scheduledPost,
+      remoteId: "scheduled-2",
+      effectiveAt: "2026-08-19T02:00:00.000Z",
+    };
 
     const reader = {
-      list: vi.fn().mockResolvedValue({
-        posts: [scheduledPost],
-        after: null,
-      }),
+      list: vi
+        .fn()
+        .mockResolvedValueOnce({
+          posts: [scheduledPost],
+          after: "scheduled-cursor-1",
+        })
+        .mockResolvedValueOnce({
+          posts: [scheduledPost2],
+          after: null,
+        }),
     };
 
     const posts = {
       listRemoteWindow: vi
         .fn()
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([storedRemotePost(scheduledPost)]),
+        .mockResolvedValueOnce([
+          storedRemotePost(scheduledPost),
+          storedRemotePost(scheduledPost2, 2),
+        ]),
     };
 
     const cursors = {
@@ -346,21 +360,21 @@ describe("RemotePostWeekCache", () => {
       "https://facebook.test/first.jpg",
       "https://facebook.test/second.jpg",
     ]);
+    expect(result.posts).toHaveLength(2);
+    expect(reader.list).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ after: "scheduled-cursor-1" }),
+    );
 
     expect(mirror.replaceWindow).toHaveBeenCalledWith({
       pageId,
       kind: "scheduled",
       windowStart: weekStart,
       windowEnd: weekEnd,
-      posts: [
-        expect.objectContaining({
-          remoteId: "scheduled-1",
-          imageUrls: [
-            "https://facebook.test/first.jpg",
-            "https://facebook.test/second.jpg",
-          ],
-        }),
-      ],
+      posts: expect.arrayContaining([
+        expect.objectContaining({ remoteId: "scheduled-1" }),
+        expect.objectContaining({ remoteId: "scheduled-2" }),
+      ]),
     });
 
     /*
@@ -398,7 +412,7 @@ describe("RemotePostWeekCache", () => {
 
     const result = await cache.list({
       localPageId: pageId,
-      kind: "published",
+      kind: "scheduled",
       weekStart,
     });
 

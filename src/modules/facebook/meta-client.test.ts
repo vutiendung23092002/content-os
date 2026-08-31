@@ -297,6 +297,74 @@ describe("MetaGraphClient", () => {
     });
   });
 
+  it("normalizes rate limits and server failures without leaking provider details", async () => {
+    for (const status of [429, 503]) {
+      const providerMessage = `provider-secret-detail-${status}`;
+      const client = new MetaGraphClient({
+        graphVersion: "v99.0",
+        accessToken: "page-token",
+        baseUrl: "https://graph.test",
+        fetch: vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            Response.json(
+              { error: { code: 2, message: providerMessage } },
+              { status },
+            ),
+          ),
+      });
+
+      const error = await client
+        .getPublishedPosts("page-1")
+        .catch((value: unknown) => value);
+      expect(error).toMatchObject({
+        code: "FACEBOOK_API_ERROR",
+        retryable: true,
+      });
+      expect(JSON.stringify(error)).not.toContain(providerMessage);
+      expect(JSON.stringify(error)).not.toContain("page-token");
+    }
+  });
+
+  it("normalizes timeout failures without exposing the token or request URL", async () => {
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "timeout-page-token",
+      baseUrl: "https://graph.test",
+      timeoutMs: 1,
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockRejectedValue(new DOMException("timed out", "TimeoutError")),
+    });
+
+    const error = await client
+      .getPublishedPosts("page-1")
+      .catch((value: unknown) => value);
+    expect(error).toMatchObject({
+      code: "FACEBOOK_NETWORK_ERROR",
+      retryable: true,
+    });
+    expect(JSON.stringify(error)).not.toContain("timeout-page-token");
+    expect(JSON.stringify(error)).not.toContain("graph.test");
+  });
+
+  it("normalizes a malformed successful response", async () => {
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ data: [{ unexpected: true }] })),
+    });
+
+    await expect(client.getPublishedPosts("page-1")).rejects.toMatchObject({
+      code: "FACEBOOK_MALFORMED_RESPONSE",
+      status: 502,
+      retryable: true,
+    });
+  });
+
   it("reads published posts without exposing provider next URLs", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
@@ -397,6 +465,25 @@ describe("MetaGraphClient", () => {
     expect(query.get("limit")).toBe("100");
     expect(query.get("since")).toBe(String(Math.floor(since.getTime() / 1000)));
     expect(query.get("until")).toBe(String(Math.floor(until.getTime() / 1000)));
+  });
+
+  it("passes only the opaque pagination cursor to the next request", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ data: [] }));
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: fetchMock,
+    });
+
+    await client.getPublishedPosts("page-1", "opaque-cursor");
+
+    const [url] = fetchMock.mock.calls[0] ?? [];
+    expect(new URL(String(url)).searchParams.get("after")).toBe(
+      "opaque-cursor",
+    );
   });
 
   it("reads scheduled posts with GET and a bounded page size", async () => {

@@ -5,7 +5,7 @@ export const MIN_SCHEDULE_LEAD_MINUTES = 20;
 export const MAX_SCHEDULE_AHEAD_DAYS = 29;
 
 export function parseFacebookScheduleTime(value: unknown, now: Date): Date {
-  const scheduledFor = new Date(z.iso.datetime().parse(value));
+  const scheduledFor = new Date(z.iso.datetime({ offset: true }).parse(value));
   if (scheduledFor.getTime() <= now.getTime()) {
     throw new AppError({
       code: "SCHEDULE_TIME_INVALID",

@@ -48,7 +48,10 @@ async function persistManagedPages(
         name: managedPage.name,
         avatarUrl: managedPage.avatarUrl,
         category: managedPage.category,
-        remoteMetadata: { tasks: managedPage.tasks },
+        remoteMetadata: {
+          source: "managed_pages_sync",
+          tasks: managedPage.tasks,
+        },
       });
       await credentialRepository.upsert(
         page.id,
@@ -63,6 +66,10 @@ async function persistManagedPages(
         tasks: managedPage.tasks,
       });
     }
+
+    await pageRepository.markMissingManagedPages(
+      pagesToPersist.map((page) => page.externalPageId),
+    );
 
     await connectionRepository.markActive({
       providerMetadata: { managedPageCount: safePages.length },

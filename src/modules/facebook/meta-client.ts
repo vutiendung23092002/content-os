@@ -85,6 +85,23 @@ const videoPostReferenceSchema = z.object({
   post_id: z.string().min(1).optional(),
 });
 
+function parseGraphResponse<Schema extends z.ZodType>(
+  schema: Schema,
+  payload: unknown,
+): z.infer<Schema> {
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    throw new AppError({
+      code: "FACEBOOK_MALFORMED_RESPONSE",
+      message: "Meta Graph API trả về dữ liệu không hợp lệ.",
+      status: 502,
+      retryable: true,
+      cause: result.error,
+    });
+  }
+  return result.data;
+}
+
 const engagementEdgeSchema = z
   .object({
     summary: z
@@ -257,7 +274,8 @@ export class MetaGraphClient {
       fields: "id,name,access_token,category,picture.type(small),tasks",
     });
     if (after) query.set("after", after);
-    const result = managedPagesSchema.parse(
+    const result = parseGraphResponse(
+      managedPagesSchema,
       await this.request("me/accounts", { query }),
     );
 
@@ -278,7 +296,10 @@ export class MetaGraphClient {
     const query = new URLSearchParams({
       fields: "id,name,picture.type(small)",
     });
-    const result = userProfileSchema.parse(await this.request("me", { query }));
+    const result = parseGraphResponse(
+      userProfileSchema,
+      await this.request("me", { query }),
+    );
 
     return {
       id: result.id,
@@ -291,7 +312,8 @@ export class MetaGraphClient {
     const query = new URLSearchParams({
       fields: "id,name,access_token,category,picture.type(small)",
     });
-    const result = pageCredentialSchema.parse(
+    const result = parseGraphResponse(
+      pageCredentialSchema,
       await this.request(encodeURIComponent(pageId), { query }),
     );
 
@@ -309,7 +331,8 @@ export class MetaGraphClient {
     appSecret: string;
   }): Promise<MetaTokenInspection> {
     const query = new URLSearchParams({ input_token: this.accessToken });
-    const result = tokenInspectionSchema.parse(
+    const result = parseGraphResponse(
+      tokenInspectionSchema,
       await this.request("debug_token", {
         query,
         authorizationToken: `${input.appId}|${input.appSecret}`,
@@ -344,7 +367,8 @@ export class MetaGraphClient {
   }
 
   async publishText(pageId: string, message: string): Promise<string> {
-    const result = postMutationSchema.parse(
+    const result = parseGraphResponse(
+      postMutationSchema,
       await this.request(`${encodeURIComponent(pageId)}/feed`, {
         method: "POST",
         body: new URLSearchParams({ message }),
@@ -383,7 +407,8 @@ export class MetaGraphClient {
     description: string;
     fileUrl: string;
   }): Promise<string> {
-    const result = postMutationSchema.parse(
+    const result = parseGraphResponse(
+      postMutationSchema,
       await this.request(`${encodeURIComponent(input.pageId)}/videos`, {
         method: "POST",
         baseUrl: this.videoBaseUrl,
@@ -403,7 +428,8 @@ export class MetaGraphClient {
     fileUrl: string;
     scheduledFor: Date;
   }): Promise<string> {
-    const result = postMutationSchema.parse(
+    const result = parseGraphResponse(
+      postMutationSchema,
       await this.request(`${encodeURIComponent(input.pageId)}/videos`, {
         method: "POST",
         baseUrl: this.videoBaseUrl,
@@ -426,7 +452,8 @@ export class MetaGraphClient {
     message: string,
     scheduledFor: Date,
   ): Promise<string> {
-    const result = postMutationSchema.parse(
+    const result = parseGraphResponse(
+      postMutationSchema,
       await this.request(`${encodeURIComponent(pageId)}/feed`, {
         method: "POST",
         body: new URLSearchParams({
@@ -480,7 +507,8 @@ export class MetaGraphClient {
     });
     if (after) query.set("after", after);
 
-    const result = scheduledPostsSchema.parse(
+    const result = parseGraphResponse(
+      scheduledPostsSchema,
       await this.request(`${encodeURIComponent(pageId)}/scheduled_posts`, {
         query,
       }),
@@ -509,7 +537,8 @@ export class MetaGraphClient {
       query.set("until", String(Math.floor(window.until.getTime() / 1000)));
     }
 
-    const result = publishedPostsSchema.parse(
+    const result = parseGraphResponse(
+      publishedPostsSchema,
       await this.request(`${encodeURIComponent(pageId)}/posts`, { query }),
     );
 
@@ -523,7 +552,8 @@ export class MetaGraphClient {
     remotePostId: string,
     scheduledFor: Date,
   ): Promise<void> {
-    updateMutationSchema.parse(
+    parseGraphResponse(
+      updateMutationSchema,
       await this.request(encodeURIComponent(remotePostId), {
         method: "POST",
         body: new URLSearchParams({
@@ -539,7 +569,8 @@ export class MetaGraphClient {
     remotePostId: string,
     message: string,
   ): Promise<void> {
-    updateMutationSchema.parse(
+    parseGraphResponse(
+      updateMutationSchema,
       await this.request(encodeURIComponent(remotePostId), {
         method: "POST",
         body: new URLSearchParams({ message }),
@@ -548,7 +579,8 @@ export class MetaGraphClient {
   }
 
   async deletePost(remotePostId: string): Promise<void> {
-    const result = deleteMutationSchema.parse(
+    const result = parseGraphResponse(
+      deleteMutationSchema,
       await this.request(encodeURIComponent(remotePostId), {
         method: "DELETE",
       }),
@@ -564,7 +596,8 @@ export class MetaGraphClient {
   }
 
   async resolveVideoPostId(videoId: string): Promise<string | null> {
-    const result = videoPostReferenceSchema.parse(
+    const result = parseGraphResponse(
+      videoPostReferenceSchema,
       await this.request(encodeURIComponent(videoId), {
         query: new URLSearchParams({ fields: "post_id" }),
       }),
@@ -590,7 +623,8 @@ export class MetaGraphClient {
 
     return Promise.all(
       mediaUrls.map(async (url) => {
-        const result = photoMutationSchema.parse(
+        const result = parseGraphResponse(
+          photoMutationSchema,
           await this.request(`${encodeURIComponent(pageId)}/photos`, {
             method: "POST",
             body: new URLSearchParams({ url, published: "false" }),
@@ -620,7 +654,8 @@ export class MetaGraphClient {
         String(Math.floor(input.scheduledFor.getTime() / 1000)),
       );
     }
-    const result = postMutationSchema.parse(
+    const result = parseGraphResponse(
+      postMutationSchema,
       await this.request(`${encodeURIComponent(input.pageId)}/feed`, {
         method: "POST",
         body,
@@ -705,7 +740,7 @@ export class MetaGraphClient {
     query: URLSearchParams,
   ): Promise<boolean> {
     try {
-      readProbeSchema.parse(await this.request(path, { query }));
+      parseGraphResponse(readProbeSchema, await this.request(path, { query }));
       return true;
     } catch (error) {
       if (

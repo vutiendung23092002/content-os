@@ -96,6 +96,23 @@ describe("SubmitPostService", () => {
     expect(result.status).toBe("scheduled");
   });
 
+  it("normalizes an explicit local timezone offset to the same UTC instant", async () => {
+    const setupResult = setup();
+
+    await setupResult.service.schedule(postId, "2026-08-21T09:00:00+07:00");
+
+    expect(setupResult.client.schedulePost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scheduledFor: new Date("2026-08-21T02:00:00.000Z"),
+      }),
+    );
+    expect(setupResult.persistence.succeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scheduledFor: new Date("2026-08-21T02:00:00.000Z"),
+      }),
+    );
+  });
+
   it("marks an ambiguous provider timeout uncertain and never retries", async () => {
     const setupResult = setup();
     vi.mocked(setupResult.client.publishPost).mockRejectedValue(

@@ -90,4 +90,33 @@ describe("syncManagedPages", () => {
       "repeated Page cursor",
     );
   });
+
+  it("does not persist a partial managed-Page snapshot", async () => {
+    const tokenEncryption = new TokenKeyring({
+      currentVersion: 1,
+      currentKey: randomBytes(32).toString("base64"),
+    });
+    const client: ManagedPagesClient = {
+      getManagedPages: vi
+        .fn()
+        .mockResolvedValueOnce({
+          pages: [
+            {
+              externalPageId: "external-1",
+              name: "Page One",
+              accessToken: "page-token-1",
+              tasks: ["CREATE_CONTENT"],
+            },
+          ],
+          after: "cursor-2",
+        })
+        .mockRejectedValueOnce(new Error("second page failed")),
+    };
+    const persist = vi.fn<PersistManagedPages>();
+
+    await expect(
+      syncManagedPages({ client, tokenEncryption, persist }),
+    ).rejects.toThrow("second page failed");
+    expect(persist).not.toHaveBeenCalled();
+  });
 });

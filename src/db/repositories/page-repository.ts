@@ -114,6 +114,47 @@ export class PageRepository {
     return record;
   }
 
+  async markMissingManagedPages(
+    seenExternalPageIds: string[],
+    detectedAt = new Date(),
+  ): Promise<number> {
+    const seen = new Set(seenExternalPageIds);
+    const activePages = await this.listActive();
+    const missing = activePages.filter((page) => {
+      if (seen.has(page.externalPageId)) return false;
+
+      const metadata = page.remoteMetadata;
+      return (
+        metadata.source === "managed_pages_sync" ||
+        (metadata.source === undefined && Array.isArray(metadata.tasks))
+      );
+    });
+
+    for (const page of missing) {
+      await this.database
+        .update(pages)
+        .set({
+          connectionStatus: "permission_missing",
+          lastSyncedAt: detectedAt,
+          remoteMetadata: {
+            ...page.remoteMetadata,
+            credentialIncident: {
+              version: 1,
+              status: "permission_missing",
+              errorCode: "FACEBOOK_MANAGED_PAGE_MISSING",
+              operationId: null,
+              detectedAt: detectedAt.toISOString(),
+              credentialExpiresAt: null,
+            },
+          },
+          updatedAt: detectedAt,
+        })
+        .where(eq(pages.id, page.id));
+    }
+
+    return missing.length;
+  }
+
   async lockForCredentialIncident(
     input: PageCredentialIncidentInput,
   ): Promise<PageRecord | undefined> {

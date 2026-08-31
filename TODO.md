@@ -153,32 +153,42 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: `scripts/meta-smoke` hoặc test harness server-only, capability report không secret.
   - Acceptance criteria: Discover Page, publish text, schedule native, list scheduled, list published, reschedule và cancel đều có kết quả ghi nhận; quyền/range/timezone được chốt.
   - Tests: Chạy trên Page test; xác nhận thủ công trong Meta Business Suite; dọn test post an toàn.
+  - [x] Graph API đã pin `v26.0`; live evidence có Page discovery, native schedule, published/scheduled reads, reschedule và cancel trên Page test.
+  - [x] Page discovery đã ghi nhận task/capability theo Page; các mutation live đã được xác nhận trong Meta Business Suite và test posts tương ứng đã được hủy/xóa.
+  - [ ] Lưu capability report cho một smoke run hoàn chỉnh gồm plain-text publish, exact permission/access tier, scheduling range/timezone và cleanup IDs; evidence hiện tại nằm rải rác và chưa chốt đủ các giá trị này.
 
-- [ ] FB-002 — Meta Graph adapter
+- [x] FB-002 — Meta Graph adapter
   - Priority: P0
   - Goal: Đóng gói mọi request Graph trong một adapter pin version.
   - Depends on: FB-001, FOUND-005.
   - Files/modules expected: `src/modules/facebook/meta-client`, DTO/error mapper/pagination.
   - Acceptance criteria: Có timeout, selected fields, normalized errors và không log URL/token.
   - Tests: Contract fixtures cho success, pagination, 4xx, 5xx, rate limit, timeout và malformed response.
+  - [x] Mọi Graph request trong application đi qua `MetaGraphClient`, dùng version bắt buộc từ `FACEBOOK_GRAPH_API_VERSION`, Bearer header, selected fields, cursor riêng và timeout mặc định 15 giây.
+  - [x] Contract tests bao phủ success/pagination/4xx/5xx/429/timeout/malformed response; provider message, token và provider next URL không thoát ra DTO/error.
 
-- [ ] FB-003 — Sync managed Pages and Page tokens
+- [x] FB-003 — Sync managed Pages and Page tokens
   - Priority: P0
   - Goal: Lấy Page được quản lý từ user token và lưu Page token mã hóa.
   - Depends on: FB-002, SEC-002, DB-003.
   - Files/modules expected: Facebook connection service, Page repositories, `/api/facebook/sync-pages`.
   - Acceptance criteria: Upsert Page ổn định; Page bị mất quyền được đánh dấu; response không chứa credential.
   - Tests: First sync, repeat sync, renamed Page, removed Page, partial API failure và ciphertext assertion.
+  - [x] Managed Page snapshot chỉ persist sau khi đọc hết pagination; partial/repeated-cursor snapshot không reconcile Page bị thiếu.
+  - [x] Upsert theo stable external Page ID, cập nhật Page đổi tên, mã hóa token trước persistence và chỉ trả safe DTO.
+  - [x] Page từng đến từ managed-page discovery nhưng biến mất khỏi snapshot hoàn chỉnh được đánh dấu `permission_missing`; Page thêm thủ công không bị ảnh hưởng và repeat sync có thể đưa Page trở lại `active`.
   - [x] Cho mọi tài khoản đã duyệt kiểm tra quyền và thêm Page bằng ID; thêm Page không tự cấp quyền sử dụng cho người thêm.
   - [x] Chỉ Admin/Super Admin được gỡ Page khỏi hệ thống; soft-delete thu hồi assignment, ẩn Page với mọi tài khoản và không gọi thao tác xóa lên Facebook.
 
-- [ ] FB-004 — Publish text now
+- [x] FB-004 — Publish text now
   - Priority: P0
   - Goal: Đăng một draft text ngay lên Page bằng Graph API chính thức.
   - Depends on: FB-002, FB-003, POST-001.
   - Files/modules expected: publish use-case, operation ledger integration, publish API route.
   - Acceptance criteria: Ghi intent trước request; lưu remote post ID; chỉ Page active có credential hợp lệ được publish.
   - Tests: Success, permission failure, validation, double submit/idempotency, timeout `uncertain` và database failure sau remote success.
+  - [x] Transaction claim draft và tạo pending operation hoàn tất trước Meta request; successful response persist remote Post ID.
+  - [x] Active Page/credential guard, atomic duplicate claim, permission failure, timeout `uncertain` không retry và remote-success/local-failure đều có regression evidence.
 
 - [ ] FB-005 — Create Facebook-native scheduled text post
   - Priority: P0
@@ -187,22 +197,29 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: schedule use-case/API, schedule validation, remote mapping.
   - Acceptance criteria: Remote scheduled post xuất hiện trên Facebook; app không tạo due-time publish job; lưu timezone/UTC đúng.
   - Tests: Valid boundaries từ capability report, invalid/past time, DST/timezone, duplicate submit và app offline tại giờ đăng.
+  - [x] Native scheduling gửi `published=false` và Unix `scheduled_publish_time`; không có due-time publish worker, cron chỉ đọc/reconcile.
+  - [x] Live Page-test evidence xác nhận native scheduled posts; tests bao phủ past/20-minute/29-day boundaries, ISO timezone offset → UTC, duplicate claim và remote publish được mirror sau app downtime.
+  - [ ] Gắn scheduling boundaries và timezone behavior với capability report được lưu từ pinned `v26.0` Page-test run; constants/tests hiện có chưa thay thế evidence live này.
 
-- [ ] FB-006 — Sync published posts
+- [x] FB-006 — Sync published posts
   - Priority: P0
   - Goal: Lấy danh sách bài đã đăng của Page và mirror tối thiểu.
   - Depends on: FB-002, DB-003.
   - Files/modules expected: published sync service, cursor handling, published API route.
   - Acceptance criteria: Bài tạo ngoài tool vẫn được upsert; mapping local draft được giữ; có `lastSyncedAt`.
   - Tests: Pagination, repeat sync, external post, edited/deleted remote post và transient failure.
+  - [x] Complete-window pagination mirror upsert external posts, giữ local row identity theo `(pageId, remotePostId)`, cập nhật edits/`lastSyncedAt` và tombstone remote deletion.
+  - [x] Pagination/repeat/edit/delete/transient incomplete snapshot/stale cache có unit và DB integration coverage; live `v26.0` reads đã trả 50 bài và week-window 81 bài.
 
-- [ ] FB-007 — Sync Facebook scheduled posts
+- [x] FB-007 — Sync Facebook scheduled posts
   - Priority: P0
   - Goal: Lấy scheduled list trực tiếp từ Facebook thay vì suy đoán từ local state.
   - Depends on: FB-002, DB-003.
   - Files/modules expected: scheduled sync service, cursor handling, scheduled API route.
   - Acceptance criteria: Phản ánh lịch tạo/sửa/xóa ngoài tool; không xóa local record ngay sau một lần missing.
   - Tests: Pagination, external schedule, changed time, removed remote, repeat sync và timeout stale-state behavior.
+  - [x] Scheduled list luôn đọc remote `/scheduled_posts`, phân trang toàn snapshot rồi mới mirror; external/repeat/changed-time/remove paths có integration coverage.
+  - [x] Missing row dùng grace 10 phút, incomplete/timeout snapshot không reconcile và stale cache vẫn được trả; live scheduled-list read đã thành công trên `v26.0`.
 
 - [x] FB-008 — Reschedule remote post
   - Priority: P0

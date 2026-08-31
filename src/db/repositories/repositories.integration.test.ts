@@ -189,6 +189,251 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
     }
   }, 15_000);
 
+  it("keeps managed Page upserts stable and marks only missing discovery Pages", async () => {
+    const database = getDatabase();
+    const repository = new PageRepository(database);
+    const suffix = randomUUID();
+    const kept = await repository.upsertManagedPage({
+      externalPageId: `managed-kept-${suffix}`,
+      name: "Managed Page Before Rename",
+      remoteMetadata: {
+        source: "managed_pages_sync",
+        tasks: ["CREATE_CONTENT"],
+      },
+    });
+    const missing = await repository.upsertManagedPage({
+      externalPageId: `managed-missing-${suffix}`,
+      name: "Managed Page Losing Permission",
+      remoteMetadata: {
+        source: "managed_pages_sync",
+        tasks: ["CREATE_CONTENT"],
+      },
+    });
+    const manual = await repository.upsertManagedPage({
+      externalPageId: `manual-page-${suffix}`,
+      name: "Manual Page",
+      remoteMetadata: { source: "manual_page_id" },
+    });
+
+    try {
+      const renamed = await repository.upsertManagedPage({
+        externalPageId: kept.externalPageId,
+        name: "Managed Page After Rename",
+        remoteMetadata: {
+          source: "managed_pages_sync",
+          tasks: ["CREATE_CONTENT", "MANAGE"],
+        },
+      });
+      expect(renamed).toMatchObject({
+        id: kept.id,
+        name: "Managed Page After Rename",
+        connectionStatus: "active",
+      });
+
+      const seenExternalPageIds = (await repository.listActive())
+        .map((page) => page.externalPageId)
+        .filter((externalPageId) => externalPageId !== missing.externalPageId);
+      await expect(
+        repository.markMissingManagedPages(
+          seenExternalPageIds,
+          new Date("2026-08-31T04:00:00.000Z"),
+        ),
+      ).resolves.toBe(1);
+
+      await expect(repository.findById(missing.id)).resolves.toMatchObject({
+        isActive: true,
+        connectionStatus: "permission_missing",
+        remoteMetadata: {
+          credentialIncident: {
+            status: "permission_missing",
+            errorCode: "FACEBOOK_MANAGED_PAGE_MISSING",
+          },
+        },
+      });
+      await expect(repository.findById(manual.id)).resolves.toMatchObject({
+        connectionStatus: "active",
+        remoteMetadata: { source: "manual_page_id" },
+      });
+    } finally {
+      await database
+        .delete(pages)
+        .where(eq(pages.externalPageId, kept.externalPageId));
+      await database
+        .delete(pages)
+        .where(eq(pages.externalPageId, missing.externalPageId));
+      await database
+        .delete(pages)
+        .where(eq(pages.externalPageId, manual.externalPageId));
+    }
+  }, 15_000);
+
+  it("atomically claims a draft only once for duplicate submissions", async () => {
+    const rollbackSignal = new Error("EXPECTED_DUPLICATE_CLAIM_ROLLBACK");
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const page = await new PageRepository(transaction).upsertManagedPage({
+          externalPageId: `duplicate-claim-${randomUUID()}`,
+          name: "Duplicate Claim Test Page",
+        });
+        const repository = new PostRepository(transaction);
+        const draft = await repository.createDraft({
+          pageId: page.id,
+          message: "Only one submission may own this draft",
+          type: "text",
+        });
+
+        await expect(
+          repository.claimDraftForSubmission(draft.id),
+        ).resolves.toMatchObject({ status: "submitting" });
+        await expect(
+          repository.claimDraftForSubmission(draft.id),
+        ).resolves.toBeUndefined();
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  });
+
+  it("preserves a local published mapping through remote edits and deletion", async () => {
+    const rollbackSignal = new Error("EXPECTED_PUBLISHED_SYNC_ROLLBACK");
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const page = await new PageRepository(transaction).upsertManagedPage({
+          externalPageId: `published-sync-${randomUUID()}`,
+          name: "Published Sync Test Page",
+        });
+        const repository = new PostRepository(transaction);
+        const draft = await repository.createDraft({
+          pageId: page.id,
+          message: "Local original",
+          type: "text",
+        });
+        const remotePostId = `${page.externalPageId}_published-1`;
+        const publishedAt = new Date("2026-08-20T02:00:00.000Z");
+        await repository.markPublished(draft.id, remotePostId);
+
+        await repository.upsertRemotePosts([
+          {
+            pageId: page.id,
+            remotePostId,
+            kind: "published",
+            message: "Edited outside the tool",
+            effectiveAt: publishedAt,
+            createdAt: publishedAt,
+            updatedAt: new Date("2026-08-20T03:00:00.000Z"),
+            snapshot: { source: "facebook" },
+          },
+        ]);
+
+        await expect(repository.findById(draft.id)).resolves.toMatchObject({
+          id: draft.id,
+          remotePostId,
+          status: "published",
+          message: "Edited outside the tool",
+          lastSyncedAt: expect.any(Date),
+        });
+
+        await repository.markMissingRemotePosts({
+          pageId: page.id,
+          kind: "published",
+          windowStart: new Date("2026-08-20T00:00:00.000Z"),
+          windowEnd: new Date("2026-08-21T00:00:00.000Z"),
+          seenRemotePostIds: [],
+          missingGraceBefore: new Date("2026-08-20T01:00:00.000Z"),
+        });
+        await expect(repository.findById(draft.id)).resolves.toMatchObject({
+          id: draft.id,
+          remotePostId,
+          status: "deleted_remote",
+        });
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  });
+
+  it("mirrors external schedule changes and applies missing-row grace", async () => {
+    const rollbackSignal = new Error("EXPECTED_SCHEDULED_SYNC_ROLLBACK");
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const page = await new PageRepository(transaction).upsertManagedPage({
+          externalPageId: `scheduled-sync-${randomUUID()}`,
+          name: "Scheduled Sync Test Page",
+        });
+        const repository = new PostRepository(transaction);
+        const remotePostId = `${page.externalPageId}_scheduled-1`;
+        const firstTime = new Date("2026-08-21T02:00:00.000Z");
+        const changedTime = new Date("2026-08-21T04:00:00.000Z");
+        const cacheInput = {
+          pageId: page.id,
+          remotePostId,
+          kind: "scheduled" as const,
+          message: "External schedule",
+          effectiveAt: firstTime,
+          createdAt: new Date("2026-08-20T00:00:00.000Z"),
+          updatedAt: null,
+          snapshot: { source: "facebook" },
+        };
+
+        await repository.upsertRemotePosts([cacheInput]);
+        const [firstMirror] = await repository.listRemoteWindow(
+          page.id,
+          "scheduled",
+          new Date("2026-08-21T00:00:00.000Z"),
+          new Date("2026-08-22T00:00:00.000Z"),
+        );
+        await repository.upsertRemotePosts([
+          {
+            ...cacheInput,
+            message: "External schedule changed",
+            effectiveAt: changedTime,
+            updatedAt: new Date("2026-08-20T01:00:00.000Z"),
+          },
+        ]);
+        await expect(
+          repository.findById(firstMirror!.id),
+        ).resolves.toMatchObject({
+          id: firstMirror!.id,
+          status: "scheduled",
+          scheduledAt: changedTime,
+          message: "External schedule changed",
+          lastSyncedAt: expect.any(Date),
+        });
+
+        const freshRemotePostId = `${page.externalPageId}_fresh-scheduled`;
+        const [fresh] = await transaction
+          .insert(posts)
+          .values({
+            pageId: page.id,
+            remotePostId: freshRemotePostId,
+            type: "text",
+            message: "Fresh schedule inside visibility grace",
+            status: "scheduled",
+            scheduledAt: new Date("2026-08-21T05:00:00.000Z"),
+            updatedAt: new Date("2026-08-20T01:55:00.000Z"),
+          })
+          .returning();
+
+        await repository.markMissingRemotePosts({
+          pageId: page.id,
+          kind: "scheduled",
+          windowStart: new Date("2026-08-21T00:00:00.000Z"),
+          windowEnd: new Date("2026-08-22T00:00:00.000Z"),
+          seenRemotePostIds: [],
+          missingGraceBefore: new Date("2026-08-20T01:50:00.000Z"),
+        });
+        await expect(
+          repository.findById(firstMirror!.id),
+        ).resolves.toMatchObject({ status: "canceled" });
+        await expect(repository.findById(fresh!.id)).resolves.toMatchObject({
+          status: "scheduled",
+        });
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  });
+
   it("persists related records and rolls the complete unit of work back", async () => {
     const externalPageId = `integration-${randomUUID()}`;
     const rollbackSignal = new Error("EXPECTED_TEST_ROLLBACK");
