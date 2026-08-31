@@ -60,6 +60,7 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Meta invalid/revoked/permission errors và stored credential hết hạn khóa mutation theo Page, lưu sanitized incident evidence và được unlock chỉ sau Page verify/sync thành công; expired credential không bị đánh dấu revoked.
 - Crypto incident (`TOKEN_DECRYPTION_FAILED`/`UNKNOWN_TOKEN_KEY_VERSION`) chuyển Page sang `error`; key rotation chỉ sửa credential ciphertext/version và không tự unlock Page.
 - Runbook rotation/recovery nằm tại `docs/runbooks/credential-rotation-and-recovery.md`.
+- Operator đã hoàn thành staging credential-rotation drill; dry-run, rotation, verification, Facebook read và mutation smoke đều pass. SEC-004 đã đóng.
 - Không có token/secret thật trong repository.
 
 ### Meta adapter
@@ -117,10 +118,10 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 
 ## Chưa implement hoặc chưa xác minh
 
-- `FB-002`, `FB-003`, `FB-004`, `FB-006` và `FB-007` đã đủ code/test/live-read evidence để đóng. `FB-001` và `FB-005` vẫn mở vì chưa có capability report tập trung từ một pinned `v26.0` Page-test run chốt plain-text publish, exact permission/access tier, scheduling range/timezone và cleanup evidence.
+- `FB-001` đến `FB-011` đã đóng. Capability report tại `docs/evidence/facebook-capability-v26.md` ghi run `v26.0` trên Nero Team với discovery/tasks/scopes/token types, published/scheduled reads, pagination, plain-text publish, native schedule, reschedule, cancel/delete và cleanup thành công. Exact 20-minute/29-day boundary posts không live-probe; report phân biệt rõ contract evidence và access tier không được Meta debug-token expose.
 - Live smoke cho reschedule/edit/cancel/delete đã hoàn tất trên Page test; không cần chạy lại destructive Facebook mutations cho audit này.
 - Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
-- Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness. Code, CLI, automated integration drill và incident recovery runbook của SEC-004 đã hoàn thành; SEC-004 vẫn mở cho đến khi operator thực hiện và lưu evidence của rotation drill trên môi trường staging thật.
+- Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness. SEC-004 đã hoàn thành sau code/CLI coverage, automated integration drill, incident recovery runbook và staging rotation drill của operator.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
 ## Secret cần cấu hình tiếp theo

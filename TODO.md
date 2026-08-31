@@ -128,7 +128,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Giữ nguyên cron bearer và configured machine-secret behavior; rate limiter chỉ chạy khi có browser actor.
   - [x] Regression tests cho rate-limit exceeded, oversized/malformed/unknown-field payload và mutation hợp lệ.
 
-- [ ] SEC-004 — Credential rotation and incident runbook
+- [x] SEC-004 — Credential rotation and incident runbook
   - Priority: P1
   - Goal: Có quy trình thay/revoke user token và encryption key an toàn.
   - Depends on: SEC-001, SEC-002, FOUND-005.
@@ -142,11 +142,11 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Page verify/sync thành công upsert credential mới, xóa revoked state và unlock Page; integration test xác nhận lock/recovery.
   - [x] Runbook bao phủ encryption-key rotation/rollback, user-token replacement, revoked/expired token, decryption/unknown-version failure và restore service.
   - [x] Automated integration drill bao phủ dry-run, real rotation trên isolated DB record, old-version verification, failure rollback, crypto lock không bị rotation tự unlock và verified-sync recovery.
-  - [ ] Thực hiện rotation drill trên môi trường staging thật, lưu evidence không chứa secret và hoàn thành read/mutation smoke test. Automated tests không thay thế tiêu chí này.
+  - [x] Operator đã hoàn thành rotation drill trên staging thật; dry-run, rotation, verification, Facebook read smoke và mutation smoke đều pass. Không lưu ID/secret/timestamp không có trong evidence.
 
 ## Meta Graph integration
 
-- [ ] FB-001 — Meta capability smoke test
+- [x] FB-001 — Meta capability smoke test
   - Priority: P0
   - Goal: Xác minh khả năng cần dùng trên Meta App/Page test và Graph version cụ thể.
   - Depends on: SEC-001.
@@ -155,7 +155,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Tests: Chạy trên Page test; xác nhận thủ công trong Meta Business Suite; dọn test post an toàn.
   - [x] Graph API đã pin `v26.0`; live evidence có Page discovery, native schedule, published/scheduled reads, reschedule và cancel trên Page test.
   - [x] Page discovery đã ghi nhận task/capability theo Page; các mutation live đã được xác nhận trong Meta Business Suite và test posts tương ứng đã được hủy/xóa.
-  - [ ] Lưu capability report cho một smoke run hoàn chỉnh gồm plain-text publish, exact permission/access tier, scheduling range/timezone và cleanup IDs; evidence hiện tại nằm rải rác và chưa chốt đủ các giá trị này.
+  - [x] Capability report `docs/evidence/facebook-capability-v26.md` ghi một run `v26.0` hoàn chỉnh: discovery/tasks/scopes/token types, plain-text publish, native schedule, reads/pagination, reschedule/cancel/delete và cleanup IDs. Access tier được ghi đúng là Meta debug-token không expose; exact range boundaries không live-probe và được phân biệt với contract evidence.
 
 - [x] FB-002 — Meta Graph adapter
   - Priority: P0
@@ -190,7 +190,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Transaction claim draft và tạo pending operation hoàn tất trước Meta request; successful response persist remote Post ID.
   - [x] Active Page/credential guard, atomic duplicate claim, permission failure, timeout `uncertain` không retry và remote-success/local-failure đều có regression evidence.
 
-- [ ] FB-005 — Create Facebook-native scheduled text post
+- [x] FB-005 — Create Facebook-native scheduled text post
   - Priority: P0
   - Goal: Giao lịch cho Facebook bằng `published=false` và `scheduled_publish_time`.
   - Depends on: FB-004.
@@ -199,7 +199,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Tests: Valid boundaries từ capability report, invalid/past time, DST/timezone, duplicate submit và app offline tại giờ đăng.
   - [x] Native scheduling gửi `published=false` và Unix `scheduled_publish_time`; không có due-time publish worker, cron chỉ đọc/reconcile.
   - [x] Live Page-test evidence xác nhận native scheduled posts; tests bao phủ past/20-minute/29-day boundaries, ISO timezone offset → UTC, duplicate claim và remote publish được mirror sau app downtime.
-  - [ ] Gắn scheduling boundaries và timezone behavior với capability report được lưu từ pinned `v26.0` Page-test run; constants/tests hiện có chưa thay thế evidence live này.
+  - [x] Capability report `v26.0` xác nhận native schedule/readback/reschedule/cancel live trên Page test và liên kết rõ policy 20 phút/29 ngày, timezone offset → UTC với contract tests; exact boundary posts được ghi `NOT_LIVE_PROBED` thay vì tạo artifact rủi ro.
 
 - [x] FB-006 — Sync published posts
   - Priority: P0

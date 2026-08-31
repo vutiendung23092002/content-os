@@ -83,6 +83,6 @@ Không tạo duplicate, không để token lộ và không hiển thị local st
 
 ## Open questions
 
-- Graph API version chính thức sẽ pin sau capability smoke test.
+- Graph API version chính thức đã pin `v26.0` và capability smoke trên Page test đã pass.
 - Chọn S3 hay R2 khi bắt đầu single-image extension.
 - AI provider/model và giới hạn ngân sách.

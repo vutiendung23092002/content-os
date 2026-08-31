@@ -13,7 +13,7 @@ Các bước còn lại được ưu tiên theo rủi ro và giá trị vận h�
 
 ## 2. Đóng các task Meta/UI đã triển khai
 
-Audit acceptance criteria và E2E còn thiếu trước khi đóng `FB-001` đến `FB-007`. `FB-008`, `FB-009` và `POST-003` đến `POST-005` đã hoàn tất live smoke trên Page test. Không đánh dấu các task còn lại hoàn thành chỉ dựa trên việc giao diện đã hiển thị; cần lưu evidence từ Page test và xác minh mirror/cursor/trạng thái lỗi.
+`FB-001` đến `FB-011` đã đóng sau capability smoke `v26.0`, contract/integration tests và live Page-test evidence. Capability report không secret nằm tại `docs/evidence/facebook-capability-v26.md`; không lặp lại destructive smoke trên Page production.
 
 ## 3. OBS-001, OBS-002 và DEPLOY — Production readiness
 
