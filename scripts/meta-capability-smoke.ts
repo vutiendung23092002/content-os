@@ -4,23 +4,21 @@ import {
   MAX_SCHEDULE_AHEAD_DAYS,
   MIN_SCHEDULE_LEAD_MINUTES,
 } from "../src/modules/posts/schedule-window";
+import {
+  assertDesignatedTestPage,
+  cleanupPendingArtifacts,
+  createSmokeArtifactWithRecovery,
+  findRemotePostById,
+  resolveSmokeExitCode,
+  type CapabilityRemotePostKind,
+  type SmokeArtifact,
+} from "./meta-capability-smoke-core";
 
 type VerificationLevel =
   | "VERIFIED_LIVE"
   | "VERIFIED_BY_EXISTING_LIVE_EVIDENCE"
   | "VERIFIED_BY_CONTRACT_TEST"
   | "NOT_LIVE_PROBED";
-
-type RemotePostKind = "published" | "scheduled";
-
-type SmokeArtifact = {
-  kind: "plain_text_publish" | "native_text_schedule";
-  remotePostId: string;
-  created: boolean;
-  verified: boolean;
-  rescheduled?: boolean;
-  cleanup: "succeeded" | "failed" | "pending";
-};
 
 function argument(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -59,73 +57,31 @@ async function delay(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function findRemotePost(
-  client: MetaGraphClient,
-  pageId: string,
-  kind: RemotePostKind,
-  remotePostId: string,
-): Promise<{
-  found?: {
-    id: string;
-    scheduled_publish_time?: string | number;
-  };
-  paginationObserved: boolean;
-  snapshotComplete: boolean;
-}> {
-  let after: string | undefined;
-  let paginationObserved = false;
-  const seenCursors = new Set<string>();
-
-  for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
-    const result =
-      kind === "published"
-        ? await client.getPublishedPosts(pageId, after, 100)
-        : await client.getScheduledPosts(pageId, after, 100);
-    const found = result.posts.find((post) => post.id === remotePostId);
-    if (found) return { found, paginationObserved, snapshotComplete: true };
-    if (!result.after) {
-      return { paginationObserved, snapshotComplete: true };
-    }
-    if (seenCursors.has(result.after)) {
-      return { paginationObserved: true, snapshotComplete: false };
-    }
-    paginationObserved = true;
-    seenCursors.add(result.after);
-    after = result.after;
-  }
-
-  return { paginationObserved, snapshotComplete: false };
-}
-
 async function waitForPostState(input: {
   client: MetaGraphClient;
   pageId: string;
-  kind: RemotePostKind;
+  kind: CapabilityRemotePostKind;
   remotePostId: string;
   shouldExist: boolean;
   scheduledFor?: Date;
 }): Promise<{ matched: boolean; paginationObserved: boolean }> {
   let paginationObserved = false;
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const result = await findRemotePost(
-      input.client,
-      input.pageId,
-      input.kind,
-      input.remotePostId,
-    );
+    const result = await findRemotePostById({
+      client: input.client,
+      pageId: input.pageId,
+      kind: input.kind,
+      remotePostId: input.remotePostId,
+    });
     paginationObserved ||= result.paginationObserved;
-    const exists = Boolean(result.found);
-    const scheduledTime = result.found?.scheduled_publish_time;
+    const exists = Boolean(result.post);
+    const scheduledTime = result.post?.scheduled_publish_time;
     const scheduleMatches = input.scheduledFor
       ? scheduledTime !== undefined &&
         Math.abs(Number(scheduledTime) * 1000 - input.scheduledFor.getTime()) <=
           1_000
       : true;
-    if (
-      result.snapshotComplete &&
-      exists === input.shouldExist &&
-      (!exists || scheduleMatches)
-    ) {
+    if (exists === input.shouldExist && (!exists || scheduleMatches)) {
       return { matched: true, paginationObserved };
     }
     if (attempt < 5) await delay(2_000);
@@ -133,23 +89,14 @@ async function waitForPostState(input: {
   return { matched: false, paginationObserved };
 }
 
-const graphVersion = requiredEnvironment("FACEBOOK_GRAPH_API_VERSION");
-const userAccessToken = requiredEnvironment("FACEBOOK_USER_ACCESS_TOKEN");
-const appId = requiredEnvironment("FACEBOOK_APP_ID");
-const appSecret = requiredEnvironment("FACEBOOK_APP_SECRET");
+const graphVersion = process.env.FACEBOOK_GRAPH_API_VERSION?.trim() ?? "";
 const pageId = argument("page-id");
 const expectedPageName = argument("expected-page-name");
 const confirmedGraphVersion = argument("confirm-graph-version");
 const execute = hasFlag("execute");
 const discoveryOnly = hasFlag("discovery-only");
 
-if (
-  !pageId ||
-  !expectedPageName ||
-  confirmedGraphVersion !== "v26.0" ||
-  graphVersion !== "v26.0" ||
-  execute === discoveryOnly
-) {
+if (!pageId || !expectedPageName || execute === discoveryOnly) {
   console.error(
     JSON.stringify({
       event: "meta_capability_smoke_rejected",
@@ -160,6 +107,31 @@ if (
   );
   process.exit(1);
 }
+
+try {
+  assertDesignatedTestPage({
+    pageId,
+    expectedPageName,
+    graphVersion,
+    confirmedGraphVersion: confirmedGraphVersion ?? "",
+    designatedPageId: process.env.FACEBOOK_CAPABILITY_TEST_PAGE_ID,
+    designatedPageName: process.env.FACEBOOK_CAPABILITY_TEST_PAGE_NAME,
+    pinnedGraphVersion: "v26.0",
+    forceRequested: hasFlag("force"),
+  });
+} catch (error) {
+  console.error(
+    JSON.stringify({
+      event: "meta_capability_smoke_rejected",
+      code: stableErrorCode(error),
+    }),
+  );
+  process.exit(1);
+}
+
+const userAccessToken = requiredEnvironment("FACEBOOK_USER_ACCESS_TOKEN");
+const appId = requiredEnvironment("FACEBOOK_APP_ID");
+const appSecret = requiredEnvironment("FACEBOOK_APP_SECRET");
 
 const runAt = new Date();
 const marker = `HAN-CONTENT-CAPABILITY-${runAt.toISOString()}-${randomUUID().slice(0, 8)}`;
@@ -238,18 +210,18 @@ try {
   };
 
   if (execute) {
-    const publishedId = await pageClient.publishText(
+    const publishedMessage = `${marker} plain-text publish smoke`;
+    const publishedArtifact = await createSmokeArtifactWithRecovery({
+      client: pageClient,
       pageId,
-      `${marker} plain-text publish smoke`,
-    );
-    const publishedArtifact: SmokeArtifact = {
-      kind: "plain_text_publish",
-      remotePostId: publishedId,
-      created: true,
-      verified: false,
-      cleanup: "pending",
-    };
-    artifacts.push(publishedArtifact);
+      remoteKind: "published",
+      artifactKind: "plain_text_publish",
+      exactMessage: publishedMessage,
+      create: () => pageClient!.publishText(pageId, publishedMessage),
+      artifacts,
+      recoveryWait: () => delay(2_000),
+    });
+    const publishedId = publishedArtifact.remotePostId;
     const publishedVerification = await waitForPostState({
       client: pageClient,
       pageId,
@@ -267,20 +239,20 @@ try {
     const scheduledFor = new Date(
       Date.now() + (MIN_SCHEDULE_LEAD_MINUTES + 10) * 60_000,
     );
-    const scheduledId = await pageClient.scheduleText(
+    const scheduledMessage = `${marker} native schedule smoke`;
+    const scheduledArtifact = await createSmokeArtifactWithRecovery({
+      client: pageClient,
       pageId,
-      `${marker} native schedule smoke`,
-      scheduledFor,
-    );
-    const scheduledArtifact: SmokeArtifact = {
-      kind: "native_text_schedule",
-      remotePostId: scheduledId,
-      created: true,
-      verified: false,
-      rescheduled: false,
-      cleanup: "pending",
-    };
-    artifacts.push(scheduledArtifact);
+      remoteKind: "scheduled",
+      artifactKind: "native_text_schedule",
+      exactMessage: scheduledMessage,
+      create: () =>
+        pageClient!.scheduleText(pageId, scheduledMessage, scheduledFor),
+      artifacts,
+      recoveryWait: () => delay(2_000),
+    });
+    scheduledArtifact.rescheduled = false;
+    const scheduledId = scheduledArtifact.remotePostId;
     const scheduledVerification = await waitForPostState({
       client: pageClient,
       pageId,
@@ -392,21 +364,15 @@ try {
   };
 } finally {
   if (pageClient) {
-    for (const artifact of artifacts) {
-      if (artifact.cleanup !== "pending") continue;
-      try {
-        await pageClient.deletePost(artifact.remotePostId);
-        artifact.cleanup = "succeeded";
-      } catch {
-        artifact.cleanup = "failed";
-        cleanupSucceeded = false;
-      }
-    }
+    cleanupSucceeded = await cleanupPendingArtifacts(pageClient, artifacts);
   }
 }
 
 if (!cleanupSucceeded || artifacts.some((item) => item.cleanup === "failed")) {
-  exitCode = 1;
+  exitCode = resolveSmokeExitCode({
+    requestedExitCode: exitCode,
+    cleanupSucceeded: false,
+  });
   report = {
     ...report!,
     event: "meta_capability_smoke_cleanup_failed",

@@ -67,6 +67,15 @@ Cleanup result: `succeeded`. No smoke artifact created by this run remains on th
 
 ## Reproduction
 
+Configure the designated non-production Page in the server environment before
+running either mode. The command fails closed if either value is absent or differs
+from the CLI confirmation:
+
+```dotenv
+FACEBOOK_CAPABILITY_TEST_PAGE_ID=<designated-test-page-id>
+FACEBOOK_CAPABILITY_TEST_PAGE_NAME=<designated-test-page-name>
+```
+
 Run discovery-only first, with secrets supplied only through the server environment:
 
 ```powershell
@@ -80,3 +89,26 @@ corepack pnpm facebook:capability-smoke -- --page-id=272240033580932 "--expected
 ```
 
 Never run `--execute` against a production Page. The command fails closed unless Page ID, expected Page name and pinned Graph version are all explicitly confirmed.
+
+## Operational safety behavior added after this run
+
+The successful evidence above is the original live run; this section documents
+later tool hardening and does not represent another live execution.
+
+- Both discovery and execution require the CLI Page ID and name to exactly match
+  `FACEBOOK_CAPABILITY_TEST_PAGE_ID` and
+  `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`. Missing configuration, a mismatch, an
+  unconfirmed pinned Graph version, or an attempted `--force` bypass is rejected
+  before credentials are used.
+- Every write run uses a unique marker matching
+  `HAN-CONTENT-CAPABILITY-<timestamp>-<random-run-id>`. If a create request has an
+  unknown outcome, the tool does not retry the create. It performs bounded,
+  cursor-safe pagination over only the relevant published or scheduled edge and
+  requires exactly one full-message match for that run.
+- One exact match is recorded as a recovered remote success and is included in
+  `finally` cleanup. Zero matches fail as unresolved. Multiple matches fail as
+  ambiguous and no candidate is selected or deleted. Unrelated posts are never
+  cleanup targets.
+- Any cleanup failure makes the command exit non-zero. Reports contain safe IDs,
+  status and the marker pattern only; tokens, keys and caption content are not
+  written to this evidence document.
