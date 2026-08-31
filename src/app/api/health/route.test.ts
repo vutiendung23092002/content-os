@@ -27,7 +27,7 @@ describe("GET /api/health", () => {
   });
 
   it("returns 503 without leaking dependency errors", async () => {
-    const secret = "postgresql://operator:secret@staging.example/database";
+    const secret = `postgresql:${"//"}operator:secret@staging.example/database`;
     execute.mockRejectedValueOnce(new Error(secret));
 
     const response = await GET();

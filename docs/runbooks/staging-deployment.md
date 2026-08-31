@@ -38,6 +38,15 @@ Git.
 | Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                     |
 | Intentionally absent     | `AI_PROVIDER_API_KEY` while AI is deferred; capability-test variables in normal production runtime                                                                                                                                                                                 |
 
+`FACEBOOK_USER_ACCESS_TOKEN` is a normal staging runtime dependency, not merely a
+capability-smoke secret. The runtime Page sync route
+`/api/facebook/sync-pages`, manual Page verify/add routes
+`/api/facebook/pages/check` and `/api/facebook/pages`, and live account/token
+inspection in `/api/facebook/status` require it through `requireServerEnv`. Normal
+publish/read mutations use stored encrypted Page credentials, but staging readiness
+keeps the user token required so these Page-management runtime paths remain usable.
+The capability smoke independently requires the same secret when invoked.
+
 Before release:
 
 ```powershell
@@ -46,10 +55,12 @@ git status --short
 git ls-files .env.local
 ```
 
-The final command must return no file. The environment check prints variable names
-and safe error codes only, never values. It cannot prove that a supplied database or
-Page belongs to staging; the operator must compare project/Page identity in the
-provider consoles without copying credentials into evidence.
+The final command must return no file. The environment check requires
+`STAGING_BASE_URL` and both public staging URLs to be valid credential-free HTTPS
+URLs. It prints variable names and safe error codes only, never URL values. It cannot
+prove that a supplied database or Page belongs to staging; the operator must compare
+project/Page identity in the provider consoles without copying credentials into
+evidence.
 
 ## Safe release sequence
 
@@ -111,8 +122,9 @@ Code rollback and database recovery are separate decisions:
   unavailable, diagnose the migration and prefer a reviewed forward fix.
 - Restore the checkpoint only into the isolated staging database when a forward fix
   is unsafe. Confirm the target project/host twice, terminate staging writers, then
-  follow the restore drill below. Re-run `db:verify`, `test:db`, health and access
-  smoke before reopening staging.
+  follow the restore drill below. Use `staging:restore-verify` to pin schema and DB
+  integration verification to that exact restored target; never use the normal
+  `.env.local`-loading `test:db` command for restore evidence.
 
 ## Health readiness
 
@@ -164,8 +176,10 @@ PostgreSQL drill may use `pg_dump`/`pg_restore`, with source and target connecti
 fields supplied through temporary operator environment variables. Do not put a URL
 on the command line, in shell history or in the repository.
 
-1. Confirm the source project is staging. Set `PGHOST`, `PGPORT`, `PGDATABASE`,
-   `PGUSER` and `PGPASSWORD` in a non-recorded operator session.
+1. Confirm the source project is staging. Set source `PGHOST`, `PGPORT`,
+   `PGDATABASE`, `PGUSER` and `PGPASSWORD` in a non-recorded operator session. Also
+   set `STAGING_SOURCE_DATABASE_URL` to this exact source connection in the same
+   temporary environment; do not add it to `.env.local`.
 2. Create a custom-format backup outside the repository:
 
    ```powershell
@@ -175,14 +189,31 @@ on the command line, in shell history or in the repository.
 
 3. Provision a new isolated restore target that has no production network route or
    credentials. Replace the temporary PostgreSQL environment variables with this
-   target and confirm its project/host twice.
+   target and confirm its project/host twice. Set
+   `ISOLATED_RESTORE_DATABASE_URL` to this exact target and set the explicit guard:
+
+   ```powershell
+   $env:CONFIRM_ISOLATED_RESTORE_TARGET="isolated-staging-restore"
+   ```
+
+   Both database URLs stay in the temporary operator environment only and must not
+   be printed or passed as command-line arguments. The verifier rejects a missing or
+   invalid target and rejects source/target URLs that identify the same host,
+   port and database even if their credentials differ.
+
 4. Restore only into that isolated target:
 
    ```powershell
    pg_restore --clean --if-exists --no-owner --no-privileges --dbname=$env:PGDATABASE <secure-staging-backup-path>
-   corepack pnpm db:verify
-   corepack pnpm test:db
+   corepack pnpm staging:restore-verify
    ```
+
+   `staging:restore-verify` disables local-env loading for schema verification. It
+   overwrites both `DIRECT_DATABASE_URL` for schema verification and `DATABASE_URL`
+   for the two DB integration suites with the explicitly supplied isolated target,
+   then runs them sequentially without invoking the `.env.local`-loading `test:db`
+   package script. Any guard, schema or integration failure exits non-zero without
+   printing either URL.
 
 5. Verify a safe sample using counts/IDs only: expected schema/table count, one
    non-secret Page metadata row if present, and application startup/health. Never
@@ -192,7 +223,9 @@ on the command line, in shell history or in the repository.
    ciphertext, nonce, authentication tag, positive key version and fingerprint.
    Do not select or print those column values.
 7. Delete the isolated restore target and backup according to the staging retention
-   policy. Clear temporary PostgreSQL environment variables.
+   policy. Clear all PostgreSQL variables plus
+   `STAGING_SOURCE_DATABASE_URL`, `ISOLATED_RESTORE_DATABASE_URL` and
+   `CONFIRM_ISOLATED_RESTORE_TARGET`.
 
 Record the drill in the evidence checklist with safe counts and outcome only. Until
 this real restore succeeds, the backup/restore acceptance criterion remains pending.
@@ -227,7 +260,8 @@ Record commit/image digest, timestamps and PASS/FAIL only—never environment va
 - [ ] Staging Page/read smoke passes.
 - [ ] Capability discovery passes on the designated test Page.
 - [ ] Explicit capability write smoke/cleanup passes if required for this release.
-- [ ] Isolated staging backup restore drill passes.
+- [ ] `staging:restore-verify` passes against the explicitly pinned isolated restore
+      target.
 - [ ] Rollback owner, previous artifact and recovery checkpoint are recorded.
 
 DEPLOY-001 can be closed only after a real staging deployment and all required live

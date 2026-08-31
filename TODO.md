@@ -472,7 +472,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] `/api/health` kiểm tra runtime database, trả `503` sanitized khi dependency unavailable và có regression tests.
   - [x] Read-only `staging:access-smoke` cho protected page/API, Admin API, cron credentials và legacy password endpoint.
   - [x] `release:secret-scan` kiểm tra tracked files và built client assets mà không in secret; evidence template không chứa credential.
-  - [x] Runbook backup/restore PostgreSQL/Supabase staging cô lập, kiểm tra schema/sample an toàn và encrypted credential aggregates.
+  - [x] Runbook backup/restore PostgreSQL/Supabase staging cô lập; verifier fail-closed pin cả schema và DB integration tests vào đúng isolated restore target, không fallback `.env.local`.
   - [x] Meta staging checklist tái sử dụng hardened capability smoke, bắt buộc discovery-only trước và không chạy write smoke trong CI.
   - [ ] Operator provision staging tách production, đặt private access gateway/platform secret storage và hoàn tất fresh-deploy evidence.
   - [ ] Operator thực hiện backup/restore sample trên isolated staging target và ghi dated evidence.
