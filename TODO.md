@@ -128,7 +128,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Giữ nguyên cron bearer và configured machine-secret behavior; rate limiter chỉ chạy khi có browser actor.
   - [x] Regression tests cho rate-limit exceeded, oversized/malformed/unknown-field payload và mutation hợp lệ.
 
-- [x] SEC-004 — Credential rotation and incident runbook
+- [ ] SEC-004 — Credential rotation and incident runbook
   - Priority: P1
   - Goal: Có quy trình thay/revoke user token và encryption key an toàn.
   - Depends on: SEC-001, SEC-002, FOUND-005.
@@ -138,10 +138,11 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Operator CLI luôn dry-run trước, hiển thị source/target/count; execution cần `--execute` và xác nhận target version, sau đó verify không còn old-version credential.
   - [x] CLI fail non-zero, chỉ xuất stable event/code/count và không in plaintext token, encryption key hoặc error cause.
   - [x] Meta code `190` được phân biệt thành invalid/revoked token; code `10/200` thành permission missing. Lỗi xác định khóa Page và lưu sanitized incident evidence atomically cùng operation failure.
-  - [x] Mutation tiếp theo bị chặn khi Page `revoked`/`expired`/`permission_missing`; timeout/5xx vẫn `uncertain`, không khóa và không blind retry.
+  - [x] Credential hết hạn được persist thành Page `expired` với sanitized incident evidence, không bị đánh dấu revoked; mutation tiếp theo bị chặn. Timeout/5xx vẫn `uncertain`, không khóa và không blind retry.
   - [x] Page verify/sync thành công upsert credential mới, xóa revoked state và unlock Page; integration test xác nhận lock/recovery.
   - [x] Runbook bao phủ encryption-key rotation/rollback, user-token replacement, revoked/expired token, decryption/unknown-version failure và restore service.
-  - [x] Automated staging drill bao phủ dry-run, real rotation trên isolated DB record, old-version verification, failure rollback và invalid-token lock/unlock.
+  - [x] Automated integration drill bao phủ dry-run, real rotation trên isolated DB record, old-version verification, failure rollback, crypto lock không bị rotation tự unlock và verified-sync recovery.
+  - [ ] Thực hiện rotation drill trên môi trường staging thật, lưu evidence không chứa secret và hoàn thành read/mutation smoke test. Automated tests không thay thế tiêu chí này.
 
 ## Meta Graph integration
 

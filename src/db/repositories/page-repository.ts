@@ -15,10 +15,11 @@ export type ManagedPageInput = {
 
 export type PageCredentialIncidentInput = {
   pageId: string;
-  status: "revoked" | "permission_missing" | "error";
+  status: "expired" | "revoked" | "permission_missing" | "error";
   errorCode: string;
   operationId?: string;
   detectedAt: Date;
+  credentialExpiresAt?: Date;
 };
 
 export class PageRepository {
@@ -131,6 +132,8 @@ export class PageRepository {
             errorCode: input.errorCode,
             operationId: input.operationId ?? null,
             detectedAt: input.detectedAt.toISOString(),
+            credentialExpiresAt:
+              input.credentialExpiresAt?.toISOString() ?? null,
           },
         },
         updatedAt: input.detectedAt,

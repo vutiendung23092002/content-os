@@ -1,7 +1,10 @@
 import "server-only";
 
 import type { DatabaseExecutor } from "@/db/client";
-import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
+import {
+  PageCredentialRepository,
+  type PageCredentialRecord,
+} from "@/db/repositories/page-credential-repository";
 import {
   PageRepository,
   type PageRecord,
@@ -9,7 +12,22 @@ import {
 import { AppError } from "@/lib/errors/app-error";
 
 export type PageCredentialIncidentStatus =
-  "revoked" | "permission_missing" | "error";
+  "expired" | "revoked" | "permission_missing" | "error";
+
+export function isPageCredentialExpired(
+  credential: Pick<PageCredentialRecord, "expiresAt">,
+  now = new Date(),
+): boolean {
+  return Boolean(credential.expiresAt && credential.expiresAt <= now);
+}
+
+export function pageCredentialExpiredError(): AppError {
+  return new AppError({
+    code: "PAGE_CREDENTIAL_EXPIRED",
+    message: "Page credential đã hết hạn và cần được xác thực lại.",
+    status: 409,
+  });
+}
 
 export function assertPageReadyForMutation(
   page: Pick<PageRecord, "isActive" | "connectionStatus"> | undefined,
@@ -62,6 +80,7 @@ export async function recordPageCredentialIncident(
     errorCode: string;
     operationId?: string;
     detectedAt?: Date;
+    credentialExpiresAt?: Date;
   },
 ): Promise<void> {
   const detectedAt = input.detectedAt ?? new Date();
@@ -71,6 +90,7 @@ export async function recordPageCredentialIncident(
     errorCode: input.errorCode,
     operationId: input.operationId,
     detectedAt,
+    credentialExpiresAt: input.credentialExpiresAt,
   });
 
   if (input.status === "revoked") {
@@ -79,4 +99,21 @@ export async function recordPageCredentialIncident(
       detectedAt,
     );
   }
+}
+
+export function recordExpiredPageCredential(
+  database: DatabaseExecutor,
+  input: {
+    pageId: string;
+    expiresAt: Date;
+    detectedAt?: Date;
+  },
+): Promise<void> {
+  return recordPageCredentialIncident(database, {
+    pageId: input.pageId,
+    status: "expired",
+    errorCode: "PAGE_CREDENTIAL_EXPIRED",
+    detectedAt: input.detectedAt,
+    credentialExpiresAt: input.expiresAt,
+  });
 }

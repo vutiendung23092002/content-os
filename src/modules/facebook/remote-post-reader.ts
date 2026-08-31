@@ -7,6 +7,9 @@ import { AppError } from "@/lib/errors/app-error";
 import { MetaGraphClient } from "./meta-client";
 import {
   getPageCredentialIncidentStatus,
+  isPageCredentialExpired,
+  pageCredentialExpiredError,
+  recordExpiredPageCredential,
   recordPageCredentialIncident,
   type PageCredentialIncidentStatus,
 } from "./credential-incident";
@@ -87,16 +90,21 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
     const credential = await new PageCredentialRepository(
       database,
     ).findByPageId(page.id);
-    if (
-      !credential ||
-      credential.revokedAt ||
-      (credential.expiresAt && credential.expiresAt <= new Date())
-    ) {
+    if (!credential || credential.revokedAt) {
       throw new AppError({
         code: "PAGE_CREDENTIAL_MISSING",
         message: "Page chưa có credential hợp lệ.",
         status: 409,
       });
+    }
+    const checkedAt = new Date();
+    if (isPageCredentialExpired(credential, checkedAt)) {
+      await recordExpiredPageCredential(database, {
+        pageId: page.id,
+        expiresAt: credential.expiresAt!,
+        detectedAt: checkedAt,
+      });
+      throw pageCredentialExpiredError();
     }
 
     return {

@@ -12,6 +12,9 @@ import type { MetaPostSubmissionReceipt } from "@/modules/facebook/meta-client";
 import {
   assertPageReadyForMutation,
   getPageCredentialIncidentStatus,
+  isPageCredentialExpired,
+  pageCredentialExpiredError,
+  recordExpiredPageCredential,
   recordPageCredentialIncident,
   type PageCredentialIncidentStatus,
 } from "@/modules/facebook/credential-incident";
@@ -107,15 +110,15 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
     requestFingerprint: string;
     scheduledFor?: Date;
   }): Promise<PreparedSubmission> {
-    return runInTransaction(async (transaction) => {
+    const prepared = await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
       const pages = new PageRepository(transaction);
       const credentials = new PageCredentialRepository(transaction);
       const operations = new FacebookOperationRepository(transaction);
       const assets = new AssetRepository(transaction);
-      const post = await posts.claimDraftForSubmission(input.postId);
+      const candidate = await posts.findById(input.postId);
 
-      if (!post) {
+      if (!candidate || candidate.status !== "draft") {
         throw new AppError({
           code: "DRAFT_NOT_READY",
           message: "Draft không tồn tại hoặc đã được submit.",
@@ -123,18 +126,32 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         });
       }
 
-      const page = await pages.findById(post.pageId);
+      const page = await pages.findById(candidate.pageId);
       assertPageReadyForMutation(page, "Page chưa sẵn sàng để đăng bài.");
 
       const credential = await credentials.findByPageId(page.id);
-      if (
-        !credential ||
-        credential.revokedAt ||
-        (credential.expiresAt && credential.expiresAt <= new Date())
-      ) {
+      if (!credential || credential.revokedAt) {
         throw new AppError({
           code: "PAGE_CREDENTIAL_MISSING",
           message: "Page chưa có credential hợp lệ.",
+          status: 409,
+        });
+      }
+      const checkedAt = new Date();
+      if (isPageCredentialExpired(credential, checkedAt)) {
+        await recordExpiredPageCredential(transaction, {
+          pageId: page.id,
+          expiresAt: credential.expiresAt!,
+          detectedAt: checkedAt,
+        });
+        return null;
+      }
+
+      const post = await posts.claimDraftForSubmission(input.postId);
+      if (!post) {
+        throw new AppError({
+          code: "DRAFT_NOT_READY",
+          message: "Draft không tồn tại hoặc đã được submit.",
           status: 409,
         });
       }
@@ -169,6 +186,9 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         })),
       };
     });
+
+    if (!prepared) throw pageCredentialExpiredError();
+    return prepared;
   }
 
   async succeed(input: {

@@ -14,6 +14,7 @@ import { encryptToken } from "@/lib/crypto/token-crypto";
 import { TokenKeyring } from "@/lib/crypto/token-keyring";
 import { recordPageCredentialIncident } from "@/modules/facebook/credential-incident";
 import { PageCredentialRotationService } from "@/modules/facebook/rotate-page-credentials";
+import { SubmitPostService } from "@/modules/posts/submit-post";
 import {
   appUsers,
   assets,
@@ -47,6 +48,11 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         page.id,
         encryptToken("rotation-drill-token", oldKey, sourceVersion),
       );
+      await recordPageCredentialIncident(database, {
+        pageId: page.id,
+        status: "error",
+        errorCode: "UNKNOWN_TOKEN_KEY_VERSION",
+      });
       const keyring = new TokenKeyring({
         currentVersion: targetVersion,
         currentKey: newKey,
@@ -65,6 +71,17 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         credentialCount: 1,
       });
       expect(await service.countByVersion(sourceVersion)).toBe(0);
+      expect(
+        await new PageRepository(database).findById(page.id),
+      ).toMatchObject({
+        connectionStatus: "error",
+        remoteMetadata: {
+          credentialIncident: {
+            status: "error",
+            errorCode: "UNKNOWN_TOKEN_KEY_VERSION",
+          },
+        },
+      });
 
       const rotated = await new PageCredentialRepository(database).findByPageId(
         page.id,
@@ -79,10 +96,98 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           fingerprint: rotated!.tokenFingerprint,
         }),
       ).toBe("rotation-drill-token");
+
+      await new PageRepository(database).upsertManagedPage({
+        externalPageId: page.externalPageId,
+        name: page.name,
+        remoteMetadata: { source: "rotation_drill_verified_sync" },
+      });
+      await new PageCredentialRepository(database).upsert(page.id, {
+        ciphertext: rotated!.accessTokenCiphertext,
+        nonce: rotated!.nonce,
+        authTag: rotated!.authTag,
+        keyVersion: rotated!.keyVersion,
+        fingerprint: rotated!.tokenFingerprint,
+      });
+      expect(
+        await new PageRepository(database).findById(page.id),
+      ).toMatchObject({
+        connectionStatus: "active",
+        remoteMetadata: { source: "rotation_drill_verified_sync" },
+      });
     } finally {
       await database.delete(pages).where(eq(pages.id, page.id));
     }
   });
+
+  it("persists an expired credential lock and recovers only after verified sync", async () => {
+    const database = getDatabase();
+    const page = await new PageRepository(database).upsertManagedPage({
+      externalPageId: `expired-credential-${randomUUID()}`,
+      name: "Expired Credential Test Page",
+    });
+    const credentialRepository = new PageCredentialRepository(database);
+    const postRepository = new PostRepository(database);
+    const encrypted = encryptToken(
+      "expired-integration-token",
+      randomBytes(32).toString("base64"),
+    );
+
+    try {
+      await credentialRepository.upsert(
+        page.id,
+        encrypted,
+        new Date("2026-01-01T00:00:00.000Z"),
+      );
+      const draft = await postRepository.createDraft({
+        pageId: page.id,
+        message: "Must remain a draft",
+        type: "text",
+      });
+
+      await expect(
+        new SubmitPostService().publish(draft.id),
+      ).rejects.toMatchObject({ code: "PAGE_CREDENTIAL_EXPIRED" });
+      expect(
+        await new PageRepository(database).findById(page.id),
+      ).toMatchObject({
+        connectionStatus: "expired",
+        remoteMetadata: {
+          credentialIncident: {
+            status: "expired",
+            errorCode: "PAGE_CREDENTIAL_EXPIRED",
+            credentialExpiresAt: "2026-01-01T00:00:00.000Z",
+          },
+        },
+      });
+      expect(
+        (await credentialRepository.findByPageId(page.id))?.revokedAt,
+      ).toBeNull();
+      expect(await postRepository.findById(draft.id)).toMatchObject({
+        status: "draft",
+      });
+
+      await expect(
+        new SubmitPostService().publish(draft.id),
+      ).rejects.toMatchObject({ code: "PAGE_CREDENTIAL_MUTATION_LOCKED" });
+
+      await new PageRepository(database).upsertManagedPage({
+        externalPageId: page.externalPageId,
+        name: page.name,
+        remoteMetadata: { source: "verified_sync" },
+      });
+      await credentialRepository.upsert(page.id, encrypted);
+      expect(
+        await new PageRepository(database).findById(page.id),
+      ).toMatchObject({
+        connectionStatus: "active",
+        remoteMetadata: { source: "verified_sync" },
+      });
+    } finally {
+      await database.delete(posts).where(eq(posts.pageId, page.id));
+      await database.delete(pages).where(eq(pages.id, page.id));
+    }
+  }, 15_000);
 
   it("persists related records and rolls the complete unit of work back", async () => {
     const externalPageId = `integration-${randomUUID()}`;

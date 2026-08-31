@@ -57,7 +57,8 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Test round-trip, tamper detection và invalid configuration.
 - Versioned keyring hỗ trợ current/previous keys và fail closed với unknown version, không fallback.
 - Operator CLI `credentials:rotate-pages` bắt buộc dry-run trước execution, xác nhận target version và verify old-version count bằng `0`.
-- Meta invalid/revoked/permission errors khóa mutation theo Page, lưu sanitized incident evidence và được unlock chỉ sau Page verify/sync thành công.
+- Meta invalid/revoked/permission errors và stored credential hết hạn khóa mutation theo Page, lưu sanitized incident evidence và được unlock chỉ sau Page verify/sync thành công; expired credential không bị đánh dấu revoked.
+- Crypto incident (`TOKEN_DECRYPTION_FAILED`/`UNKNOWN_TOKEN_KEY_VERSION`) chuyển Page sang `error`; key rotation chỉ sửa credential ciphertext/version và không tự unlock Page.
 - Runbook rotation/recovery nằm tại `docs/runbooks/credential-rotation-and-recovery.md`.
 - Không có token/secret thật trong repository.
 
@@ -102,7 +103,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 283 tests pass; 7 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm isolated credential-rotation drill và credential lock/recovery.
+- Vitest: 284 tests pass; 8 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm isolated credential-rotation drill, expired-credential lock/recovery và crypto lock không bị rotation tự unlock.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -119,7 +120,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Phần còn lại của Meta capability smoke: reschedule, sửa caption, hủy lịch và xóa bài đã đăng trên Page test.
 - Remote mutation service cho reschedule/edit/cancel/delete đã có mock/unit/typecheck; chưa live smoke đầy đủ trên Page test.
 - Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
-- Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness; credential rotation và incident recovery runbook đã hoàn thành trong SEC-004.
+- Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness. Code, CLI, automated integration drill và incident recovery runbook của SEC-004 đã hoàn thành; SEC-004 vẫn mở cho đến khi operator thực hiện và lưu evidence của rotation drill trên môi trường staging thật.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
 ## Secret cần cấu hình tiếp theo

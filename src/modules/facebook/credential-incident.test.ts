@@ -3,9 +3,31 @@ import { AppError } from "@/lib/errors/app-error";
 import {
   assertPageReadyForMutation,
   getPageCredentialIncidentStatus,
+  isPageCredentialExpired,
 } from "./credential-incident";
 
 describe("Page credential incident guard", () => {
+  it("detects expiry at the boundary without treating it as revocation", () => {
+    expect(
+      isPageCredentialExpired(
+        { expiresAt: new Date("2026-08-30T00:00:00.000Z") },
+        new Date("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      isPageCredentialExpired(
+        { expiresAt: new Date("2026-09-01T00:00:00.000Z") },
+        new Date("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toBe(false);
+    expect(
+      isPageCredentialExpired(
+        { expiresAt: null },
+        new Date("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toBe(false);
+  });
+
   it("classifies only definitive credential failures", () => {
     expect(
       getPageCredentialIncidentStatus(
@@ -42,12 +64,28 @@ describe("Page credential incident guard", () => {
         }),
       ),
     ).toBe("error");
+    expect(
+      getPageCredentialIncidentStatus(
+        new AppError({
+          code: "TOKEN_DECRYPTION_FAILED",
+          message: "authentication failed",
+        }),
+      ),
+    ).toBe("error");
   });
 
   it("locks mutations while invalid and allows them after verified recovery", () => {
     expect(() =>
       assertPageReadyForMutation(
         { isActive: true, connectionStatus: "revoked" },
+        "inactive",
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "PAGE_CREDENTIAL_MUTATION_LOCKED" }),
+    );
+    expect(() =>
+      assertPageReadyForMutation(
+        { isActive: true, connectionStatus: "expired" },
         "inactive",
       ),
     ).toThrowError(

@@ -80,6 +80,8 @@ Meta code `190` được chuẩn hóa thành `FACEBOOK_TOKEN_INVALID`; code `10/
 - đặt `page_credentials.revoked_at` khi token bị invalid/revoked;
 - chặn mutation tiếp theo bằng `PAGE_CREDENTIAL_MUTATION_LOCKED`.
 
+Credential có `expires_at` trong quá khứ được xử lý riêng: Page chuyển sang `expired`, evidence chỉ chứa stable error code, thời điểm phát hiện và thời điểm hết hạn; hệ thống không đặt `revoked_at` nếu Meta chưa xác nhận token bị revoke.
+
 Network timeout/5xx vẫn là `uncertain`, không khóa credential và không tự gửi mutation lần nữa; dùng reconciliation workflow.
 
 Recovery:
@@ -96,17 +98,25 @@ Với `TOKEN_DECRYPTION_FAILED`:
 
 1. Hệ thống chuyển Page sang credential `error` và khóa mutation; không thử key ngẫu nhiên và không sửa ciphertext.
 2. So sánh stored `key_version` với current/previous version names trong secret manager, không in key value.
-3. Nếu cấu hình sai, restore đúng key cho version đó và restart.
-4. Chạy rotation dry-run; chỉ execute sau khi dry-run pass.
-5. Nếu ciphertext/auth tag hỏng, lấy credential mới qua Page verify/sync. Giữ record/operation evidence để điều tra.
+3. Restore đúng key/keyring cho version đó và restart application.
+4. Chạy rotation dry-run; nếu credential còn ở old version và dry-run pass thì chạy rotation execute với target confirmation.
+5. Rotation thành công không tự mở khóa Page. Chạy Page verify/sync chính thức; nếu ciphertext/auth tag hỏng thì re-authorize trước để flow này persist credential mới.
+6. Xác nhận Page chỉ trở lại `connection_status = active` sau khi Page verify/sync thành công.
+7. Chạy Facebook read smoke test, sau đó mutation smoke test trên Page test.
+8. Giữ record/operation evidence để điều tra; không sửa ciphertext hoặc `connection_status` thủ công.
 
 ## Unknown key version
 
 `UNKNOWN_TOKEN_KEY_VERSION` luôn fail closed, không fallback sang current key.
 
-1. Hệ thống khóa mutation cho Page liên quan; xác nhận stored version và deployment secret history.
-2. Bổ sung đúng key vào `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, restart và chạy dry-run.
-3. Nếu key version đó không thể phục hồi, re-authorize Page và persist credential mới; không brute-force hoặc thay version trực tiếp trong database.
+1. Hệ thống chuyển Page sang `error`, khóa mutation và giữ incident evidence; xác nhận stored version và deployment secret history.
+2. Restore đúng key vào keyring, thường là `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, rồi restart application.
+3. Chạy rotation dry-run; nếu cần và dry-run pass thì chạy rotation execute với target confirmation.
+4. Rotation thành công không tự mở khóa Page. Chạy Page verify/sync chính thức; nếu key version không thể phục hồi thì re-authorize Page để flow này persist credential mới. Không brute-force hoặc thay version trực tiếp trong database.
+5. Xác nhận Page chỉ trở lại `connection_status = active` sau khi Page verify/sync thành công.
+6. Chạy Facebook read smoke test, sau đó mutation smoke test trên Page test.
+
+Với cả hai crypto incident, thứ tự recovery bắt buộc là: restore đúng key/keyring → restart → rotation dry-run → rotation execute nếu cần → Page verify/sync → xác nhận Page `active` → Facebook read smoke test → mutation smoke test. Không dùng rotation hoặc database update thủ công để unlock Page.
 
 ## Staging drill
 

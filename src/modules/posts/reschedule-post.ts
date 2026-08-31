@@ -11,6 +11,9 @@ import { AppError } from "@/lib/errors/app-error";
 import {
   assertPageReadyForMutation,
   getPageCredentialIncidentStatus,
+  isPageCredentialExpired,
+  pageCredentialExpiredError,
+  recordExpiredPageCredential,
   recordPageCredentialIncident,
   type PageCredentialIncidentStatus,
 } from "@/modules/facebook/credential-incident";
@@ -82,7 +85,7 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
     scheduledFor: Date;
     requestFingerprint: string;
   }): Promise<PreparedReschedule> {
-    return runInTransaction(async (transaction) => {
+    const prepared = await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
       const post = await posts.findById(input.postId);
       if (!post) {
@@ -119,16 +122,21 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
       const credential = await new PageCredentialRepository(
         transaction,
       ).findByPageId(page.id);
-      if (
-        !credential ||
-        credential.revokedAt ||
-        (credential.expiresAt && credential.expiresAt <= new Date())
-      ) {
+      if (!credential || credential.revokedAt) {
         throw new AppError({
           code: "PAGE_CREDENTIAL_MISSING",
           message: "Page chưa có credential hợp lệ.",
           status: 409,
         });
+      }
+      const checkedAt = new Date();
+      if (isPageCredentialExpired(credential, checkedAt)) {
+        await recordExpiredPageCredential(transaction, {
+          pageId: page.id,
+          expiresAt: credential.expiresAt!,
+          detectedAt: checkedAt,
+        });
+        return null;
       }
 
       const operation = await new FacebookOperationRepository(
@@ -156,6 +164,9 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
         pageCredential: toStoredPageToken(credential),
       };
     });
+
+    if (!prepared) throw pageCredentialExpiredError();
+    return prepared;
   }
 
   async succeed(input: {
