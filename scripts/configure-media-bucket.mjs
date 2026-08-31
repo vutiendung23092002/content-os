@@ -1,8 +1,9 @@
 import nextEnv from "@next/env";
 import { createClient } from "@supabase/supabase-js";
+import { shouldLoadDefaultEnvironment } from "./explicit-environment.mjs";
 
 const { loadEnvConfig } = nextEnv;
-loadEnvConfig(process.cwd());
+if (shouldLoadDefaultEnvironment()) loadEnvConfig(process.cwd());
 
 const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

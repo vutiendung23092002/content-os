@@ -1,10 +1,9 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
+import { shouldLoadDefaultEnvironment } from "./explicit-environment.mjs";
 
 const { loadEnvConfig } = nextEnv;
-if (process.env.DATABASE_VERIFICATION_EXPLICIT_ENV !== "true") {
-  loadEnvConfig(process.cwd());
-}
+if (shouldLoadDefaultEnvironment()) loadEnvConfig(process.cwd());
 
 const databaseUrl = process.env.DIRECT_DATABASE_URL;
 const expectedTables = [

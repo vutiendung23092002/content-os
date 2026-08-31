@@ -1,7 +1,12 @@
 import { loadEnvConfig } from "@next/env";
 import { defineConfig } from "drizzle-kit";
 
-loadEnvConfig(process.cwd());
+if (
+  process.env.HAN_CONTENT_EXPLICIT_ENV !== "true" &&
+  process.env.DATABASE_VERIFICATION_EXPLICIT_ENV !== "true"
+) {
+  loadEnvConfig(process.cwd());
+}
 
 const migrationUrl = process.env.DIRECT_DATABASE_URL;
 

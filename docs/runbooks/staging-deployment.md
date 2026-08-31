@@ -2,10 +2,11 @@
 
 ## Status and platform boundary
 
-This repository defines a production-style Docker image and Docker Compose runtime,
-but it does not select or configure a hosted deployment platform. DEPLOY-001 is
-therefore repository-ready but remains incomplete until an operator provisions a
-real, isolated staging target and records the live drills below.
+This repository defines independent production and staging Docker Compose projects
+that can run concurrently on the same Windows host. DEPLOY-001 remains incomplete
+until an operator provisions the real isolated staging resources, starts the stack,
+and records the live drills below. Repository configuration is not live deployment
+evidence.
 
 The staging target must be separate from production at every boundary:
 
@@ -31,12 +32,12 @@ host-local ignored environment file. Never put secrets in image layers, build
 arguments, GitHub Actions variables intended for client builds, command output or
 Git.
 
-| Classification           | Variables                                                                                                                                                                                                                                                                          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime configuration    | `FACEBOOK_GRAPH_API_VERSION`, `TOKEN_ENCRYPTION_KEY_VERSION`, `SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `FACEBOOK_CRON_BASE_URL`, `HAN_CONTENT_PORT`, `INITIAL_ADMIN_EMAIL`                           |
-| Server secrets           | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_USER_ACCESS_TOKEN`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `SUPABASE_SERVICE_ROLE_KEY`, `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`, optional `APP_ACCESS_SECRET` |
-| Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                     |
-| Intentionally absent     | `AI_PROVIDER_API_KEY` while AI is deferred; capability-test variables in normal production runtime                                                                                                                                                                                 |
+| Classification           | Variables                                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Runtime configuration    | `FACEBOOK_GRAPH_API_VERSION`, `TOKEN_ENCRYPTION_KEY_VERSION`, `SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `FACEBOOK_CRON_BASE_URL`, `HAN_CONTENT_COMPOSE_PROJECT`, `HAN_CONTENT_IMAGE`, `HAN_CONTENT_ENV_FILE`, `HAN_CONTENT_PORT`, `INITIAL_ADMIN_EMAIL` |
+| Server secrets           | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_USER_ACCESS_TOKEN`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `SUPABASE_SERVICE_ROLE_KEY`, `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`, optional `APP_ACCESS_SECRET`                                                   |
+| Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                                                                       |
+| Intentionally absent     | `AI_PROVIDER_API_KEY` while AI is deferred; capability-test variables in normal production runtime                                                                                                                                                                                                                                   |
 
 `FACEBOOK_USER_ACCESS_TOKEN` is a normal staging runtime dependency, not merely a
 capability-smoke secret. The runtime Page sync route
@@ -53,9 +54,14 @@ Before release:
 corepack pnpm staging:env-check
 git status --short
 git ls-files .env.local
+git ls-files .env.staging
 ```
 
-The final command must return no file. The environment check requires
+The final two commands must return no files. The environment check loads exactly
+`.env.staging`; it removes inherited project values and does not load `.env.local`
+to fill omissions. It requires `HAN_CONTENT_COMPOSE_PROJECT=han-content-os-staging`,
+`HAN_CONTENT_IMAGE=han-content-os:staging`, `HAN_CONTENT_ENV_FILE=.env.staging`,
+`HAN_CONTENT_PORT=3211`, and
 `STAGING_BASE_URL` and both public staging URLs to be valid credential-free HTTPS
 URLs. It prints variable names and safe error codes only, never URL values. It cannot
 prove that a supplied database or Page belongs to staging; the operator must compare
@@ -76,15 +82,15 @@ commands and must target the staging environment only.
    corepack pnpm lint
    corepack pnpm typecheck
    corepack pnpm test
-   corepack pnpm build
-   corepack pnpm release:secret-scan
+   corepack pnpm build:staging
+   corepack pnpm release:secret-scan:staging
    ```
 
 2. Check both staging database connections and migration files:
 
    ```powershell
-   corepack pnpm db:ping
-   corepack pnpm db:check
+   corepack pnpm db:ping:staging
+   corepack pnpm db:check:staging
    ```
 
 3. Create and verify the staging backup checkpoint described below. Record only
@@ -92,14 +98,25 @@ commands and must target the staging environment only.
 4. Apply and verify migrations:
 
    ```powershell
-   corepack pnpm db:migrate
-   corepack pnpm db:verify
-   corepack pnpm test:db
+   corepack pnpm db:migrate:staging
+   corepack pnpm db:verify:staging
+   corepack pnpm test:db:staging
    ```
 
-5. Deploy/start the already-built commit using the platform selected by the
-   operator. For the repository Docker runtime, follow
-   [Docker setup](../17-DOCKER-SETUP.md); do not place secrets in build args.
+5. Validate and start only the staging Compose project. The preflight must pass
+   before Docker reads the staging configuration:
+
+   ```powershell
+   corepack pnpm staging:env-check
+   docker compose --env-file .env.staging config --quiet
+   docker compose --env-file .env.staging up -d --build
+   docker compose --env-file .env.staging ps
+   ```
+
+   Production continues under `.env.local` on port 3210. The distinct Compose
+   project, image tag, runtime env file, port, and network prevent staging from
+   replacing or addressing production. See [Docker setup](../17-DOCKER-SETUP.md).
+
 6. Wait for `/api/health` to return HTTP 200 with database `ok`, then run:
 
    ```powershell
@@ -108,6 +125,16 @@ commands and must target the staging environment only.
 
 7. Complete authenticated login, Page/read and Meta checks below. Do not promote
    this artifact to production as part of DEPLOY-001.
+
+To inspect or stop staging without affecting production:
+
+```powershell
+docker compose --env-file .env.staging logs --tail 100 app
+docker compose --env-file .env.staging down
+```
+
+The project name comes from `.env.staging`, so `down` removes only the staging
+containers and network. Do not add `-v`.
 
 ## Rollback and database recovery
 
@@ -211,7 +238,7 @@ on the command line, in shell history or in the repository.
    `staging:restore-verify` disables local-env loading for schema verification. It
    overwrites both `DIRECT_DATABASE_URL` for schema verification and `DATABASE_URL`
    for the two DB integration suites with the explicitly supplied isolated target,
-   then runs them sequentially without invoking the `.env.local`-loading `test:db`
+   then runs them sequentially without invoking the production-selected `test:db`
    package script. Any guard, schema or integration failure exits non-zero without
    printing either URL.
 
@@ -238,7 +265,7 @@ Use only the hardened command and designated non-production Page configured by
 Suite, then run discovery first:
 
 ```powershell
-corepack pnpm facebook:capability-smoke -- --page-id=<test-page-id> "--expected-page-name=<test-page-name>" --confirm-graph-version=v26.0 --discovery-only
+corepack pnpm facebook:capability-smoke:staging -- --page-id=<test-page-id> "--expected-page-name=<test-page-name>" --confirm-graph-version=v26.0 --discovery-only
 ```
 
 The write smoke remains an explicit operator action with `--execute`. It must not

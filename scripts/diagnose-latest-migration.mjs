@@ -2,9 +2,10 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import nextEnv from "@next/env";
 import postgres from "postgres";
+import { shouldLoadDefaultEnvironment } from "./explicit-environment.mjs";
 
 const { loadEnvConfig } = nextEnv;
-loadEnvConfig(process.cwd());
+if (shouldLoadDefaultEnvironment()) loadEnvConfig(process.cwd());
 
 const databaseUrl = process.env.DIRECT_DATABASE_URL;
 if (!databaseUrl) {

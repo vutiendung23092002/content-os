@@ -11,7 +11,11 @@ function databaseUrl(user: string, host: string, database: string): string {
 function validStagingEnvironment(): NodeJS.ProcessEnv {
   return {
     DEPLOYMENT_ENVIRONMENT: "staging",
-    STAGING_BASE_URL: "https://staging.example.test",
+    STAGING_BASE_URL: "https://staging-social.vutiendung.io.vn",
+    HAN_CONTENT_COMPOSE_PROJECT: "han-content-os-staging",
+    HAN_CONTENT_IMAGE: "han-content-os:staging",
+    HAN_CONTENT_ENV_FILE: ".env.staging",
+    HAN_CONTENT_PORT: "3211",
     DATABASE_URL: databaseUrl("runtime", "staging-db.test", "app"),
     DIRECT_DATABASE_URL: databaseUrl("migration", "staging-db.test", "app"),
     FACEBOOK_APP_ID: "test-app-id",
@@ -26,7 +30,7 @@ function validStagingEnvironment(): NodeJS.ProcessEnv {
     SUPABASE_STORAGE_BUCKET: "test-assets",
     ASSET_CLEANUP_SECRET: "a".repeat(32),
     FACEBOOK_CRON_SECRET: "b".repeat(32),
-    NEXT_PUBLIC_SITE_URL: "https://staging.example.test",
+    NEXT_PUBLIC_SITE_URL: "https://staging-social.vutiendung.io.vn",
     INITIAL_ADMIN_EMAIL: "admin@example.test",
     FACEBOOK_CAPABILITY_TEST_PAGE_ID: "test-page-id",
     FACEBOOK_CAPABILITY_TEST_PAGE_NAME: "Test Page",
@@ -79,6 +83,36 @@ describe("staging environment URL validation", () => {
         failures: [],
       },
     );
+  });
+
+  it("rejects production Compose and image identities", () => {
+    const env = validStagingEnvironment();
+    env.HAN_CONTENT_COMPOSE_PROJECT = "han-content-os-prod";
+    env.HAN_CONTENT_IMAGE = "han-content-os:prod";
+
+    expect(validateStagingEnvironment(env).failures).toEqual(
+      expect.arrayContaining([
+        {
+          code: "STAGING_COMPOSE_PROJECT_INVALID",
+          names: ["HAN_CONTENT_COMPOSE_PROJECT"],
+        },
+        {
+          code: "STAGING_IMAGE_INVALID",
+          names: ["HAN_CONTENT_IMAGE"],
+        },
+      ]),
+    );
+  });
+
+  it("rejects a matching pair of URLs on the wrong public origin", () => {
+    const env = validStagingEnvironment();
+    env.STAGING_BASE_URL = "https://social.vutiendung.io.vn";
+    env.NEXT_PUBLIC_SITE_URL = "https://social.vutiendung.io.vn";
+
+    expect(validateStagingEnvironment(env).failures).toContainEqual({
+      code: "STAGING_EXPECTED_ORIGIN_MISMATCH",
+      names: ["NEXT_PUBLIC_SITE_URL", "STAGING_BASE_URL"],
+    });
   });
 });
 

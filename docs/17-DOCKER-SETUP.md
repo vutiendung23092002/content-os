@@ -1,247 +1,211 @@
-# Setup Docker
+# Docker setup: production and staging
 
-Tài liệu này hướng dẫn chạy Han Content OS bằng Docker Compose trên Windows. Supabase tiếp tục chạy trên cloud; không đưa PostgreSQL, Auth hay Storage xuống Docker local.
+Han Content OS supports two independent Docker Compose projects on the same
+Windows host. Supabase remains hosted; PostgreSQL, Auth, and Storage are not run
+inside this Compose file.
 
-## 1. Kiến trúc container
+## Topology
 
-Compose chạy ba service từ cùng một image:
+```text
+social.vutiendung.io.vn
+  -> Cloudflare Tunnel
+  -> 127.0.0.1:3210
+  -> production Compose project
+  -> .env.local
+  -> production Supabase
 
-- `app`: Next.js standalone server.
-- `facebook-cron`: gọi tác vụ đối soát Facebook mỗi 10 phút.
-- `asset-cleanup`: dọn media hết hạn mỗi giờ.
-
-Cloudflare Tunnel tiếp tục chạy như Windows service và chuyển request đến cổng publish của container `app`.
-
-## 2. Yêu cầu
-
-- Docker Desktop đang chạy.
-- Docker Compose v2 (`docker compose`).
-- File `.env.local` đã được cấu hình theo [hướng dẫn local](16-LOCAL-SETUP.md).
-- Database migration và Storage đã được khởi tạo.
-
-Kiểm tra:
-
-```powershell
-docker version
-docker compose version
+staging-social.vutiendung.io.vn
+  -> Cloudflare Tunnel
+  -> 127.0.0.1:3211
+  -> staging Compose project
+  -> .env.staging
+  -> staging Supabase
 ```
 
-## 3. Chọn cổng
+Both projects can run concurrently. Compose project names isolate containers and
+networks. Each `facebook-cron` and `asset-cleanup` service resolves `app` only in
+its own project network, so `FACEBOOK_CRON_BASE_URL=http://app:3000` is correct for
+both environments. Only loopback host ports are published; container port 3000 is
+not exposed publicly.
 
-Thêm vào `.env.local`:
+## Environment files
+
+Real `.env.local` and `.env.staging` files are ignored by Git. Never copy secrets
+between them and never add either file to a Docker image. Start from
+`.env.example`, then configure each file independently.
+
+Production `.env.local` orchestration values:
 
 ```dotenv
+HAN_CONTENT_COMPOSE_PROJECT=han-content-os-prod
+HAN_CONTENT_IMAGE=han-content-os:prod
+HAN_CONTENT_ENV_FILE=.env.local
 HAN_CONTENT_PORT=3210
-NEXT_PUBLIC_SITE_URL=https://social.example.com
+NEXT_PUBLIC_SITE_URL=https://social.vutiendung.io.vn
 FACEBOOK_CRON_BASE_URL=http://app:3000
 ```
 
-Compose ánh xạ `127.0.0.1:3210` trên máy host vào cổng `3000` bên trong container `app`. Vì vậy:
+Staging `.env.staging` orchestration values:
 
-- `3210` là cổng truy cập từ Windows và Cloudflare Tunnel.
-- `app` là tên service kiêm DNS nội bộ của Docker Compose.
-- `3000` trong `http://app:3000` là cổng nội bộ của container, không chiếm và không xung đột với cổng `3000` của ứng dụng khác trên Windows.
+```dotenv
+HAN_CONTENT_COMPOSE_PROJECT=han-content-os-staging
+HAN_CONTENT_IMAGE=han-content-os:staging
+HAN_CONTENT_ENV_FILE=.env.staging
+HAN_CONTENT_PORT=3211
+DEPLOYMENT_ENVIRONMENT=staging
+STAGING_BASE_URL=https://staging-social.vutiendung.io.vn
+NEXT_PUBLIC_SITE_URL=https://staging-social.vutiendung.io.vn
+FACEBOOK_CRON_BASE_URL=http://app:3000
+```
 
-Khi chuyển sang máy mới, có thể giữ nguyên `FACEBOOK_CRON_BASE_URL=http://app:3000`. Nếu cổng host `3210` bị chiếm, chỉ cần đổi `HAN_CONTENT_PORT` và route Cloudflare; không cần đổi địa chỉ nội bộ này.
+Staging must have its own `DATABASE_URL`, `DIRECT_DATABASE_URL`, Supabase URL and
+keys, Storage bucket, encryption keyring, Meta app secrets and designated test
+Page, cron secrets, optional server access secret, and initial Admin. Do not put
+real project refs, database URLs, keys, tokens, or email addresses in committed
+files or evidence.
 
-Chỉ dùng URL host hoặc domain public cho `FACEBOOK_CRON_BASE_URL` khi chạy cron bên ngoài Docker. Với mô hình chạy toàn bộ bằng Compose, địa chỉ nội bộ `http://app:3000` là lựa chọn khuyến nghị.
+`NEXT_PUBLIC_*` values are embedded during the image build. Distinct
+`HAN_CONTENT_IMAGE` tags are therefore mandatory: rebuilding staging must not
+overwrite the image used by production, or vice versa.
 
-Không đưa secret vào `Dockerfile`, `compose.yaml` hoặc build args. Compose đọc chúng từ `.env.local` lúc khởi chạy.
+The Compose variables have backward-compatible defaults (`han-content-os`,
+`han-content-os:local`, `.env.local`, and `3210`) for an existing production
+installation. Operators should set the explicit production values above before
+running both stacks concurrently.
 
-## 4. Kiểm tra trước khi build
+## Preflight
 
-Xác nhận cấu hình Compose hợp lệ mà không in secret ra màn hình:
+Docker Desktop and Docker Compose v2 are required. These commands validate the
+rendered configuration without starting or stopping containers:
 
 ```powershell
 docker compose --env-file .env.local config --quiet
+corepack pnpm staging:env-check
+docker compose --env-file .env.staging config --quiet
 ```
 
-Kiểm tra cổng `3210` đang trống:
+The staging check runs first so a missing or incomplete `.env.staging` fails
+closed. It does not borrow values from `.env.local` or the parent shell. It reports
+only safe error codes and variable names.
+
+Confirm both loopback ports are available before the first start:
 
 ```powershell
 Get-NetTCPConnection -LocalPort 3210 -State Listen -ErrorAction SilentlyContinue
+Get-NetTCPConnection -LocalPort 3211 -State Listen -ErrorAction SilentlyContinue
 ```
 
-Khuyến nghị chạy quality gate trước:
+Do not run a second Windows `next start`, Facebook cron, or asset-cleanup scheduler
+for either environment.
 
-```powershell
-corepack pnpm lint
-corepack pnpm test
-corepack pnpm build
-```
+## Start and inspect both projects
 
-## 5. Tránh chạy trùng tiến trình
-
-Trước khi bật Docker:
-
-- Dừng tiến trình `next start` cũ của Han Content OS.
-- Tắt Windows Task Scheduler đang chạy `facebook:cron` hoặc `assets:cleanup` cho dự án này.
-- Không dừng container/dịch vụ CRM đang dùng cổng `3000` và `3001`.
-
-Mỗi tác vụ cron chỉ nên có một scheduler chủ động.
-
-## 6. Build image
-
-```powershell
-docker compose --env-file .env.local build app
-```
-
-`.dockerignore` loại `.env.local`, `.git`, `.next` và `node_modules` khỏi build context. Image production chạy Next.js standalone bằng user không phải root.
-
-## 7. Khởi động stack
+Start production:
 
 ```powershell
 docker compose --env-file .env.local up -d --build
 ```
 
-Hai service cron chờ `app` healthy trước khi bắt đầu. Kiểm tra trạng thái:
+Start staging independently:
+
+```powershell
+docker compose --env-file .env.staging up -d --build
+```
+
+Show each project:
 
 ```powershell
 docker compose --env-file .env.local ps
+docker compose --env-file .env.staging ps
 ```
 
-Kiểm tra health local:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:3210/api/health
-```
-
-Xem log mà không in toàn bộ cấu hình môi trường:
+Read application logs without dumping environment configuration:
 
 ```powershell
 docker compose --env-file .env.local logs --tail 100 app
-docker compose --env-file .env.local logs --tail 100 facebook-cron
-docker compose --env-file .env.local logs --tail 100 asset-cleanup
+docker compose --env-file .env.staging logs --tail 100 app
 ```
 
-Compose giới hạn log theo vòng quay để tránh tăng dung lượng không kiểm soát.
-
-## 8. Chuyển Cloudflare Tunnel
-
-Chỉ đổi route sau khi local health check thành công.
-
-Trong Cloudflare Tunnel, cấu hình hostname:
-
-```text
-https://social.example.com -> http://127.0.0.1:3210
-```
-
-Giữ các cấu hình OAuth public:
-
-- Supabase Site URL: `https://social.example.com`
-- Supabase Redirect URL: `https://social.example.com/auth/callback`
-- Google Authorized JavaScript origin: `https://social.example.com`
-- Google redirect URI vẫn là callback Supabase: `https://<SUPABASE_PROJECT_REF>.supabase.co/auth/v1/callback`
-
-## 9. Kiểm tra cron
-
-Chạy một lượt thủ công bên trong container:
+Check local readiness separately:
 
 ```powershell
-docker compose --env-file .env.local exec facebook-cron node scripts/run-facebook-cron.mjs
-docker compose --env-file .env.local exec asset-cleanup node scripts/run-asset-cleanup.mjs
+Invoke-RestMethod http://127.0.0.1:3210/api/health
+Invoke-RestMethod http://127.0.0.1:3211/api/health
 ```
 
-Sau đó kiểm tra log để xác nhận tác vụ kết thúc bình thường. Không cần mở thêm CMD riêng cho cron khi các container đã chạy.
+## Stop one project only
 
-## 10. Vận hành hàng ngày
-
-Xem trạng thái:
+Stop staging without affecting production:
 
 ```powershell
-docker compose --env-file .env.local ps
+docker compose --env-file .env.staging down
 ```
 
-Khởi động lại:
-
-```powershell
-docker compose --env-file .env.local restart
-```
-
-Dừng nhưng giữ container:
-
-```powershell
-docker compose --env-file .env.local stop
-```
-
-Chạy lại:
-
-```powershell
-docker compose --env-file .env.local start
-```
-
-Gỡ container/network của stack:
+Stop production without affecting staging:
 
 ```powershell
 docker compose --env-file .env.local down
 ```
 
-Lệnh `down` không xóa dữ liệu Supabase Cloud. Không thêm `-v` nếu chưa xác định rõ volume cần xóa.
+Compose derives the project identity from the selected env file. Because the two
+`HAN_CONTENT_COMPOSE_PROJECT` values differ, `down` targets only that project's
+containers and network. Never add `-v` without reviewing the exact volume targets.
 
-## 11. Cập nhật phiên bản
+## Environment-aware database and operational commands
 
-Sau khi pull code mới:
+Commands that can contact an external system explicitly select an env file. Generic
+legacy commands remain production-compatible; prefer the named aliases:
+
+```powershell
+corepack pnpm db:ping:prod
+corepack pnpm db:check:prod
+corepack pnpm db:migrate:prod
+corepack pnpm db:verify:prod
+corepack pnpm test:db:prod
+
+corepack pnpm db:ping:staging
+corepack pnpm db:check:staging
+corepack pnpm db:migrate:staging
+corepack pnpm db:verify:staging
+corepack pnpm test:db:staging
+```
+
+Use `build:prod` or `build:staging` when validating an environment-specific Next.js
+bundle outside Docker. This matters because `NEXT_PUBLIC_*` values are baked in.
+
+The same `:prod`/`:staging` convention is available for Storage, asset cleanup,
+Facebook cron/Page listing/capability smoke, release secret scanning, and Page
+credential rotation. These commands can mutate remote state; run them only as the
+relevant runbook directs.
+
+The Node env runner loads exactly the selected file, gives it precedence over
+conflicting inherited values, removes inherited project variables that the file
+does not define, and prevents downstream `@next/env` calls from loading default
+files. The isolated restore verifier retains its separate explicit-target guard.
+
+## Updates and rollback
+
+Build each environment with its own selected file and image tag:
 
 ```powershell
 git pull
 docker compose --env-file .env.local up -d --build
-docker compose --env-file .env.local ps
+docker compose --env-file .env.staging up -d --build
 ```
 
-Nếu có migration mới, chạy migration có kiểm soát trước khi đưa phiên bản mới vào sử dụng:
+Code rollback and database rollback are separate decisions. Redeploy a previously
+verified environment-specific image/commit when schema compatibility allows it.
+Never run an unreviewed destructive database restore; follow the isolated staging
+restore procedure in the [staging runbook](runbooks/staging-deployment.md).
 
-```powershell
-corepack pnpm db:migrate
-corepack pnpm db:verify
-```
+## Checklist
 
-## 12. Rollback sang Node trực tiếp
-
-```powershell
-docker compose --env-file .env.local down
-corepack pnpm build
-corepack pnpm exec next start -H 127.0.0.1 -p 3210
-```
-
-Cloudflare vẫn trỏ vào `127.0.0.1:3210`, nên không cần đổi route nếu Node trực tiếp dùng cùng cổng.
-
-## 13. Xử lý lỗi thường gặp
-
-### Bind port thất bại
-
-Cổng host đã bị chiếm. Kiểm tra PID và chỉ dừng đúng tiến trình Han Content OS, hoặc đổi `HAN_CONTENT_PORT` sang cổng trống rồi cập nhật route Cloudflare.
-
-### `app` unhealthy
-
-```powershell
-docker compose --env-file .env.local logs --tail 200 app
-docker compose --env-file .env.local exec app node -e "fetch('http://127.0.0.1:3000/api/health').then(async r => console.log(r.status, await r.text()))"
-```
-
-### Cron không chạy
-
-Kiểm tra `FACEBOOK_CRON_SECRET`, `ASSET_CLEANUP_SECRET`, base URL và health của `app`. Không log giá trị secret.
-
-### Thay `NEXT_PUBLIC_*` nhưng giao diện vẫn dùng giá trị cũ
-
-Các biến public được đóng vào bundle lúc build. Chạy lại:
-
-```powershell
-docker compose --env-file .env.local up -d --build
-```
-
-### Docker Desktop khởi động chậm
-
-Chờ Docker Engine sẵn sàng rồi chạy lại `docker compose ... up -d`; không cần sửa code.
-
-## Checklist Docker
-
-- [ ] `.env.local` dùng cổng `3210` và domain mới.
-- [ ] Compose config hợp lệ.
-- [ ] Không có Node server hoặc Windows cron cũ chạy trùng.
-- [ ] Image build thành công và không chứa `.env.local`.
-- [ ] `app` healthy tại `127.0.0.1:3210`.
-- [ ] Cloudflare route trỏ đúng cổng.
-- [ ] Google OAuth/Supabase callback quay về domain mới.
-- [ ] Hai cron container hoạt động và không bị nhân đôi scheduler.
-- [ ] Luồng đăng nhập, xem Page, đăng Page test và hẹn giờ Page test được kiểm tra có kiểm soát.
+- [ ] `.env.local` and `.env.staging` remain untracked and contain independent credentials.
+- [ ] Compose project names, image tags, env files, and host ports differ.
+- [ ] Both `config --quiet` checks pass after `staging:env-check`.
+- [ ] Production is healthy only on loopback port 3210.
+- [ ] Staging is healthy only on loopback port 3211.
+- [ ] Cloudflare hostnames route to the intended loopback ports.
+- [ ] Supabase/OAuth callback allowlists match each environment's public origin.
+- [ ] Cron services call their own project-local `app` service.
+- [ ] Staging uses only its designated non-production Facebook Page.

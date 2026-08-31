@@ -1,9 +1,10 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
+import { shouldLoadDefaultEnvironment } from "./explicit-environment.mjs";
 
 const { loadEnvConfig } = nextEnv;
 
-loadEnvConfig(process.cwd());
+if (shouldLoadDefaultEnvironment()) loadEnvConfig(process.cwd());
 
 const connectionKeys = ["DATABASE_URL", "DIRECT_DATABASE_URL"];
 let failed = false;

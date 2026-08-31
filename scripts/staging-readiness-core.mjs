@@ -5,6 +5,10 @@ const requiredStagingVariables = [
   "FACEBOOK_APP_SECRET",
   "FACEBOOK_GRAPH_API_VERSION",
   "FACEBOOK_USER_ACCESS_TOKEN",
+  "HAN_CONTENT_COMPOSE_PROJECT",
+  "HAN_CONTENT_ENV_FILE",
+  "HAN_CONTENT_IMAGE",
+  "HAN_CONTENT_PORT",
   "TOKEN_ENCRYPTION_KEY",
   "TOKEN_ENCRYPTION_KEY_VERSION",
   "NEXT_PUBLIC_SUPABASE_URL",
@@ -18,6 +22,7 @@ const requiredStagingVariables = [
   "FACEBOOK_CAPABILITY_TEST_PAGE_ID",
   "FACEBOOK_CAPABILITY_TEST_PAGE_NAME",
 ];
+const expectedStagingOrigin = "https://staging-social.vutiendung.io.vn";
 
 function value(env, name) {
   return env[name]?.trim();
@@ -73,6 +78,59 @@ export function validateStagingEnvironment(env) {
   validateHttpsUrl(env, "NEXT_PUBLIC_SITE_URL", failures);
   validateHttpsUrl(env, "STAGING_BASE_URL", failures);
 
+  const siteUrl = value(env, "NEXT_PUBLIC_SITE_URL");
+  const stagingBaseUrl = value(env, "STAGING_BASE_URL");
+  try {
+    if (
+      siteUrl &&
+      stagingBaseUrl &&
+      new URL(siteUrl).origin !== new URL(stagingBaseUrl).origin
+    ) {
+      failures.push({
+        code: "STAGING_PUBLIC_ORIGIN_MISMATCH",
+        names: ["NEXT_PUBLIC_SITE_URL", "STAGING_BASE_URL"],
+      });
+    }
+    if (
+      siteUrl &&
+      stagingBaseUrl &&
+      (new URL(siteUrl).origin !== expectedStagingOrigin ||
+        new URL(stagingBaseUrl).origin !== expectedStagingOrigin)
+    ) {
+      failures.push({
+        code: "STAGING_EXPECTED_ORIGIN_MISMATCH",
+        names: ["NEXT_PUBLIC_SITE_URL", "STAGING_BASE_URL"],
+      });
+    }
+  } catch {
+    // Individual URL failures above already provide the safe diagnostics.
+  }
+
+  if (value(env, "HAN_CONTENT_ENV_FILE") !== ".env.staging") {
+    failures.push({
+      code: "STAGING_RUNTIME_ENV_FILE_INVALID",
+      names: ["HAN_CONTENT_ENV_FILE"],
+    });
+  }
+  if (value(env, "HAN_CONTENT_PORT") !== "3211") {
+    failures.push({
+      code: "STAGING_HOST_PORT_INVALID",
+      names: ["HAN_CONTENT_PORT"],
+    });
+  }
+  if (value(env, "HAN_CONTENT_COMPOSE_PROJECT") !== "han-content-os-staging") {
+    failures.push({
+      code: "STAGING_COMPOSE_PROJECT_INVALID",
+      names: ["HAN_CONTENT_COMPOSE_PROJECT"],
+    });
+  }
+  if (value(env, "HAN_CONTENT_IMAGE") !== "han-content-os:staging") {
+    failures.push({
+      code: "STAGING_IMAGE_INVALID",
+      names: ["HAN_CONTENT_IMAGE"],
+    });
+  }
+
   if (value(env, "AI_PROVIDER_API_KEY")) {
     failures.push({
       code: "DEFERRED_AI_SECRET_MUST_BE_ABSENT",
@@ -83,7 +141,7 @@ export function validateStagingEnvironment(env) {
   return {
     ok: failures.length === 0,
     environment: "staging",
-    checks: requiredStagingVariables.length + 7,
+    checks: requiredStagingVariables.length + 14,
     failures,
   };
 }

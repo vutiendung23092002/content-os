@@ -1,9 +1,9 @@
-name: han-content-os
+name: ${HAN_CONTENT_COMPOSE_PROJECT:-han-content-os}
 
 x-runtime: &runtime
-  image: han-content-os:local
+  image: ${HAN_CONTENT_IMAGE:-han-content-os:local}
   env_file:
-    - .env.local
+    - ${HAN_CONTENT_ENV_FILE:-.env.local}
   init: true
   restart: unless-stopped
   security_opt:

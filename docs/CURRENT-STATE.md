@@ -26,7 +26,7 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 - Strict TypeScript, format, lint, typecheck, test, build scripts.
 - GitHub Actions CI không cần production secret.
 - Typed server environment và `.env.example` placeholder.
-- DEPLOY-001 repository readiness có staging environment/secret checklist, release/rollback flow, fail-closed isolated-restore verifier, read-only unauthorized smoke, built-client/tracked-file secret scan và evidence template; repository chưa chọn một hosted deployment platform.
+- DEPLOY-001 repository readiness có hai Compose project production/staging chạy đồng thời trên cùng Windows host với project/image/env file/loopback port tách biệt, explicit env runner không fallback `.env.local`, environment-aware operational scripts, release/rollback flow, fail-closed isolated-restore verifier, read-only unauthorized smoke, built-client/tracked-file secret scan và evidence template.
 - Safe API error contract, request ID và structured logger redaction.
 - Supabase Google OAuth SSR với PKCE callback, cookie phiên do Supabase quản lý và logout cùng origin.
 - Allowlist email trong `app_users`; API kiểm tra lại trạng thái duyệt trong database ở mỗi request nên khóa tài khoản có hiệu lực ngay.
@@ -105,7 +105,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 309 tests pass; 12 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm credential rotation/recovery, managed-Page reconciliation, duplicate submission claim và published/scheduled remote mirror behavior.
+- Vitest: 318 tests pass; 12 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm credential rotation/recovery, managed-Page reconciliation, duplicate submission claim và published/scheduled remote mirror behavior.
 - Database readiness audit hiện tại: pooled/direct connectivity, Drizzle migration check, schema verification và cả 12 integration tests đều pass; audit không chạy `db:migrate`.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
@@ -123,7 +123,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - `FB-001` đến `FB-011` đã đóng. Capability report tại `docs/evidence/facebook-capability-v26.md` ghi run `v26.0` trên Nero Team với discovery/tasks/scopes/token types, published/scheduled reads, pagination, plain-text publish, native schedule, reschedule, cancel/delete và cleanup thành công. Exact 20-minute/29-day boundary posts không live-probe; report phân biệt rõ contract evidence và access tier không được Meta debug-token expose.
 - Live smoke cho reschedule/edit/cancel/delete đã hoàn tất trên Page test; không cần chạy lại destructive Facebook mutations cho audit này.
 - SEC-003 mutation hardening/rate limit đã hoàn thành; không còn là gap của staging readiness.
-- DEPLOY-001 hiện `PARTIAL`: code/runbook/checklist đã sẵn sàng và restore verification được pin tường minh vào isolated target, nhưng chưa có evidence cho staging target tách production, private gateway, fresh deploy, isolated database restore, authenticated role smoke và rollback rehearsal thật.
+- DEPLOY-001 hiện `PARTIAL`: repository đã hỗ trợ production/staging cô lập chạy đồng thời và restore verification được pin tường minh vào isolated target, nhưng chưa có evidence cho staging Supabase/secrets/Page riêng, private gateway, fresh deploy, isolated database restore, authenticated role smoke và rollback rehearsal thật.
 - Metrics/alert vẫn thuộc OBS-001/OBS-002. SEC-004 đã hoàn thành sau code/CLI coverage, automated integration drill, incident recovery runbook và staging rotation drill của operator.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
