@@ -32,12 +32,14 @@ not exposed publicly.
 
 Real `.env.local` and `.env.staging` files are ignored by Git. Never copy secrets
 between them and never add either file to a Docker image. Start from
-`.env.example`, then configure each file independently.
+`.env.example`, then configure each file independently. See
+[Environment configuration](18-ENVIRONMENT-CONFIGURATION.md) for the complete
+variable reference, value sources, secret classification and safe skeletons.
 
 Production `.env.local` orchestration values:
 
 ```dotenv
-HAN_CONTENT_COMPOSE_PROJECT=han-content-os-prod
+HAN_CONTENT_COMPOSE_PROJECT=han-content-os
 HAN_CONTENT_IMAGE=han-content-os:prod
 HAN_CONTENT_ENV_FILE=.env.local
 HAN_CONTENT_PORT=3210
@@ -70,8 +72,10 @@ overwrite the image used by production, or vice versa.
 
 The Compose variables have backward-compatible defaults (`han-content-os`,
 `han-content-os:local`, `.env.local`, and `3210`) for an existing production
-installation. Operators should set the explicit production values above before
-running both stacks concurrently.
+installation. Existing production should preserve its current project identity;
+changing to `han-content-os-prod` creates a different Compose project and requires
+a controlled cutover. The explicit production values above preserve the historical
+project while giving production its own image tag.
 
 ## Preflight
 
