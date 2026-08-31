@@ -10,6 +10,12 @@ import { PageRepository } from "@/db/repositories/page-repository";
 import { PostRepository } from "@/db/repositories/post-repository";
 import { AppError } from "@/lib/errors/app-error";
 import {
+  assertPageReadyForMutation,
+  getPageCredentialIncidentStatus,
+  recordPageCredentialIncident,
+  type PageCredentialIncidentStatus,
+} from "@/modules/facebook/credential-incident";
+import {
   createMetaClientFromCredential,
   toStoredPageToken,
   type StoredPageToken,
@@ -102,7 +108,15 @@ export type RemotePostMutationPersistence = {
 
   removeSucceeded(input: CompletedRemoval): Promise<void>;
 
-  fail(operationId: string, code: string, message: string): Promise<void>;
+  fail(
+    operationId: string,
+    code: string,
+    message: string,
+    credentialIncident?: {
+      pageId: string;
+      status: PageCredentialIncidentStatus;
+    },
+  ): Promise<void>;
 
   uncertain(operationId: string, code: string): Promise<void>;
 };
@@ -153,13 +167,10 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
 
       const page = await new PageRepository(transaction).findById(post.pageId);
 
-      if (!page || !page.isActive || page.connectionStatus !== "active") {
-        throw new AppError({
-          code: "PAGE_NOT_ACTIVE",
-          message: "Page chưa sẵn sàng để cập nhật bài viết.",
-          status: 409,
-        });
-      }
+      assertPageReadyForMutation(
+        page,
+        "Page chưa sẵn sàng để cập nhật bài viết.",
+      );
 
       const credential = await new PageCredentialRepository(
         transaction,
@@ -275,12 +286,30 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
     });
   }
 
-  async fail(operationId: string, code: string, message: string) {
-    await new FacebookOperationRepository(getDatabase()).markFailed(
-      operationId,
-      code,
-      message,
-    );
+  async fail(
+    operationId: string,
+    code: string,
+    message: string,
+    credentialIncident?: {
+      pageId: string;
+      status: PageCredentialIncidentStatus;
+    },
+  ) {
+    await runInTransaction(async (transaction) => {
+      await new FacebookOperationRepository(transaction).markFailed(
+        operationId,
+        code,
+        message,
+      );
+      if (credentialIncident) {
+        await recordPageCredentialIncident(transaction, {
+          pageId: credentialIncident.pageId,
+          status: credentialIncident.status,
+          errorCode: code,
+          operationId,
+        });
+      }
+    });
   }
 
   async uncertain(operationId: string, code: string) {
@@ -320,7 +349,7 @@ export class RemotePostMutationService {
       }),
     });
 
-    await this.runRemoteMutation(prepared.operationId, () =>
+    await this.runRemoteMutation(prepared.operationId, prepared.pageId, () =>
       this.clientFactory(prepared.pageCredential).updatePostMessage(
         prepared.remotePostId,
         message,
@@ -354,7 +383,11 @@ export class RemotePostMutationService {
       }),
     });
 
-    const client = this.clientFactory(prepared.pageCredential);
+    const client = await this.runRemoteLookup(
+      prepared.operationId,
+      prepared.pageId,
+      async () => this.clientFactory(prepared.pageCredential),
+    );
 
     /*
      * Legacy video:
@@ -367,12 +400,14 @@ export class RemotePostMutationService {
      */
     const deletedRemotePostId =
       prepared.postType === "video" && !prepared.remotePostId.includes("_")
-        ? ((await this.runRemoteLookup(prepared.operationId, () =>
-            client.resolveVideoPostId(prepared.remotePostId),
+        ? ((await this.runRemoteLookup(
+            prepared.operationId,
+            prepared.pageId,
+            () => client.resolveVideoPostId(prepared.remotePostId),
           )) ?? prepared.remotePostId)
         : prepared.remotePostId;
 
-    await this.runRemoteMutation(prepared.operationId, () =>
+    await this.runRemoteMutation(prepared.operationId, prepared.pageId, () =>
       client.deletePost(deletedRemotePostId),
     );
 
@@ -397,12 +432,13 @@ export class RemotePostMutationService {
 
   private async runRemoteLookup<T>(
     operationId: string,
+    pageId: string,
     lookup: () => Promise<T>,
   ): Promise<T> {
     try {
       return await lookup();
     } catch (error) {
-      await this.recordRemoteFailure(operationId, error);
+      await this.recordRemoteFailure(operationId, pageId, error);
 
       throw error;
     }
@@ -410,12 +446,13 @@ export class RemotePostMutationService {
 
   private async runRemoteMutation(
     operationId: string,
+    pageId: string,
     mutate: () => Promise<void>,
   ) {
     try {
       await mutate();
     } catch (error) {
-      await this.recordRemoteFailure(operationId, error);
+      await this.recordRemoteFailure(operationId, pageId, error);
 
       throw error;
     }
@@ -443,7 +480,11 @@ export class RemotePostMutationService {
     }
   }
 
-  private async recordRemoteFailure(operationId: string, error: unknown) {
+  private async recordRemoteFailure(
+    operationId: string,
+    pageId: string,
+    error: unknown,
+  ) {
     const normalized =
       error instanceof AppError
         ? error
@@ -457,10 +498,12 @@ export class RemotePostMutationService {
     if (normalized.retryable) {
       await this.persistence.uncertain(operationId, normalized.code);
     } else {
+      const credentialIncident = getPageCredentialIncidentStatus(normalized);
       await this.persistence.fail(
         operationId,
         normalized.code,
         normalized.message,
+        credentialIncident ? { pageId, status: credentialIncident } : undefined,
       );
     }
   }

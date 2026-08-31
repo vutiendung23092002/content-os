@@ -2,12 +2,18 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { getDatabase, runInTransaction } from "@/db/client";
+import { runInTransaction } from "@/db/client";
 import { FacebookOperationRepository } from "@/db/repositories/facebook-operation-repository";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
 import { PostRepository } from "@/db/repositories/post-repository";
 import { AppError } from "@/lib/errors/app-error";
+import {
+  assertPageReadyForMutation,
+  getPageCredentialIncidentStatus,
+  recordPageCredentialIncident,
+  type PageCredentialIncidentStatus,
+} from "@/modules/facebook/credential-incident";
 import {
   createMetaClientFromCredential,
   toStoredPageToken,
@@ -56,13 +62,17 @@ export type ReschedulePersistence = {
   }): Promise<void>;
   fail(input: {
     operationId: string;
+    pageId?: string;
     code: string;
     message: string;
+    credentialIncident?: PageCredentialIncidentStatus;
   }): Promise<void>;
   uncertain(input: {
     operationId: string;
+    pageId?: string;
     code: string;
     evidence: Record<string, unknown>;
+    credentialIncident?: PageCredentialIncidentStatus;
   }): Promise<void>;
 };
 
@@ -102,13 +112,10 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
       }
 
       const page = await new PageRepository(transaction).findById(post.pageId);
-      if (!page || !page.isActive || page.connectionStatus !== "active") {
-        throw new AppError({
-          code: "PAGE_NOT_ACTIVE",
-          message: "Page chưa sẵn sàng để đổi lịch bài viết.",
-          status: 409,
-        });
-      }
+      assertPageReadyForMutation(
+        page,
+        "Page chưa sẵn sàng để đổi lịch bài viết.",
+      );
       const credential = await new PageCredentialRepository(
         transaction,
       ).findByPageId(page.id);
@@ -172,24 +179,52 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
     });
   }
 
-  async fail(input: { operationId: string; code: string; message: string }) {
-    await new FacebookOperationRepository(getDatabase()).markFailed(
-      input.operationId,
-      input.code,
-      input.message,
-    );
+  async fail(input: {
+    operationId: string;
+    pageId?: string;
+    code: string;
+    message: string;
+    credentialIncident?: PageCredentialIncidentStatus;
+  }) {
+    await runInTransaction(async (transaction) => {
+      await new FacebookOperationRepository(transaction).markFailed(
+        input.operationId,
+        input.code,
+        input.message,
+      );
+      if (input.pageId && input.credentialIncident) {
+        await recordPageCredentialIncident(transaction, {
+          pageId: input.pageId,
+          status: input.credentialIncident,
+          errorCode: input.code,
+          operationId: input.operationId,
+        });
+      }
+    });
   }
 
   async uncertain(input: {
     operationId: string;
+    pageId?: string;
     code: string;
     evidence: Record<string, unknown>;
+    credentialIncident?: PageCredentialIncidentStatus;
   }) {
     void input.evidence;
-    await new FacebookOperationRepository(getDatabase()).markUncertain(
-      input.operationId,
-      input.code,
-    );
+    await runInTransaction(async (transaction) => {
+      await new FacebookOperationRepository(transaction).markUncertain(
+        input.operationId,
+        input.code,
+      );
+      if (input.pageId && input.credentialIncident) {
+        await recordPageCredentialIncident(transaction, {
+          pageId: input.pageId,
+          status: input.credentialIncident,
+          errorCode: input.code,
+          operationId: input.operationId,
+        });
+      }
+    });
   }
 }
 
@@ -230,10 +265,10 @@ export class ReschedulePostService {
       scheduledFor,
       requestFingerprint: fingerprint(postId, scheduledFor),
     });
-    const client = this.clientFactory(prepared.pageCredential);
-
+    let client: RescheduleMetaClient;
     let before: ScheduledRemotePost | undefined;
     try {
+      client = this.clientFactory(prepared.pageCredential);
       before = await this.findRemote(client, prepared);
     } catch (error) {
       const normalized =
@@ -247,8 +282,11 @@ export class ReschedulePostService {
             });
       await this.persistence.fail({
         operationId: prepared.operationId,
+        pageId: prepared.pageId,
         code: normalized.code,
         message: normalized.message,
+        credentialIncident:
+          getPageCredentialIncidentStatus(normalized) ?? undefined,
       });
       throw normalized;
     }
@@ -280,8 +318,11 @@ export class ReschedulePostService {
       if (!normalized.retryable) {
         await this.persistence.fail({
           operationId: prepared.operationId,
+          pageId: prepared.pageId,
           code: normalized.code,
           message: normalized.message,
+          credentialIncident:
+            getPageCredentialIncidentStatus(normalized) ?? undefined,
         });
         throw normalized;
       }
@@ -307,12 +348,14 @@ export class ReschedulePostService {
     try {
       confirmed = await this.readDesiredTime(client, prepared, scheduledFor);
     } catch (error) {
+      const credentialIncident = getPageCredentialIncidentStatus(error);
       await this.markUncertain(
         prepared,
         scheduledFor,
         error instanceof AppError
           ? error.code
           : "FACEBOOK_RESCHEDULE_READBACK_FAILED",
+        credentialIncident ?? undefined,
       );
       throw new AppError({
         code: "FACEBOOK_RESCHEDULE_UNCERTAIN",
@@ -381,10 +424,13 @@ export class ReschedulePostService {
     prepared: PreparedReschedule,
     scheduledFor: Date,
     code: string,
+    credentialIncident?: PageCredentialIncidentStatus,
   ) {
     await this.persistence.uncertain({
       operationId: prepared.operationId,
+      pageId: prepared.pageId,
       code,
+      credentialIncident,
       evidence: {
         version: 1,
         reason: "reschedule_readback_unconfirmed",

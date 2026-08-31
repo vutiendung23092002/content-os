@@ -675,17 +675,25 @@ export class MetaGraphClient {
     if (!response.ok) {
       const graphError = graphErrorSchema.safeParse(payload);
       const code = graphError.success ? graphError.data.error.code : undefined;
-      const permissionDenied = code === 10 || code === 190 || code === 200;
+      const tokenInvalid = code === 190;
+      const permissionDenied = code === 10 || code === 200;
 
       throw new AppError({
-        code: permissionDenied
-          ? "FACEBOOK_PERMISSION_DENIED"
-          : "FACEBOOK_API_ERROR",
-        message: permissionDenied
-          ? "Facebook token không còn đủ quyền cho thao tác này."
-          : "Meta Graph API từ chối yêu cầu.",
-        status: permissionDenied ? 403 : 502,
-        retryable: response.status === 429 || response.status >= 500,
+        code: tokenInvalid
+          ? "FACEBOOK_TOKEN_INVALID"
+          : permissionDenied
+            ? "FACEBOOK_PERMISSION_DENIED"
+            : "FACEBOOK_API_ERROR",
+        message: tokenInvalid
+          ? "Facebook Page token đã hết hạn hoặc bị thu hồi."
+          : permissionDenied
+            ? "Facebook token không còn đủ quyền cho thao tác này."
+            : "Meta Graph API từ chối yêu cầu.",
+        status: tokenInvalid || permissionDenied ? 403 : 502,
+        retryable:
+          !tokenInvalid &&
+          !permissionDenied &&
+          (response.status === 429 || response.status >= 500),
       });
     }
 

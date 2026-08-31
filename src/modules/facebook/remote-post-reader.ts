@@ -1,10 +1,15 @@
 import "server-only";
 import { z } from "zod";
-import { getDatabase } from "@/db/client";
+import { getDatabase, runInTransaction } from "@/db/client";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
 import { AppError } from "@/lib/errors/app-error";
 import { MetaGraphClient } from "./meta-client";
+import {
+  getPageCredentialIncidentStatus,
+  recordPageCredentialIncident,
+  type PageCredentialIncidentStatus,
+} from "./credential-incident";
 import {
   createMetaClientFromCredential,
   toStoredPageToken,
@@ -55,6 +60,17 @@ export type RemotePostMetaClient = Pick<
   MetaGraphClient,
   "getPublishedPosts" | "getScheduledPosts"
 >;
+
+export type RemotePostIncidentRecorder = (input: {
+  pageId: string;
+  status: PageCredentialIncidentStatus;
+  errorCode: string;
+}) => Promise<void>;
+
+const defaultIncidentRecorder: RemotePostIncidentRecorder = (input) =>
+  runInTransaction((transaction) =>
+    recordPageCredentialIncident(transaction, input),
+  );
 
 class DatabaseRemotePostAccess implements RemotePostAccess {
   async load(localPageId: string) {
@@ -175,6 +191,7 @@ export class RemotePostReader {
     private readonly clientFactory: (
       credential: StoredPageToken,
     ) => RemotePostMetaClient = createMetaClientFromCredential,
+    private readonly incidentRecorder: RemotePostIncidentRecorder = defaultIncidentRecorder,
   ) {}
 
   async list(input: {
@@ -195,16 +212,21 @@ export class RemotePostReader {
       ? z.string().trim().min(1).max(2048).parse(input.after)
       : undefined;
     const context = await this.access.load(localPageId);
-    const client = this.clientFactory(context.pageCredential);
+    const client = await this.readWithCredentialGuard(
+      context.page.id,
+      async () => this.clientFactory(context.pageCredential),
+    );
 
     if (kind === "scheduled") {
-      const result = input.limit
-        ? await client.getScheduledPosts(
-            context.page.externalPageId,
-            after,
-            input.limit,
-          )
-        : await client.getScheduledPosts(context.page.externalPageId, after);
+      const result = await this.readWithCredentialGuard(context.page.id, () =>
+        input.limit
+          ? client.getScheduledPosts(
+              context.page.externalPageId,
+              after,
+              input.limit,
+            )
+          : client.getScheduledPosts(context.page.externalPageId, after),
+      );
 
       return {
         page: context.page,
@@ -232,15 +254,16 @@ export class RemotePostReader {
       };
     }
 
-    const result =
+    const result = await this.readWithCredentialGuard(context.page.id, () =>
       input.limit || input.window
-        ? await client.getPublishedPosts(
+        ? client.getPublishedPosts(
             context.page.externalPageId,
             after,
             input.limit ?? 50,
             input.window,
           )
-        : await client.getPublishedPosts(context.page.externalPageId, after);
+        : client.getPublishedPosts(context.page.externalPageId, after),
+    );
 
     return {
       page: context.page,
@@ -273,5 +296,25 @@ export class RemotePostReader {
       after: result.after ?? null,
       fetchedAt: new Date().toISOString(),
     };
+  }
+
+  private async readWithCredentialGuard<Result>(
+    pageId: string,
+    read: () => Promise<Result>,
+  ): Promise<Result> {
+    try {
+      return await read();
+    } catch (error) {
+      const status = getPageCredentialIncidentStatus(error);
+      if (status) {
+        await this.incidentRecorder({
+          pageId,
+          status,
+          errorCode:
+            error instanceof AppError ? error.code : "FACEBOOK_API_ERROR",
+        });
+      }
+      throw error;
+    }
   }
 }

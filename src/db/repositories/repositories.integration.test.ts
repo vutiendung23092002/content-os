@@ -11,10 +11,14 @@ import { UserPageAssignmentRepository } from "./user-page-assignment-repository"
 import { AssetRepository } from "./asset-repository";
 import { MutationRateLimitRepository } from "./mutation-rate-limit-repository";
 import { encryptToken } from "@/lib/crypto/token-crypto";
+import { TokenKeyring } from "@/lib/crypto/token-keyring";
+import { recordPageCredentialIncident } from "@/modules/facebook/credential-incident";
+import { PageCredentialRotationService } from "@/modules/facebook/rotate-page-credentials";
 import {
   appUsers,
   assets,
   facebookOperations,
+  pages,
   posts,
   userPageAssignments,
 } from "@/db/schema";
@@ -24,6 +28,60 @@ const integrationEnabled = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!integrationEnabled)("database repositories", () => {
   afterAll(async () => {
     await closeDatabase();
+  });
+
+  it("drills a Page credential key rotation on isolated database records", async () => {
+    const database = getDatabase();
+    const sourceVersion =
+      1_000_000_000 + (randomBytes(4).readUInt32BE() % 500_000_000);
+    const targetVersion = sourceVersion + 1;
+    const oldKey = randomBytes(32).toString("base64");
+    const newKey = randomBytes(32).toString("base64");
+    const page = await new PageRepository(database).upsertManagedPage({
+      externalPageId: `rotation-drill-${randomUUID()}`,
+      name: "Rotation Drill Page",
+    });
+
+    try {
+      await new PageCredentialRepository(database).upsert(
+        page.id,
+        encryptToken("rotation-drill-token", oldKey, sourceVersion),
+      );
+      const keyring = new TokenKeyring({
+        currentVersion: targetVersion,
+        currentKey: newKey,
+        previousKeys: { [sourceVersion]: oldKey },
+      });
+      const service = new PageCredentialRotationService(keyring);
+
+      await expect(
+        service.rotate({ fromVersion: sourceVersion, dryRun: true }),
+      ).resolves.toMatchObject({ credentialCount: 1, dryRun: true });
+      await expect(
+        service.rotate({ fromVersion: sourceVersion }),
+      ).resolves.toMatchObject({
+        fromVersion: sourceVersion,
+        toVersion: targetVersion,
+        credentialCount: 1,
+      });
+      expect(await service.countByVersion(sourceVersion)).toBe(0);
+
+      const rotated = await new PageCredentialRepository(database).findByPageId(
+        page.id,
+      );
+      expect(rotated?.keyVersion).toBe(targetVersion);
+      expect(
+        keyring.decrypt({
+          ciphertext: rotated!.accessTokenCiphertext,
+          nonce: rotated!.nonce,
+          authTag: rotated!.authTag,
+          keyVersion: rotated!.keyVersion,
+          fingerprint: rotated!.tokenFingerprint,
+        }),
+      ).toBe("rotation-drill-token");
+    } finally {
+      await database.delete(pages).where(eq(pages.id, page.id));
+    }
   });
 
   it("persists related records and rolls the complete unit of work back", async () => {
@@ -53,6 +111,37 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           randomBytes(32).toString("base64"),
         );
         await credentialRepository.upsert(page.id, encrypted);
+        await recordPageCredentialIncident(transaction, {
+          pageId: page.id,
+          status: "revoked",
+          errorCode: "FACEBOOK_TOKEN_INVALID",
+          operationId: "00000000-0000-0000-0000-000000000001",
+        });
+        expect(await pageRepository.findById(page.id)).toMatchObject({
+          connectionStatus: "revoked",
+          remoteMetadata: {
+            credentialIncident: {
+              version: 1,
+              status: "revoked",
+              errorCode: "FACEBOOK_TOKEN_INVALID",
+            },
+          },
+        });
+        expect(
+          (await credentialRepository.findByPageId(page.id))?.revokedAt,
+        ).toBeInstanceOf(Date);
+
+        await pageRepository.upsertManagedPage({
+          externalPageId,
+          name: "Integration Test Page",
+        });
+        await credentialRepository.upsert(page.id, encrypted);
+        expect(await pageRepository.findById(page.id)).toMatchObject({
+          connectionStatus: "active",
+        });
+        expect(
+          (await credentialRepository.findByPageId(page.id))?.revokedAt,
+        ).toBeNull();
         const draft = await postRepository.createDraft({
           pageId: page.id,
           message: "Integration draft",
@@ -184,7 +273,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
       getDatabase(),
     ).findByExternalId(externalPageId);
     expect(pageAfterRollback).toBeUndefined();
-  });
+  }, 15_000);
 
   it("does not resurrect locally removed remote posts during remote cache sync", async () => {
     const externalPageId = `remote-tombstone-${randomUUID()}`;

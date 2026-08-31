@@ -55,6 +55,10 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - AES-256-GCM cho Page token.
 - Nonce ngẫu nhiên, authentication tag, key version và SHA-256 fingerprint.
 - Test round-trip, tamper detection và invalid configuration.
+- Versioned keyring hỗ trợ current/previous keys và fail closed với unknown version, không fallback.
+- Operator CLI `credentials:rotate-pages` bắt buộc dry-run trước execution, xác nhận target version và verify old-version count bằng `0`.
+- Meta invalid/revoked/permission errors khóa mutation theo Page, lưu sanitized incident evidence và được unlock chỉ sau Page verify/sync thành công.
+- Runbook rotation/recovery nằm tại `docs/runbooks/credential-rotation-and-recovery.md`.
 - Không có token/secret thật trong repository.
 
 ### Meta adapter
@@ -98,7 +102,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 141 tests pass; 3 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test.
+- Vitest: 283 tests pass; 7 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm isolated credential-rotation drill và credential lock/recovery.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -115,7 +119,7 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Phần còn lại của Meta capability smoke: reschedule, sửa caption, hủy lịch và xóa bài đã đăng trên Page test.
 - Remote mutation service cho reschedule/edit/cancel/delete đã có mock/unit/typecheck; chưa live smoke đầy đủ trên Page test.
 - Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
-- User-token operational rotation, runbook sự cố, metrics/alert và bài kiểm tra backup/restore vẫn thuộc SEC-004/operations; Page credential keyring/rotation utility đã hoàn thành riêng trong SEC-002.
+- Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness; credential rotation và incident recovery runbook đã hoàn thành trong SEC-004.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
 ## Secret cần cấu hình tiếp theo

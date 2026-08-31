@@ -94,4 +94,13 @@ export class PageCredentialRepository {
 
     return Boolean(updated);
   }
+
+  async markRevoked(pageId: string, revokedAt = new Date()): Promise<boolean> {
+    const [updated] = await this.database
+      .update(pageCredentials)
+      .set({ revokedAt, updatedAt: revokedAt })
+      .where(eq(pageCredentials.pageId, pageId))
+      .returning({ pageId: pageCredentials.pageId });
+    return Boolean(updated);
+  }
 }

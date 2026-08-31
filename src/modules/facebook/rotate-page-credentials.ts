@@ -44,6 +44,16 @@ export class PageCredentialRotationService {
     private readonly transaction: RunRotationTransaction = defaultTransaction,
   ) {}
 
+  get targetVersion(): number {
+    return this.keyring.currentVersion;
+  }
+
+  async countByVersion(keyVersion: number): Promise<number> {
+    return this.transaction(
+      async (store) => (await store.listByKeyVersion(keyVersion)).length,
+    );
+  }
+
   async rotate(input: {
     fromVersion: number;
     dryRun?: boolean;

@@ -13,6 +13,14 @@ export type ManagedPageInput = {
   remoteMetadata?: Record<string, unknown>;
 };
 
+export type PageCredentialIncidentInput = {
+  pageId: string;
+  status: "revoked" | "permission_missing" | "error";
+  errorCode: string;
+  operationId?: string;
+  detectedAt: Date;
+};
+
 export class PageRepository {
   constructor(private readonly database: DatabaseExecutor) {}
 
@@ -101,6 +109,33 @@ export class PageRepository {
       .update(pages)
       .set({ isActive: false, updatedAt: new Date() })
       .where(and(eq(pages.id, id), eq(pages.isActive, true)))
+      .returning();
+    return record;
+  }
+
+  async lockForCredentialIncident(
+    input: PageCredentialIncidentInput,
+  ): Promise<PageRecord | undefined> {
+    const current = await this.findById(input.pageId);
+    if (!current) return undefined;
+
+    const [record] = await this.database
+      .update(pages)
+      .set({
+        connectionStatus: input.status,
+        remoteMetadata: {
+          ...current.remoteMetadata,
+          credentialIncident: {
+            version: 1,
+            status: input.status,
+            errorCode: input.errorCode,
+            operationId: input.operationId ?? null,
+            detectedAt: input.detectedAt.toISOString(),
+          },
+        },
+        updatedAt: input.detectedAt,
+      })
+      .where(eq(pages.id, input.pageId))
       .returning();
     return record;
   }

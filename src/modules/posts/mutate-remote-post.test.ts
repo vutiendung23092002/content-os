@@ -304,6 +304,10 @@ describe("RemotePostMutationService", () => {
       "operation-1",
       "FACEBOOK_PERMISSION_DENIED",
       "Token mất quyền.",
+      {
+        pageId: prepared.pageId,
+        status: "permission_missing",
+      },
     );
 
     expect(context.persistence.uncertain).not.toHaveBeenCalled();

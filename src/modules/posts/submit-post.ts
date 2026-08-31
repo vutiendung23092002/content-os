@@ -10,6 +10,12 @@ import { PostRepository } from "@/db/repositories/post-repository";
 import { AppError } from "@/lib/errors/app-error";
 import type { MetaPostSubmissionReceipt } from "@/modules/facebook/meta-client";
 import {
+  assertPageReadyForMutation,
+  getPageCredentialIncidentStatus,
+  recordPageCredentialIncident,
+  type PageCredentialIncidentStatus,
+} from "@/modules/facebook/credential-incident";
+import {
   createMetaClientFromCredential,
   toStoredPageToken,
   type StoredPageToken,
@@ -48,9 +54,11 @@ export type SubmissionPersistence = {
   fail(input: {
     operationId: string;
     postId: string;
+    pageId: string;
     code: string;
     message: string;
     uncertain: boolean;
+    credentialIncident?: PageCredentialIncidentStatus;
   }): Promise<void>;
 };
 
@@ -116,16 +124,14 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
       }
 
       const page = await pages.findById(post.pageId);
-      if (!page || !page.isActive || page.connectionStatus !== "active") {
-        throw new AppError({
-          code: "PAGE_NOT_ACTIVE",
-          message: "Page chưa sẵn sàng để đăng bài.",
-          status: 409,
-        });
-      }
+      assertPageReadyForMutation(page, "Page chưa sẵn sàng để đăng bài.");
 
       const credential = await credentials.findByPageId(page.id);
-      if (!credential || credential.revokedAt) {
+      if (
+        !credential ||
+        credential.revokedAt ||
+        (credential.expiresAt && credential.expiresAt <= new Date())
+      ) {
         throw new AppError({
           code: "PAGE_CREDENTIAL_MISSING",
           message: "Page chưa có credential hợp lệ.",
@@ -197,9 +203,11 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
   async fail(input: {
     operationId: string;
     postId: string;
+    pageId: string;
     code: string;
     message: string;
     uncertain: boolean;
+    credentialIncident?: PageCredentialIncidentStatus;
   }): Promise<void> {
     await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
@@ -219,6 +227,14 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
           input.code,
           input.message,
         );
+      }
+      if (input.credentialIncident) {
+        await recordPageCredentialIncident(transaction, {
+          pageId: input.pageId,
+          status: input.credentialIncident,
+          errorCode: input.code,
+          operationId: input.operationId,
+        });
       }
     });
   }
@@ -280,12 +296,11 @@ export class SubmitPostService {
       requestFingerprint: fingerprint(input),
       scheduledFor: input.scheduledFor,
     });
-    const client = this.clientFactory(prepared.pageCredential);
-
     let remotePostId: string;
     let remoteMediaIds: string[] = [];
 
     try {
+      const client = this.clientFactory(prepared.pageCredential);
       const mediaUrls =
         prepared.media.length > 0
           ? await this.assetUrls.createSignedUrls(
@@ -377,9 +392,12 @@ export class SubmitPostService {
       await this.persistence.fail({
         operationId: prepared.operationId,
         postId: prepared.postId,
+        pageId: prepared.pageId,
         code: normalized.code,
         message: normalized.message,
         uncertain,
+        credentialIncident:
+          getPageCredentialIncidentStatus(normalized) ?? undefined,
       });
       throw normalized;
     }

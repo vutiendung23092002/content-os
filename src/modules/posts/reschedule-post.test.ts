@@ -144,7 +144,11 @@ describe("ReschedulePostService", () => {
       context.service.reschedule(postId, desired),
     ).rejects.toMatchObject({ code: "FACEBOOK_PERMISSION_DENIED" });
     expect(context.persistence.fail).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "FACEBOOK_PERMISSION_DENIED" }),
+      expect.objectContaining({
+        code: "FACEBOOK_PERMISSION_DENIED",
+        pageId: "page-local-1",
+        credentialIncident: "permission_missing",
+      }),
     );
     expect(context.persistence.uncertain).not.toHaveBeenCalled();
   });

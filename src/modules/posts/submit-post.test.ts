@@ -129,8 +129,34 @@ describe("SubmitPostService", () => {
       code: "FACEBOOK_PERMISSION_DENIED",
     });
     expect(setupResult.persistence.fail).toHaveBeenCalledWith(
-      expect.objectContaining({ uncertain: false }),
+      expect.objectContaining({
+        uncertain: false,
+        pageId: "page-local-1",
+        credentialIncident: "permission_missing",
+      }),
     );
+  });
+
+  it("locks a Page after Meta confirms its token is invalid", async () => {
+    const setupResult = setup();
+    vi.mocked(setupResult.client.publishPost).mockRejectedValue(
+      new AppError({
+        code: "FACEBOOK_TOKEN_INVALID",
+        message: "Facebook Page token đã hết hạn hoặc bị thu hồi.",
+        status: 403,
+      }),
+    );
+
+    await expect(setupResult.service.publish(postId)).rejects.toMatchObject({
+      code: "FACEBOOK_TOKEN_INVALID",
+    });
+    expect(setupResult.persistence.fail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uncertain: false,
+        credentialIncident: "revoked",
+      }),
+    );
+    expect(setupResult.client.publishPost).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a past schedule before creating an operation", async () => {

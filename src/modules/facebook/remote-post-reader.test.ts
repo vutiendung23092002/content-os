@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { AppError } from "@/lib/errors/app-error";
 import {
   RemotePostReader,
   type RemotePostAccess,
@@ -103,16 +104,38 @@ function createSetup() {
     }),
   };
   const clientFactory = vi.fn().mockReturnValue(client);
+  const incidentRecorder = vi.fn().mockResolvedValue(undefined);
 
   return {
     access,
     client,
     clientFactory,
-    reader: new RemotePostReader(access, clientFactory),
+    incidentRecorder,
+    reader: new RemotePostReader(access, clientFactory, incidentRecorder),
   };
 }
 
 describe("RemotePostReader", () => {
+  it("locks the Page when a read confirms an invalid credential", async () => {
+    const setup = createSetup();
+    vi.mocked(setup.client.getPublishedPosts).mockRejectedValue(
+      new AppError({
+        code: "FACEBOOK_TOKEN_INVALID",
+        message: "Facebook Page token đã hết hạn hoặc bị thu hồi.",
+        status: 403,
+      }),
+    );
+
+    await expect(
+      setup.reader.list({ localPageId, kind: "published" }),
+    ).rejects.toMatchObject({ code: "FACEBOOK_TOKEN_INVALID" });
+    expect(setup.incidentRecorder).toHaveBeenCalledWith({
+      pageId: localPageId,
+      status: "revoked",
+      errorCode: "FACEBOOK_TOKEN_INVALID",
+    });
+  });
+
   it("returns a safe published-post DTO and passes only the remote Page ID", async () => {
     const setup = createSetup();
     const result = await setup.reader.list({

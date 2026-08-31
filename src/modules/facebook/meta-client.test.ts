@@ -270,8 +270,29 @@ describe("MetaGraphClient", () => {
     });
 
     await expect(client.getManagedPages()).rejects.toMatchObject({
+      code: "FACEBOOK_TOKEN_INVALID",
+      message: "Facebook Page token đã hết hạn hoặc bị thu hồi.",
+      retryable: false,
+    });
+  });
+
+  it("distinguishes missing permissions from an invalid token", async () => {
+    const client = new MetaGraphClient({
+      graphVersion: "v99.0",
+      accessToken: "page-token",
+      baseUrl: "https://graph.test",
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: 200, message: "provider detail" } },
+            { status: 403 },
+          ),
+        ),
+    });
+
+    await expect(client.getPublishedPosts("page-1")).rejects.toMatchObject({
       code: "FACEBOOK_PERMISSION_DENIED",
-      message: "Facebook token không còn đủ quyền cho thao tác này.",
       retryable: false,
     });
   });
