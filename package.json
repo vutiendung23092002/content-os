@@ -30,6 +30,9 @@
     "facebook:list-pages": "node --env-file=.env.local scripts/list-managed-pages.mjs",
     "facebook:capability-smoke": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/meta-capability-smoke.ts",
     "credentials:rotate-pages": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/rotate-page-credentials.ts",
+    "staging:env-check": "node --env-file-if-exists=.env.local scripts/verify-staging-environment.mjs",
+    "staging:access-smoke": "node --env-file-if-exists=.env.local scripts/staging-access-smoke.mjs",
+    "release:secret-scan": "node --env-file-if-exists=.env.local scripts/verify-release-secrets.mjs",
     "check": "corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build"
   },
   "dependencies": {

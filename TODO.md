@@ -465,6 +465,18 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: deployment config, migration/release scripts, environment checklist.
   - Acceptance criteria: Không public; secret ở platform storage; migration/rollback/backup rõ; health check pass.
   - Tests: Fresh deploy, unauthorized access, secret scan, database restore sample và Meta smoke test.
+  - Trạng thái audit: `PARTIAL` — repository-side readiness hoàn tất; chưa có evidence cho deployment/restore drill thật.
+  - [x] Docker runtime bind loopback, chạy non-root; Google login/allowlist/Page authorization và dedicated cron credentials giữ nguyên.
+  - [x] Staging environment/secret classification và fail-closed `staging:env-check`; capability Page variables chỉ dành cho local/staging smoke.
+  - [x] Release sequence dùng đúng `db:ping`, `db:check`, `db:migrate`, `db:verify`, `test:db`; rollback code tách biệt database restore/forward-fix.
+  - [x] `/api/health` kiểm tra runtime database, trả `503` sanitized khi dependency unavailable và có regression tests.
+  - [x] Read-only `staging:access-smoke` cho protected page/API, Admin API, cron credentials và legacy password endpoint.
+  - [x] `release:secret-scan` kiểm tra tracked files và built client assets mà không in secret; evidence template không chứa credential.
+  - [x] Runbook backup/restore PostgreSQL/Supabase staging cô lập, kiểm tra schema/sample an toàn và encrypted credential aggregates.
+  - [x] Meta staging checklist tái sử dụng hardened capability smoke, bắt buộc discovery-only trước và không chạy write smoke trong CI.
+  - [ ] Operator provision staging tách production, đặt private access gateway/platform secret storage và hoàn tất fresh-deploy evidence.
+  - [ ] Operator thực hiện backup/restore sample trên isolated staging target và ghi dated evidence.
+  - [ ] Operator chạy unauthorized/authenticated/Page-read/Meta staging smoke, rollback rehearsal và ghi dated evidence.
 
 - [ ] DEPLOY-002 — MVP production readiness review
   - Priority: P0

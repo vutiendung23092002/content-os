@@ -1,6 +1,6 @@
 # CURRENT STATE
 
-**Kiểm tra tại:** 2026-08-26
+**Kiểm tra tại:** 2026-08-31
 **Workspace:** `C:\Users\Dung\Documents\Project\han-content-os`
 
 ## Kết luận
@@ -26,6 +26,7 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 - Strict TypeScript, format, lint, typecheck, test, build scripts.
 - GitHub Actions CI không cần production secret.
 - Typed server environment và `.env.example` placeholder.
+- DEPLOY-001 repository readiness có staging environment/secret checklist, release/rollback flow, read-only unauthorized smoke, built-client/tracked-file secret scan và evidence template; repository chưa chọn một hosted deployment platform.
 - Safe API error contract, request ID và structured logger redaction.
 - Supabase Google OAuth SSR với PKCE callback, cookie phiên do Supabase quản lý và logout cùng origin.
 - Allowlist email trong `app_users`; API kiểm tra lại trạng thái duyệt trong database ở mỗi request nên khóa tài khoản có hiệu lực ngay.
@@ -40,7 +41,7 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 ### Database
 
 - Cả pooled `DATABASE_URL` và migration `DIRECT_DATABASE_URL` đã kết nối thành công.
-- Drizzle schema `hancontent_os` cho 12 bảng hiện hành, gồm `app_users`, `user_page_assignments` và `cron_jobs` phục vụ allowlist, phạm vi Page và lease/cursor cron.
+- Drizzle schema `hancontent_os` cho 13 bảng hiện hành, gồm `app_users`, `user_page_assignments`, `mutation_rate_limits` và `cron_jobs` phục vụ allowlist, phạm vi Page, mutation guard và lease/cursor cron.
 - Enum, foreign key, unique/index và check constraint cốt lõi.
 - Supabase-compatible runtime client dùng pooled URL với prepared statement tắt.
 - Drizzle config dùng direct URL cho migration.
@@ -104,7 +105,8 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 290 tests pass; 12 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm credential rotation/recovery, managed-Page reconciliation, duplicate submission claim và published/scheduled remote mirror behavior.
+- Vitest: 301 tests pass; 12 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm credential rotation/recovery, managed-Page reconciliation, duplicate submission claim và published/scheduled remote mirror behavior.
+- Database readiness audit hiện tại: pooled/direct connectivity, Drizzle migration check, schema verification và cả 12 integration tests đều pass; audit không chạy `db:migrate`.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
 - Read-only Facebook smoke: Page Naturally Việt Nam trả 50 bài đã đăng và cursor; scheduled list trả thành công; response không chứa credential.
@@ -113,15 +115,16 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Private Supabase Storage bucket `post-assets` đã được tạo cho JPEG/PNG/WebP và một video MP4/MOV tối đa 50 MB; upload và cleanup smoke thành công qua localhost lẫn Cloudflare Tunnel.
 - Live write smoke trên Page test Nero Team thành công với một bài có ảnh; operation local ở trạng thái `succeeded` và remote post ID đã được lưu để đối soát.
 - Live smoke đăng ngay/hẹn giờ native nhiều ảnh và video thường trên Page test đã thành công; scheduled preview đọc đầy đủ `attachments/subattachments`.
-- Routes build được: health/config, Page sync/list, draft CRUD, publish, schedule, reschedule, sửa caption remote và hủy/xóa remote.
-- Secret exposure scan trên client bundle/source/docs/scripts: pass.
+- Routes build được: health/config, Page sync/list, draft CRUD, publish, schedule, reschedule, sửa caption remote và hủy/xóa remote. Health readiness kiểm tra database và trả sanitized `503` khi runtime database unavailable.
+- Secret exposure scan trên client bundle/source/docs/scripts: pass; command lặp lại được là `release:secret-scan` sau production build.
 
 ## Chưa implement hoặc chưa xác minh
 
 - `FB-001` đến `FB-011` đã đóng. Capability report tại `docs/evidence/facebook-capability-v26.md` ghi run `v26.0` trên Nero Team với discovery/tasks/scopes/token types, published/scheduled reads, pagination, plain-text publish, native schedule, reschedule, cancel/delete và cleanup thành công. Exact 20-minute/29-day boundary posts không live-probe; report phân biệt rõ contract evidence và access tier không được Meta debug-token expose.
 - Live smoke cho reschedule/edit/cancel/delete đã hoàn tất trên Page test; không cần chạy lại destructive Facebook mutations cho audit này.
-- Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
-- Metrics/alert và bài kiểm tra backup/restore vẫn thuộc OBS/deployment readiness. SEC-004 đã hoàn thành sau code/CLI coverage, automated integration drill, incident recovery runbook và staging rotation drill của operator.
+- SEC-003 mutation hardening/rate limit đã hoàn thành; không còn là gap của staging readiness.
+- DEPLOY-001 hiện `PARTIAL`: code/runbook/checklist đã sẵn sàng nhưng chưa có evidence cho staging target tách production, private gateway, fresh deploy, isolated database restore, authenticated role smoke và rollback rehearsal thật.
+- Metrics/alert vẫn thuộc OBS-001/OBS-002. SEC-004 đã hoàn thành sau code/CLI coverage, automated integration drill, incident recovery runbook và staging rotation drill của operator.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
 ## Secret cần cấu hình tiếp theo

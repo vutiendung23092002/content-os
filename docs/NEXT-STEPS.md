@@ -4,22 +4,22 @@ Han Content OS đã có luồng MVP nội bộ cho đăng ngay/hẹn giờ nativ
 
 Các bước còn lại được ưu tiên theo rủi ro và giá trị vận hành:
 
-## 1. SEC-003 và SEC-004 — Hardening mutation/credential
+## 1. DEPLOY-001 — Hoàn tất evidence staging thật
 
-- Audit same-origin/CSRF guard trên toàn bộ API thay đổi dữ liệu.
-- Rate limit publish, schedule, upload và API quản trị.
-- Chuẩn hóa giới hạn caption, timestamp, request body và file.
-- Hoàn thiện công cụ/quy trình rotate Facebook token và `TOKEN_ENCRYPTION_KEY` mà không log plaintext.
+- Provision staging tách production với Supabase/Auth/Storage/secrets riêng và private access gateway; repository không tự chọn hosted platform.
+- Chạy fresh-deploy checklist trong `docs/runbooks/staging-deployment.md` và ghi safe evidence vào template.
+- Thực hiện isolated staging database backup/restore sample, authenticated member/Admin smoke và rollback rehearsal.
+- Chạy Meta discovery-only trước; write capability smoke chỉ thủ công trên designated non-production Page.
 
 ## 2. Đóng các task Meta/UI đã triển khai
 
 `FB-001` đến `FB-011` đã đóng sau capability smoke `v26.0`, contract/integration tests và live Page-test evidence. Capability report không secret nằm tại `docs/evidence/facebook-capability-v26.md`; không lặp lại destructive smoke trên Page production.
 
-## 3. OBS-001, OBS-002 và DEPLOY — Production readiness
+## 3. OBS-001, OBS-002 và DEPLOY-002 — Production readiness
 
 - Metrics/alert cho credential lỗi, cron lỗi, sync stale và operation `uncertain`.
 - Runbook cho token hết hạn, lịch biến mất, Meta timeout và cron ngừng chạy.
-- Test container tự khởi động sau reboot, health check, database backup/restore và secret scan.
+- Sau khi DEPLOY-001 có live evidence, test container tự khởi động sau reboot và tiếp tục production readiness review.
 - Chạy full quality gate trên bản build sẽ phát hành.
 
 ## 4. Tính năng sau MVP
