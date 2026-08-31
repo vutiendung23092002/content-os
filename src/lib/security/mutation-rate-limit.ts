@@ -10,6 +10,7 @@ export const mutationActions = [
   "admin:user:pages",
   "admin:user:role",
   "asset:image:upload",
+  "asset:image:upload:preflight",
   "asset:video:complete",
   "asset:video:create",
   "asset:delete",

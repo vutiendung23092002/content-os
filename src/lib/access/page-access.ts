@@ -1,6 +1,7 @@
 import "server-only";
 import { getDatabase } from "@/db/client";
 import { PostRepository } from "@/db/repositories/post-repository";
+import type { Viewer } from "@/lib/auth/types";
 import { AppError } from "@/lib/errors/app-error";
 import { PageAccessService } from "@/modules/auth/page-access-service";
 import { assertInternalAccess } from "./internal-access";
@@ -10,10 +11,17 @@ export async function assertRequestPageAccess(
   pageId: string,
 ) {
   const viewer = await assertInternalAccess(request);
+  await assertPageAccessForViewer(viewer, pageId);
+  return viewer;
+}
+
+export async function assertPageAccessForViewer(
+  viewer: Viewer | undefined,
+  pageId: string,
+) {
   const access = new PageAccessService();
   if (viewer) await access.assertAccess(viewer, pageId);
   else await access.assertPageActive(pageId);
-  return viewer;
 }
 
 export async function assertRequestPostAccess(

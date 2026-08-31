@@ -55,6 +55,25 @@ describe("mutation rate limiting", () => {
     });
   });
 
+  it("uses a separate global budget for image upload preflight", async () => {
+    const increment = vi.fn().mockResolvedValue(31);
+
+    await expect(
+      assertMutationRateLimit({
+        actor,
+        action: "asset:image:upload:preflight",
+        store: { increment } as MutationRateLimitStore,
+      }),
+    ).rejects.toMatchObject({ code: "RATE_LIMIT_EXCEEDED", status: 429 });
+    expect(increment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: actor.id,
+        pageScope: "global",
+        action: "asset:image:upload:preflight",
+      }),
+    );
+  });
+
   it("leaves machine-auth requests unchanged when no browser actor exists", async () => {
     const increment = vi.fn();
 

@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { AssetRepository } from "@/db/repositories/asset-repository";
-import { assertRequestPageAccess } from "@/lib/access/page-access";
+import { assertInternalAccess } from "@/lib/access/internal-access";
+import { assertPageAccessForViewer } from "@/lib/access/page-access";
 import { AppError } from "@/lib/errors/app-error";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { assertSameOrigin } from "@/lib/access/same-origin";
@@ -34,6 +35,11 @@ export async function POST(request: Request) {
 
   try {
     assertSameOrigin(request);
+    const actor = await assertInternalAccess(request);
+    await assertMutationRateLimit({
+      actor,
+      action: "asset:image:upload:preflight",
+    });
     const formData = await parseMultipartBody(
       request,
       MAX_IMAGE_MULTIPART_BYTES,
@@ -41,7 +47,7 @@ export async function POST(request: Request) {
     const { pageId, file } = uploadSchema.parse(
       Object.fromEntries(formData.entries()),
     );
-    const actor = await assertRequestPageAccess(request, pageId);
+    await assertPageAccessForViewer(actor, pageId);
     await assertMutationRateLimit({
       actor,
       pageId,

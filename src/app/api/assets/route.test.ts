@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AppError } from "@/lib/errors/app-error";
 
 const mocks = vi.hoisted(() => ({
   assertSameOrigin: vi.fn(),
-  assertRequestPageAccess: vi.fn(),
+  assertInternalAccess: vi.fn(),
+  assertPageAccessForViewer: vi.fn(),
+  assertMutationRateLimit: vi.fn(),
+  parseMultipartBody: vi.fn(),
   createAsset: vi.fn(),
   upload: vi.fn(),
   createSignedUrl: vi.fn(),
@@ -14,8 +18,17 @@ vi.mock("@/db/client", () => ({ getDatabase: vi.fn(() => ({})) }));
 vi.mock("@/lib/access/same-origin", () => ({
   assertSameOrigin: mocks.assertSameOrigin,
 }));
+vi.mock("@/lib/access/internal-access", () => ({
+  assertInternalAccess: mocks.assertInternalAccess,
+}));
 vi.mock("@/lib/access/page-access", () => ({
-  assertRequestPageAccess: mocks.assertRequestPageAccess,
+  assertPageAccessForViewer: mocks.assertPageAccessForViewer,
+}));
+vi.mock("@/lib/security/mutation-rate-limit", () => ({
+  assertMutationRateLimit: mocks.assertMutationRateLimit,
+}));
+vi.mock("@/lib/http/request-body", () => ({
+  parseMultipartBody: mocks.parseMultipartBody,
 }));
 vi.mock("@/db/repositories/asset-repository", () => ({
   AssetRepository: class {
@@ -39,6 +52,7 @@ import { POST } from "./route";
 
 const pageId = "018f0d44-35f0-7b63-99d2-c1b9222cd05c";
 const assetId = "018f0d44-35f0-7b63-99d2-c1b9222cd05e";
+const actor = { id: "018f0d44-35f0-7b63-99d2-c1b9222cd060" };
 
 function png(width: number, height: number): Uint8Array {
   const u32 = (value: number) => [
@@ -98,7 +112,12 @@ function requestFor(file: File): Request {
 describe("POST /api/assets", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.assertRequestPageAccess.mockResolvedValue(undefined);
+    mocks.assertInternalAccess.mockResolvedValue(actor);
+    mocks.assertPageAccessForViewer.mockResolvedValue(undefined);
+    mocks.assertMutationRateLimit.mockResolvedValue(undefined);
+    mocks.parseMultipartBody.mockImplementation((request: Request) =>
+      request.formData(),
+    );
     mocks.upload.mockResolvedValue(undefined);
     mocks.createSignedUrl.mockResolvedValue("https://signed.example/image");
     mocks.remove.mockResolvedValue(undefined);
@@ -121,6 +140,65 @@ describe("POST /api/assets", () => {
     );
   });
 
+  it("rejects an unauthenticated actor before parsing multipart", async () => {
+    mocks.assertInternalAccess.mockRejectedValueOnce(
+      new AppError({
+        code: "AUTHENTICATION_REQUIRED",
+        message: "Authentication required",
+        status: 401,
+      }),
+    );
+    const file = new File([png(10, 10).buffer as ArrayBuffer], "cover.png", {
+      type: "image/png",
+    });
+
+    const response = await POST(requestFor(file));
+
+    expect(response.status).toBe(401);
+    expect(mocks.parseMultipartBody).not.toHaveBeenCalled();
+    expect(mocks.assertMutationRateLimit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a pre-rate-limited actor before parsing multipart", async () => {
+    mocks.assertMutationRateLimit.mockRejectedValueOnce(
+      new AppError({
+        code: "RATE_LIMIT_EXCEEDED",
+        message: "Too many uploads",
+        status: 429,
+      }),
+    );
+    const file = new File([png(10, 10).buffer as ArrayBuffer], "cover.png", {
+      type: "image/png",
+    });
+
+    const response = await POST(requestFor(file));
+
+    expect(response.status).toBe(429);
+    expect(mocks.parseMultipartBody).not.toHaveBeenCalled();
+    expect(mocks.assertPageAccessForViewer).not.toHaveBeenCalled();
+  });
+
+  it("checks Page authorization after parsing the Page ID", async () => {
+    mocks.assertPageAccessForViewer.mockRejectedValueOnce(
+      new AppError({
+        code: "PAGE_ACCESS_DENIED",
+        message: "Page access denied",
+        status: 403,
+      }),
+    );
+    const file = new File([png(10, 10).buffer as ArrayBuffer], "cover.png", {
+      type: "image/png",
+    });
+
+    const response = await POST(requestFor(file));
+
+    expect(response.status).toBe(403);
+    expect(mocks.parseMultipartBody).toHaveBeenCalledOnce();
+    expect(mocks.assertPageAccessForViewer).toHaveBeenCalledWith(actor, pageId);
+    expect(mocks.assertMutationRateLimit).toHaveBeenCalledTimes(1);
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
   it("validates image bytes and persists their real dimensions", async () => {
     const bytes = png(1200, 630);
     const file = new File([bytes.buffer as ArrayBuffer], "cover.png", {
@@ -130,6 +208,20 @@ describe("POST /api/assets", () => {
     const response = await POST(requestFor(file));
 
     expect(response.status).toBe(201);
+    expect(mocks.assertInternalAccess).toHaveBeenCalledOnce();
+    expect(mocks.assertMutationRateLimit).toHaveBeenNthCalledWith(1, {
+      actor,
+      action: "asset:image:upload:preflight",
+    });
+    expect(mocks.assertPageAccessForViewer).toHaveBeenCalledWith(actor, pageId);
+    expect(mocks.assertMutationRateLimit).toHaveBeenNthCalledWith(2, {
+      actor,
+      pageId,
+      action: "asset:image:upload",
+    });
+    expect(mocks.parseMultipartBody.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.assertPageAccessForViewer.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.upload).toHaveBeenCalledOnce();
     expect(mocks.createAsset).toHaveBeenCalledWith(
       expect.objectContaining({
