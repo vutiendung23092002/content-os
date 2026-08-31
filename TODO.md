@@ -114,6 +114,10 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Files/modules expected: CSRF/same-site guard, rate limiter, Zod schemas.
   - Acceptance criteria: Mutation cần access context hợp lệ; caption/timestamp/body có giới hạn.
   - Tests: CSRF, oversized payload, invalid timezone và rate-limit tests.
+  - [x] Audit toàn bộ browser mutation cho publish, schedule, draft/remote edit-delete, asset upload-delete và quản trị user/Page; mọi route đều có authorization cùng same-origin, còn cron giữ bearer riêng.
+  - [x] Thêm regression audit tự động để route `POST`/`PUT`/`PATCH`/`DELETE` mới không được thiếu CSRF hoặc machine-auth boundary và authorization boundary.
+  - [ ] Bổ sung rate limit theo actor/Page/loại mutation.
+  - [ ] Chuẩn hóa raw request body limit và strict input schema cho các mutation còn lại.
 
 - [ ] SEC-004 — Credential rotation and incident runbook
   - Priority: P1

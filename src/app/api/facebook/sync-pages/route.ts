@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { assertInternalAdminAccess } from "@/lib/access/internal-access";
+import {
+  assertInternalAdminAccess,
+  hasConfiguredSecretAccess,
+} from "@/lib/access/internal-access";
+import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireServerEnv } from "@/lib/env/server";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { MetaGraphClient } from "@/modules/facebook/meta-client";
@@ -12,6 +16,7 @@ export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
 
   try {
+    if (!hasConfiguredSecretAccess(request)) assertSameOrigin(request);
     await assertInternalAdminAccess(request);
     const client = new MetaGraphClient({
       graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
