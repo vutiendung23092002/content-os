@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DatabaseExecutor } from "@/db/client";
 import { pageCredentials } from "@/db/schema";
 import type { EncryptedToken } from "@/lib/crypto/token-crypto";
@@ -58,5 +58,40 @@ export class PageCredentialRepository {
       .where(eq(pageCredentials.pageId, pageId))
       .limit(1);
     return record;
+  }
+
+  async listByKeyVersion(keyVersion: number): Promise<PageCredentialRecord[]> {
+    return this.database
+      .select()
+      .from(pageCredentials)
+      .where(eq(pageCredentials.keyVersion, keyVersion));
+  }
+
+  async replaceEncryption(input: {
+    pageId: string;
+    expectedKeyVersion: number;
+    expectedFingerprint: string;
+    encrypted: EncryptedToken;
+  }): Promise<boolean> {
+    const [updated] = await this.database
+      .update(pageCredentials)
+      .set({
+        accessTokenCiphertext: input.encrypted.ciphertext,
+        nonce: input.encrypted.nonce,
+        authTag: input.encrypted.authTag,
+        keyVersion: input.encrypted.keyVersion,
+        tokenFingerprint: input.encrypted.fingerprint,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(pageCredentials.pageId, input.pageId),
+          eq(pageCredentials.keyVersion, input.expectedKeyVersion),
+          eq(pageCredentials.tokenFingerprint, input.expectedFingerprint),
+        ),
+      )
+      .returning({ pageId: pageCredentials.pageId });
+
+    return Boolean(updated);
   }
 }

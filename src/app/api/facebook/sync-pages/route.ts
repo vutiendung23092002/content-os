@@ -6,6 +6,7 @@ import {
 } from "@/lib/access/internal-access";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireServerEnv } from "@/lib/env/server";
+import { getTokenKeyring } from "@/lib/crypto/token-keyring";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { assertEmptyBody } from "@/lib/http/request-body";
 import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     });
     const pages = await syncManagedPages({
       client,
-      encryptionKey: requireServerEnv("TOKEN_ENCRYPTION_KEY"),
+      tokenEncryption: getTokenKeyring(),
     });
 
     return NextResponse.json({ pages, requestId });

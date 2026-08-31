@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { decryptToken } from "@/lib/crypto/token-crypto";
+import { TokenKeyring } from "@/lib/crypto/token-keyring";
 import {
   syncManagedPages,
   type ManagedPagesClient,
@@ -10,6 +11,10 @@ import {
 describe("syncManagedPages", () => {
   it("paginates, encrypts Page tokens and returns only safe data", async () => {
     const key = randomBytes(32).toString("base64");
+    const tokenEncryption = new TokenKeyring({
+      currentVersion: 1,
+      currentKey: key,
+    });
     const getManagedPages = vi
       .fn<ManagedPagesClient["getManagedPages"]>()
       .mockResolvedValueOnce({
@@ -58,7 +63,7 @@ describe("syncManagedPages", () => {
 
     const result = await syncManagedPages({
       client: { getManagedPages },
-      encryptionKey: key,
+      tokenEncryption,
       persist,
     });
 
@@ -71,14 +76,18 @@ describe("syncManagedPages", () => {
 
   it("rejects a repeated cursor instead of looping forever", async () => {
     const key = randomBytes(32).toString("base64");
+    const tokenEncryption = new TokenKeyring({
+      currentVersion: 1,
+      currentKey: key,
+    });
     const client: ManagedPagesClient = {
       getManagedPages: vi
         .fn()
         .mockResolvedValue({ pages: [], after: "same-cursor" }),
     };
 
-    await expect(
-      syncManagedPages({ client, encryptionKey: key }),
-    ).rejects.toThrow("repeated Page cursor");
+    await expect(syncManagedPages({ client, tokenEncryption })).rejects.toThrow(
+      "repeated Page cursor",
+    );
   });
 });

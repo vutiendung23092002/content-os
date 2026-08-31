@@ -56,6 +56,8 @@ Không commit `.env.local`.
 - `FACEBOOK_GRAPH_API_VERSION`: phiên bản Graph API đang được dự án hỗ trợ.
 - `FACEBOOK_USER_ACCESS_TOKEN`: long-lived user token của tài khoản quản trị gốc.
 - `TOKEN_ENCRYPTION_KEY`: khóa base64 32 byte dùng để mã hóa token trước khi lưu.
+- `TOKEN_ENCRYPTION_KEY_VERSION`: version số nguyên dương của khóa hiện tại; mặc định `1` để tương thích credential production hiện có.
+- `TOKEN_ENCRYPTION_PREVIOUS_KEYS`: JSON map các version cũ sang khóa base64, chỉ cấu hình trong thời gian cần decrypt/rotate credential cũ, ví dụ `{"1":"<old-base64-key>"}`.
 
 ### Supabase
 

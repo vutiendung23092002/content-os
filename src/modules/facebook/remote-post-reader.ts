@@ -3,10 +3,13 @@ import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
-import { decryptToken } from "@/lib/crypto/token-crypto";
-import { requireServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
 import { MetaGraphClient } from "./meta-client";
+import {
+  createMetaClientFromCredential,
+  toStoredPageToken,
+  type StoredPageToken,
+} from "./page-credential";
 
 export const remotePostKindSchema = z.enum(["published", "scheduled"]);
 
@@ -44,7 +47,7 @@ export type RemotePostPage = {
 export type RemotePostAccess = {
   load(localPageId: string): Promise<{
     page: RemotePostPage;
-    pageAccessToken: string;
+    pageCredential: StoredPageToken;
   }>;
 };
 
@@ -88,16 +91,7 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
         avatarUrl: page.avatarUrl,
         timezone: page.timezone,
       },
-      pageAccessToken: decryptToken(
-        {
-          ciphertext: credential.accessTokenCiphertext,
-          nonce: credential.nonce,
-          authTag: credential.authTag,
-          keyVersion: credential.keyVersion,
-          fingerprint: credential.tokenFingerprint,
-        },
-        requireServerEnv("TOKEN_ENCRYPTION_KEY"),
-      ),
+      pageCredential: toStoredPageToken(credential),
     };
   }
 }
@@ -179,12 +173,8 @@ export class RemotePostReader {
   constructor(
     private readonly access: RemotePostAccess = new DatabaseRemotePostAccess(),
     private readonly clientFactory: (
-      pageAccessToken: string,
-    ) => RemotePostMetaClient = (pageAccessToken) =>
-      new MetaGraphClient({
-        graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
-        accessToken: pageAccessToken,
-      }),
+      credential: StoredPageToken,
+    ) => RemotePostMetaClient = createMetaClientFromCredential,
   ) {}
 
   async list(input: {
@@ -205,7 +195,7 @@ export class RemotePostReader {
       ? z.string().trim().min(1).max(2048).parse(input.after)
       : undefined;
     const context = await this.access.load(localPageId);
-    const client = this.clientFactory(context.pageAccessToken);
+    const client = this.clientFactory(context.pageCredential);
 
     if (kind === "scheduled") {
       const result = input.limit

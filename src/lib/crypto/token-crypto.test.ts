@@ -22,6 +22,15 @@ describe("Page token encryption", () => {
     expect(() => decryptToken(encrypted, key)).toThrow("Không thể giải mã");
   });
 
+  it("rejects a different valid 32-byte key", () => {
+    const encrypted = encryptToken("page-token-value", key);
+    const wrongKey = randomBytes(32).toString("base64");
+
+    expect(() => decryptToken(encrypted, wrongKey)).toThrow(
+      "Không thể giải mã",
+    );
+  });
+
   it("creates a stable non-plaintext fingerprint", () => {
     expect(tokenFingerprint("same-token")).toBe(tokenFingerprint("same-token"));
     expect(tokenFingerprint("same-token")).not.toContain("same-token");

@@ -1,8 +1,14 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
+import { TokenKeyring } from "@/lib/crypto/token-keyring";
 import { MetaGraphClient } from "./meta-client";
 import { toSafeManualPage, verifyManualPage } from "./manual-page-service";
 
 describe("manual Page verification", () => {
+  const tokenEncryption = new TokenKeyring({
+    currentVersion: 1,
+    currentKey: randomBytes(32).toString("base64"),
+  });
   it("identifies the token owner and checks Page permissions using GET only", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (url) => {
       const requestUrl = new URL(String(url));
@@ -65,6 +71,7 @@ describe("manual Page verification", () => {
       userAccessToken: "user-token",
       appId: "app-1",
       appSecret: "app-secret",
+      tokenEncryption,
       clientFactory: (accessToken) =>
         new MetaGraphClient({
           graphVersion: "v99.0",
@@ -113,6 +120,7 @@ describe("manual Page verification", () => {
         userAccessToken: "user-token",
         appId: "app-1",
         appSecret: "app-secret",
+        tokenEncryption,
         clientFactory,
       }),
     ).rejects.toThrow("Page ID phải là một dãy số hợp lệ");

@@ -18,6 +18,8 @@ const serverEnvSchema = z.object({
   FACEBOOK_GRAPH_API_VERSION: optionalSecret,
   FACEBOOK_USER_ACCESS_TOKEN: optionalSecret,
   TOKEN_ENCRYPTION_KEY: optionalSecret,
+  TOKEN_ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive().default(1),
+  TOKEN_ENCRYPTION_PREVIOUS_KEYS: optionalSecret,
   APP_ACCESS_SECRET: optionalSecret,
   INITIAL_ADMIN_EMAIL: optionalSecret,
   NEXT_PUBLIC_SITE_URL: optionalSecret,

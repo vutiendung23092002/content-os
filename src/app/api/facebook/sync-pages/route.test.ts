@@ -18,6 +18,9 @@ vi.mock("@/lib/access/same-origin", () => ({
 vi.mock("@/lib/env/server", () => ({
   requireServerEnv: vi.fn((key: string) => key),
 }));
+vi.mock("@/lib/crypto/token-keyring", () => ({
+  getTokenKeyring: vi.fn(() => ({ encrypt: vi.fn() })),
+}));
 vi.mock("@/modules/facebook/meta-client", () => ({
   MetaGraphClient: class {},
 }));

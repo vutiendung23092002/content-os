@@ -6,6 +6,13 @@ import {
 } from "./remote-post-reader";
 
 const localPageId = "2f6707b7-8594-4d33-b60f-18bdb4f826ac";
+const pageCredential = {
+  ciphertext: Buffer.from("ciphertext"),
+  nonce: Buffer.alloc(12),
+  authTag: Buffer.alloc(16),
+  keyVersion: 1,
+  fingerprint: "fingerprint",
+};
 
 function createSetup() {
   const access: RemotePostAccess = {
@@ -17,7 +24,7 @@ function createSetup() {
         avatarUrl: null,
         timezone: "Asia/Ho_Chi_Minh",
       },
-      pageAccessToken: "secret-page-token",
+      pageCredential,
     }),
   };
   const client: RemotePostMetaClient = {
@@ -114,7 +121,7 @@ describe("RemotePostReader", () => {
     });
 
     expect(setup.access.load).toHaveBeenCalledWith(localPageId);
-    expect(setup.clientFactory).toHaveBeenCalledWith("secret-page-token");
+    expect(setup.clientFactory).toHaveBeenCalledWith(pageCredential);
     expect(setup.client.getPublishedPosts).toHaveBeenCalledWith(
       "page-123",
       undefined,

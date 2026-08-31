@@ -4,6 +4,7 @@ import { z } from "zod";
 import { assertInternalAccess } from "@/lib/access/internal-access";
 import { assertSameOrigin } from "@/lib/access/same-origin";
 import { requireServerEnv } from "@/lib/env/server";
+import { getTokenKeyring } from "@/lib/crypto/token-keyring";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { parseJsonBody } from "@/lib/http/request-body";
 import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
@@ -35,10 +36,10 @@ export async function POST(request: Request) {
       userAccessToken: requireServerEnv("FACEBOOK_USER_ACCESS_TOKEN"),
       appId: requireServerEnv("FACEBOOK_APP_ID"),
       appSecret: requireServerEnv("FACEBOOK_APP_SECRET"),
+      tokenEncryption: getTokenKeyring(),
     });
     const page = await persistManualPage({
       verification,
-      encryptionKey: requireServerEnv("TOKEN_ENCRYPTION_KEY"),
     });
 
     return NextResponse.json({ page, requestId });

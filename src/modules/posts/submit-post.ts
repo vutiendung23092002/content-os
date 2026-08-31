@@ -7,13 +7,13 @@ import { AssetRepository } from "@/db/repositories/asset-repository";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
 import { PostRepository } from "@/db/repositories/post-repository";
-import { decryptToken } from "@/lib/crypto/token-crypto";
-import { requireServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
+import type { MetaPostSubmissionReceipt } from "@/modules/facebook/meta-client";
 import {
-  MetaGraphClient,
-  type MetaPostSubmissionReceipt,
-} from "@/modules/facebook/meta-client";
+  createMetaClientFromCredential,
+  toStoredPageToken,
+  type StoredPageToken,
+} from "@/modules/facebook/page-credential";
 import { AssetStorage } from "@/modules/assets/asset-storage";
 import { parseFacebookScheduleTime } from "./schedule-window";
 
@@ -26,7 +26,7 @@ export type PreparedSubmission = {
   externalPageId: string;
   message: string;
   postType: "text" | "image" | "video";
-  pageAccessToken: string;
+  pageCredential: StoredPageToken;
   media: Array<{ assetId: string; storageKey: string; mimeType: string }>;
 };
 
@@ -99,8 +99,6 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
     requestFingerprint: string;
     scheduledFor?: Date;
   }): Promise<PreparedSubmission> {
-    const encryptionKey = requireServerEnv("TOKEN_ENCRYPTION_KEY");
-
     return runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
       const pages = new PageRepository(transaction);
@@ -135,16 +133,6 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         });
       }
 
-      const pageAccessToken = decryptToken(
-        {
-          ciphertext: credential.accessTokenCiphertext,
-          nonce: credential.nonce,
-          authTag: credential.authTag,
-          keyVersion: credential.keyVersion,
-          fingerprint: credential.tokenFingerprint,
-        },
-        encryptionKey,
-      );
       const media = await assets.listForPost(post.id);
       const operation = await operations.createPending({
         pageId: page.id,
@@ -167,7 +155,7 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         externalPageId: page.externalPageId,
         message: post.message,
         postType: post.type,
-        pageAccessToken,
+        pageCredential: toStoredPageToken(credential),
         media: media.map((asset) => ({
           assetId: asset.id,
           storageKey: asset.storageKey,
@@ -256,12 +244,8 @@ export class SubmitPostService {
   constructor(
     private readonly persistence: SubmissionPersistence = new DatabaseSubmissionPersistence(),
     private readonly clientFactory: (
-      pageAccessToken: string,
-    ) => SubmissionMetaClient = (pageAccessToken) =>
-      new MetaGraphClient({
-        graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
-        accessToken: pageAccessToken,
-      }),
+      credential: StoredPageToken,
+    ) => SubmissionMetaClient = createMetaClientFromCredential,
     private readonly now: () => Date = () => new Date(),
     private readonly assetUrls: SubmissionAssetUrlProvider = new AssetStorage(),
   ) {}
@@ -296,7 +280,7 @@ export class SubmitPostService {
       requestFingerprint: fingerprint(input),
       scheduledFor: input.scheduledFor,
     });
-    const client = this.clientFactory(prepared.pageAccessToken);
+    const client = this.clientFactory(prepared.pageCredential);
 
     let remotePostId: string;
     let remoteMediaIds: string[] = [];

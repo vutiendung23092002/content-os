@@ -8,6 +8,13 @@ import {
 } from "./submit-post";
 
 const postId = "018f0d44-35f0-7b63-99d2-c1b9222cd05d";
+const pageCredential = {
+  ciphertext: Buffer.from("ciphertext"),
+  nonce: Buffer.alloc(12),
+  authTag: Buffer.alloc(16),
+  keyVersion: 1,
+  fingerprint: "fingerprint",
+};
 const prepared: PreparedSubmission = {
   operationId: "operation-1",
   postId,
@@ -15,7 +22,7 @@ const prepared: PreparedSubmission = {
   externalPageId: "page-external-1",
   message: "Caption",
   postType: "text",
-  pageAccessToken: "decrypted-page-token",
+  pageCredential,
   media: [],
 };
 
@@ -54,9 +61,7 @@ describe("SubmitPostService", () => {
     const setupResult = setup();
     const result = await setupResult.service.publish(postId);
 
-    expect(setupResult.clientFactory).toHaveBeenCalledWith(
-      "decrypted-page-token",
-    );
+    expect(setupResult.clientFactory).toHaveBeenCalledWith(pageCredential);
     expect(setupResult.client.publishPost).toHaveBeenCalledWith({
       pageId: "page-external-1",
       message: "Caption",

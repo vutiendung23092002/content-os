@@ -3,7 +3,7 @@ import { runInTransaction } from "@/db/client";
 import { FacebookConnectionRepository } from "@/db/repositories/facebook-connection-repository";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
-import { encryptToken, type EncryptedToken } from "@/lib/crypto/token-crypto";
+import type { EncryptedToken } from "@/lib/crypto/token-crypto";
 import type { ManagedPageCredential } from "./meta-client";
 
 export type ManagedPagesClient = {
@@ -73,8 +73,10 @@ async function persistManagedPages(
 
 export async function syncManagedPages(input: {
   client: ManagedPagesClient;
-  encryptionKey: string;
-  keyVersion?: number;
+  tokenEncryption: Pick<
+    import("@/lib/crypto/token-keyring").TokenKeyring,
+    "encrypt"
+  >;
   persist?: PersistManagedPages;
 }): Promise<SafeSyncedPage[]> {
   const managedPages: ManagedPageCredential[] = [];
@@ -94,11 +96,7 @@ export async function syncManagedPages(input: {
 
   const pagesToPersist = managedPages.map(({ accessToken, ...page }) => ({
     ...page,
-    encryptedAccessToken: encryptToken(
-      accessToken,
-      input.encryptionKey,
-      input.keyVersion ?? 1,
-    ),
+    encryptedAccessToken: input.tokenEncryption.encrypt(accessToken),
   }));
 
   return (input.persist ?? persistManagedPages)(pagesToPersist);

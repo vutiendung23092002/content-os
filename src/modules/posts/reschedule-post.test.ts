@@ -9,6 +9,13 @@ import {
 
 const postId = "018f0d44-35f0-7b63-99d2-c1b9222cd05d";
 const desired = "2026-08-21T02:00:00.000Z";
+const pageCredential = {
+  ciphertext: Buffer.from("ciphertext"),
+  nonce: Buffer.alloc(12),
+  authTag: Buffer.alloc(16),
+  keyVersion: 1,
+  fingerprint: "fingerprint",
+};
 const prepared: PreparedReschedule = {
   operationId: "operation-1",
   postId,
@@ -16,7 +23,7 @@ const prepared: PreparedReschedule = {
   externalPageId: "page-external-1",
   remotePostId: "remote-post-1",
   previousScheduledFor: new Date("2026-08-21T01:00:00.000Z"),
-  pageAccessToken: "decrypted-token",
+  pageCredential,
 };
 
 function unix(value: string) {
@@ -73,7 +80,7 @@ describe("ReschedulePostService", () => {
       status: "scheduled",
       scheduledFor: desired,
     });
-    expect(context.clientFactory).toHaveBeenCalledWith("decrypted-token");
+    expect(context.clientFactory).toHaveBeenCalledWith(pageCredential);
     expect(context.client.reschedulePost).toHaveBeenCalledTimes(1);
     expect(context.client.reschedulePost).toHaveBeenCalledWith(
       "remote-post-1",

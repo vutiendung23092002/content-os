@@ -8,10 +8,12 @@ import { FacebookOperationRepository } from "@/db/repositories/facebook-operatio
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
 import { PostRepository } from "@/db/repositories/post-repository";
-import { decryptToken } from "@/lib/crypto/token-crypto";
-import { requireServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
-import { MetaGraphClient } from "@/modules/facebook/meta-client";
+import {
+  createMetaClientFromCredential,
+  toStoredPageToken,
+  type StoredPageToken,
+} from "@/modules/facebook/page-credential";
 
 type MutationKind = "update" | "remove";
 
@@ -23,7 +25,7 @@ type PreparedMutation = {
   remoteMediaIds: string[];
   postType: "text" | "image" | "video";
   status: "scheduled" | "published";
-  pageAccessToken: string;
+  pageCredential: StoredPageToken;
 };
 
 type CompletedRemoval = PreparedMutation & {
@@ -210,16 +212,7 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
         postType: post.type,
         status: post.status,
 
-        pageAccessToken: decryptToken(
-          {
-            ciphertext: credential.accessTokenCiphertext,
-            nonce: credential.nonce,
-            authTag: credential.authTag,
-            keyVersion: credential.keyVersion,
-            fingerprint: credential.tokenFingerprint,
-          },
-          requireServerEnv("TOKEN_ENCRYPTION_KEY"),
-        ),
+        pageCredential: toStoredPageToken(credential),
       };
     });
   }
@@ -307,12 +300,8 @@ export class RemotePostMutationService {
     private readonly persistence: RemotePostMutationPersistence = new DatabaseRemotePostMutationPersistence(),
 
     private readonly clientFactory: (
-      token: string,
-    ) => RemotePostMutationClient = (token) =>
-      new MetaGraphClient({
-        graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
-        accessToken: token,
-      }),
+      credential: StoredPageToken,
+    ) => RemotePostMutationClient = createMetaClientFromCredential,
   ) {}
 
   async updateMessage(postIdInput: unknown, messageInput: unknown) {
@@ -332,7 +321,7 @@ export class RemotePostMutationService {
     });
 
     await this.runRemoteMutation(prepared.operationId, () =>
-      this.clientFactory(prepared.pageAccessToken).updatePostMessage(
+      this.clientFactory(prepared.pageCredential).updatePostMessage(
         prepared.remotePostId,
         message,
       ),
@@ -365,7 +354,7 @@ export class RemotePostMutationService {
       }),
     });
 
-    const client = this.clientFactory(prepared.pageAccessToken);
+    const client = this.clientFactory(prepared.pageCredential);
 
     /*
      * Legacy video:

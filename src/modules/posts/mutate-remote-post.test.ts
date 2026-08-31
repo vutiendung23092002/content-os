@@ -8,6 +8,13 @@ import {
 } from "./mutate-remote-post";
 
 const postId = "018f0d44-35f0-7b63-99d2-c1b9222cd05d";
+const pageCredential = {
+  ciphertext: Buffer.from("ciphertext"),
+  nonce: Buffer.alloc(12),
+  authTag: Buffer.alloc(16),
+  keyVersion: 1,
+  fingerprint: "fingerprint",
+};
 
 const prepared = {
   operationId: "operation-1",
@@ -26,7 +33,7 @@ const prepared = {
 
   postType: "image" as const,
   status: "scheduled" as const,
-  pageAccessToken: "decrypted-token",
+  pageCredential,
 };
 
 function setup() {
@@ -88,7 +95,7 @@ describe("RemotePostMutationService", () => {
       status: "succeeded",
     });
 
-    expect(context.clientFactory).toHaveBeenCalledWith("decrypted-token");
+    expect(context.clientFactory).toHaveBeenCalledWith(pageCredential);
 
     expect(context.client.updatePostMessage).toHaveBeenCalledWith(
       prepared.remotePostId,

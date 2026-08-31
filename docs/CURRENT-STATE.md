@@ -112,11 +112,10 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 
 ## Chưa implement hoặc chưa xác minh
 
-- Token rotation utility hoàn chỉnh.
 - Phần còn lại của Meta capability smoke: reschedule, sửa caption, hủy lịch và xóa bài đã đăng trên Page test.
 - Remote mutation service cho reschedule/edit/cancel/delete đã có mock/unit/typecheck; chưa live smoke đầy đủ trên Page test.
 - Mutation hardening/rate limit cần được rà đầy đủ trước khi chốt production readiness.
-- Token rotation utility, runbook sự cố, metrics/alert và bài kiểm tra backup/restore chưa hoàn chỉnh.
+- User-token operational rotation, runbook sự cố, metrics/alert và bài kiểm tra backup/restore vẫn thuộc SEC-004/operations; Page credential keyring/rotation utility đã hoàn thành riêng trong SEC-002.
 - AI content assistant và Reel publishing chưa triển khai; không chặn phạm vi MVP hiện tại.
 
 ## Secret cần cấu hình tiếp theo
@@ -127,6 +126,8 @@ Tạo `.env.local` từ `.env.example`, sau đó tự điền:
 DATABASE_URL
 DIRECT_DATABASE_URL
 TOKEN_ENCRYPTION_KEY
+TOKEN_ENCRYPTION_KEY_VERSION
+TOKEN_ENCRYPTION_PREVIOUS_KEYS
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY

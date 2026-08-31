@@ -99,13 +99,19 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Token không nằm trong source, database, browser, telemetry hoặc `.env.example`.
   - Tests: Client bundle/response/log scan và missing-secret behavior.
 
-- [ ] SEC-002 — Encrypt Page tokens
+- [x] SEC-002 — Encrypt Page tokens
   - Priority: P0
   - Goal: Mã hóa authenticated Page token trước khi lưu database.
   - Depends on: DB-002, FOUND-004.
   - Files/modules expected: crypto service, ciphertext/key-version fields, rotation utility.
   - Acceptance criteria: Chỉ Meta adapter được yêu cầu plaintext; key tách khỏi database; tamper bị phát hiện.
   - Tests: Encrypt/decrypt, wrong key, tamper, key-version và rotation tests.
+  - [x] Page token được mã hóa at rest bằng AES-256-GCM với ciphertext, nonce 12 byte, auth tag, key version và SHA-256 fingerprint tách biệt.
+  - [x] Sync/thêm Page mã hóa token bằng current key/version trước khi persist; database và API response không chứa plaintext.
+  - [x] Versioned keyring giải mã đúng stored `keyVersion`, hỗ trợ current/previous keys và fail rõ ràng với version không biết, không fallback.
+  - [x] Plaintext của credential đã lưu chỉ tồn tại trong crypto/Meta adapter boundary; post/read/rotation orchestration chỉ truyền encrypted credential.
+  - [x] Rotation utility hỗ trợ dry-run và rotate old → current trong một transaction, update có điều kiện, giữ nguyên expiry/validation/revocation metadata và rollback toàn batch khi lỗi.
+  - [x] Regression tests bao phủ round-trip, wrong valid key, tamper, exact/unknown key version, rotate thành công, dry-run và rollback không corruption.
 
 - [x] SEC-003 — Mutation protection and input limits
   - Priority: P0

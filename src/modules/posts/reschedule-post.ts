@@ -7,10 +7,12 @@ import { FacebookOperationRepository } from "@/db/repositories/facebook-operatio
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
 import { PostRepository } from "@/db/repositories/post-repository";
-import { decryptToken } from "@/lib/crypto/token-crypto";
-import { requireServerEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors/app-error";
-import { MetaGraphClient } from "@/modules/facebook/meta-client";
+import {
+  createMetaClientFromCredential,
+  toStoredPageToken,
+  type StoredPageToken,
+} from "@/modules/facebook/page-credential";
 import { parseFacebookScheduleTime } from "./schedule-window";
 
 const MAX_REMOTE_PAGES = 5;
@@ -37,7 +39,7 @@ export type PreparedReschedule = {
   externalPageId: string;
   remotePostId: string;
   previousScheduledFor: Date;
-  pageAccessToken: string;
+  pageCredential: StoredPageToken;
 };
 
 export type ReschedulePersistence = {
@@ -144,16 +146,7 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
         externalPageId: page.externalPageId,
         remotePostId: post.remotePostId,
         previousScheduledFor: post.scheduledAt,
-        pageAccessToken: decryptToken(
-          {
-            ciphertext: credential.accessTokenCiphertext,
-            nonce: credential.nonce,
-            authTag: credential.authTag,
-            keyVersion: credential.keyVersion,
-            fingerprint: credential.tokenFingerprint,
-          },
-          requireServerEnv("TOKEN_ENCRYPTION_KEY"),
-        ),
+        pageCredential: toStoredPageToken(credential),
       };
     });
   }
@@ -220,13 +213,9 @@ function remoteTime(value: string | number | undefined): number | null {
 export class ReschedulePostService {
   constructor(
     private readonly persistence: ReschedulePersistence = new DatabaseReschedulePersistence(),
-    private readonly clientFactory: (token: string) => RescheduleMetaClient = (
-      token,
-    ) =>
-      new MetaGraphClient({
-        graphVersion: requireServerEnv("FACEBOOK_GRAPH_API_VERSION"),
-        accessToken: token,
-      }),
+    private readonly clientFactory: (
+      credential: StoredPageToken,
+    ) => RescheduleMetaClient = createMetaClientFromCredential,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -241,7 +230,7 @@ export class ReschedulePostService {
       scheduledFor,
       requestFingerprint: fingerprint(postId, scheduledFor),
     });
-    const client = this.clientFactory(prepared.pageAccessToken);
+    const client = this.clientFactory(prepared.pageCredential);
 
     let before: ScheduledRemotePost | undefined;
     try {

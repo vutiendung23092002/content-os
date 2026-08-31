@@ -4,7 +4,8 @@ import { runInTransaction } from "@/db/client";
 import { FacebookConnectionRepository } from "@/db/repositories/facebook-connection-repository";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
 import { PageRepository } from "@/db/repositories/page-repository";
-import { encryptToken } from "@/lib/crypto/token-crypto";
+import type { EncryptedToken } from "@/lib/crypto/token-crypto";
+import type { TokenKeyring } from "@/lib/crypto/token-keyring";
 import { AppError } from "@/lib/errors/app-error";
 import {
   MetaGraphClient,
@@ -40,7 +41,7 @@ export type VerifiedManualPage = {
     category?: string;
   };
   pageToken: MetaTokenInspection;
-  pageAccessToken: string;
+  pageCredential: EncryptedToken;
   capabilities: ManualPageCapabilities;
 };
 
@@ -128,6 +129,7 @@ export async function verifyManualPage(input: {
   userAccessToken: string;
   appId: string;
   appSecret: string;
+  tokenEncryption: Pick<TokenKeyring, "encrypt">;
   clientFactory?: ManualPageClientFactory;
 }): Promise<VerifiedManualPage> {
   const pageId = manualPageIdSchema.parse(input.pageId);
@@ -177,7 +179,7 @@ export async function verifyManualPage(input: {
       category: page.category,
     },
     pageToken,
-    pageAccessToken: page.accessToken,
+    pageCredential: input.tokenEncryption.encrypt(page.accessToken),
     capabilities: mapCapabilities(pageToken.scopes, readAccess),
   };
 }
@@ -206,8 +208,6 @@ export function toSafeManualPage(
 
 export async function persistManualPage(input: {
   verification: VerifiedManualPage;
-  encryptionKey: string;
-  keyVersion?: number;
 }): Promise<SafeManualPage> {
   const verifiedAt = new Date();
 
@@ -230,11 +230,7 @@ export async function persistManualPage(input: {
     });
     await credentialRepository.upsert(
       page.id,
-      encryptToken(
-        input.verification.pageAccessToken,
-        input.encryptionKey,
-        input.keyVersion ?? 1,
-      ),
+      input.verification.pageCredential,
       unixSecondsToDate(input.verification.pageToken.expiresAt),
     );
     await connectionRepository.markActive({
