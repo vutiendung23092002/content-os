@@ -253,7 +253,9 @@ Các tên sau xuất hiện trong scripts nhưng cố ý không nằm trong `.en
 
 Không lưu database restore URLs trong `.env.local` hoặc `.env.staging`. Làm theo
 [runbook backup/restore staging](runbooks/staging-backup-restore-drill.md) để pin
-verification vào isolated target; staging deployment overview vẫn nằm tại
+verification vào isolated target. Hai URL này chỉ tồn tại tạm trong operator session;
+không thêm chúng vào `.env.example`. Backup/restore scope chỉ là application schema
+`hancontent_os`; staging deployment overview vẫn nằm tại
 [staging deployment runbook](runbooks/staging-deployment.md).
 
 ## Lấy từng nhóm giá trị ở đâu?

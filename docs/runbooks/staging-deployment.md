@@ -243,9 +243,11 @@ redaction evidence.
 
 Follow the detailed Vietnamese operator procedure in
 [Staging backup and restore drill](./staging-backup-restore-drill.md). It is the
-canonical portable `pg_dump`/`pg_restore` workflow and documents source/target
-identity checks, temporary PowerShell variables, the destructive `--clean` boundary,
-the exact `staging:restore-verify` guards, safe evidence and cleanup.
+canonical portable, application-schema-only `pg_dump`/`pg_restore` workflow for
+`hancontent_os`. It documents source/target identity checks, temporary PowerShell
+variables, the destructive `--clean` boundary, the exact `staging:restore-verify`
+guards, safe evidence and cleanup. This proves Content OS PostgreSQL application
+state recovery; it is not complete Supabase project/Auth/Storage disaster recovery.
 
 The summary safety rule remains: dump only from staging, restore only into a new
 isolated disposable target, and never put connection URLs or backup archives in the
