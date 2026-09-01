@@ -83,14 +83,21 @@ export async function runStagingAccessSmoke({
   }
 
   await check("health", "/api/health", (response) => response.status === 200);
-  await check(
-    "protected_page",
-    "/posts",
-    (response) =>
-      response.status >= 300 &&
-      response.status < 400 &&
-      response.headers.get("location")?.includes("/login") === true,
-  );
+  await check("protected_page", "/posts", (response) => {
+    if (response.status < 300 || response.status >= 400) return false;
+    const location = response.headers.get("location");
+    if (!location) return false;
+
+    try {
+      const redirectTarget = new URL(location, baseUrl);
+      return (
+        redirectTarget.origin === baseUrl.origin &&
+        redirectTarget.pathname === "/login"
+      );
+    } catch {
+      return false;
+    }
+  });
   await check(
     "protected_api",
     "/api/pages",

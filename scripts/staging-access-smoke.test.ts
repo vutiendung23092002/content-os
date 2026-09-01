@@ -128,4 +128,35 @@ describe("staging access smoke", () => {
     expect(output[0]).not.toContain(clientSecret);
     expect(JSON.parse(output[0])).toMatchObject({ ok: false });
   });
+
+  it("rejects a Cloudflare login redirect as an application login result", async () => {
+    const output: string[] = [];
+    const cloudflareLogin =
+      "https://team.cloudflareaccess.com/cdn-cgi/access/login/staging-social.vutiendung.io.vn";
+
+    const exitCode = await runStagingAccessSmoke({
+      ...smokeInput(),
+      fetchImpl: vi.fn(
+        async () =>
+          new Response(null, {
+            status: 302,
+            headers: { location: cloudflareLogin },
+          }),
+      ),
+      writeOutput: (message: string) => output.push(message),
+      writeError: vi.fn(),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(output[0])).toMatchObject({
+      ok: false,
+      checks: expect.arrayContaining([
+        { name: "protected_page", status: 302, passed: false },
+      ]),
+      failures: expect.arrayContaining(["protected_page"]),
+    });
+    expect(output[0]).not.toContain(cloudflareLogin);
+    expect(output[0]).not.toContain(clientId);
+    expect(output[0]).not.toContain(clientSecret);
+  });
 });
