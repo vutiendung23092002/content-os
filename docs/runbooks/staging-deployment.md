@@ -241,64 +241,17 @@ redaction evidence.
 
 ## Staging PostgreSQL/Supabase backup and restore drill
 
-Use the staging Supabase managed backup/restore feature when available. A portable
-PostgreSQL drill may use `pg_dump`/`pg_restore`, with source and target connection
-fields supplied through temporary operator environment variables. Do not put a URL
-on the command line, in shell history or in the repository.
+Follow the detailed Vietnamese operator procedure in
+[Staging backup and restore drill](./staging-backup-restore-drill.md). It is the
+canonical portable `pg_dump`/`pg_restore` workflow and documents source/target
+identity checks, temporary PowerShell variables, the destructive `--clean` boundary,
+the exact `staging:restore-verify` guards, safe evidence and cleanup.
 
-1. Confirm the source project is staging. Set source `PGHOST`, `PGPORT`,
-   `PGDATABASE`, `PGUSER` and `PGPASSWORD` in a non-recorded operator session. Also
-   set `STAGING_SOURCE_DATABASE_URL` to this exact source connection in the same
-   temporary environment; do not add it to `.env.local`.
-2. Create a custom-format backup outside the repository:
-
-   ```powershell
-   pg_dump --format=custom --no-owner --no-privileges --file=<secure-staging-backup-path>
-   pg_restore --list <secure-staging-backup-path>
-   ```
-
-3. Provision a new isolated restore target that has no production network route or
-   credentials. Replace the temporary PostgreSQL environment variables with this
-   target and confirm its project/host twice. Set
-   `ISOLATED_RESTORE_DATABASE_URL` to this exact target and set the explicit guard:
-
-   ```powershell
-   $env:CONFIRM_ISOLATED_RESTORE_TARGET="isolated-staging-restore"
-   ```
-
-   Both database URLs stay in the temporary operator environment only and must not
-   be printed or passed as command-line arguments. The verifier rejects a missing or
-   invalid target and rejects source/target URLs that identify the same host,
-   port and database even if their credentials differ.
-
-4. Restore only into that isolated target:
-
-   ```powershell
-   pg_restore --clean --if-exists --no-owner --no-privileges --dbname=$env:PGDATABASE <secure-staging-backup-path>
-   corepack pnpm staging:restore-verify
-   ```
-
-   `staging:restore-verify` disables local-env loading for schema verification. It
-   overwrites both `DIRECT_DATABASE_URL` for schema verification and `DATABASE_URL`
-   for the two DB integration suites with the explicitly supplied isolated target,
-   then runs them sequentially without invoking the production-selected `test:db`
-   package script. Any guard, schema or integration failure exits non-zero without
-   printing either URL.
-
-5. Verify a safe sample using counts/IDs only: expected schema/table count, one
-   non-secret Page metadata row if present, and application startup/health. Never
-   export captions, tokens or ciphertext into evidence.
-6. Verify credential encryption by querying aggregate validity only. The result must
-   show no plaintext token column and every credential row must have non-empty
-   ciphertext, nonce, authentication tag, positive key version and fingerprint.
-   Do not select or print those column values.
-7. Delete the isolated restore target and backup according to the staging retention
-   policy. Clear all PostgreSQL variables plus
-   `STAGING_SOURCE_DATABASE_URL`, `ISOLATED_RESTORE_DATABASE_URL` and
-   `CONFIRM_ISOLATED_RESTORE_TARGET`.
-
-Record the drill in the evidence checklist with safe counts and outcome only. Until
-this real restore succeeds, the backup/restore acceptance criterion remains pending.
+The summary safety rule remains: dump only from staging, restore only into a new
+isolated disposable target, and never put connection URLs or backup archives in the
+repository. Record safe outcomes in the evidence checklist. DEPLOY-001 cannot close
+until an operator has completed and recorded a real successful restore drill;
+documentation or automated guard tests are not live evidence.
 
 ## Meta staging smoke
 
