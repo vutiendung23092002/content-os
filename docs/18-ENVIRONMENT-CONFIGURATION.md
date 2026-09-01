@@ -175,15 +175,46 @@ trình đổi key đầy đủ nằm tại
 
 ### G. Cron và machine security
 
-| Variable               | Mục đích                                              | Prod     | Staging  | Secret? | Lấy/tạo ở đâu                     | Cấu hình sai                                                   |
-| ---------------------- | ----------------------------------------------------- | -------- | -------- | ------- | --------------------------------- | -------------------------------------------------------------- |
-| `APP_ACCESS_SECRET`    | Optional machine/break-glass access qua header riêng. | Tùy chọn | Tùy chọn | Có      | Secret manager/cryptographic RNG. | Bị lộ sẽ mở thêm machine-auth path; để trống thì path này tắt. |
-| `ASSET_CLEANUP_SECRET` | Bearer secret riêng cho asset-cleanup endpoint.       | Có       | Có       | Có      | Tạo random tối thiểu 32 ký tự.    | Cleanup bị 401 hoặc runtime từ chối secret ngắn.               |
-| `FACEBOOK_CRON_SECRET` | Bearer secret riêng cho sync/reconciliation cron.     | Có       | Có       | Có      | Tạo random tối thiểu 32 ký tự.    | Facebook cron bị 401 hoặc runtime từ chối secret ngắn.         |
+| Variable                          | Mục đích                                                                   | Prod     | Staging             | Secret? | Lấy/tạo ở đâu                        | Cấu hình sai                                                   |
+| --------------------------------- | -------------------------------------------------------------------------- | -------- | ------------------- | ------- | ------------------------------------ | -------------------------------------------------------------- |
+| `APP_ACCESS_SECRET`               | Optional machine/break-glass access qua header riêng.                      | Tùy chọn | Tùy chọn            | Có      | Secret manager/cryptographic RNG.    | Bị lộ sẽ mở thêm machine-auth path; để trống thì path này tắt. |
+| `ASSET_CLEANUP_SECRET`            | Bearer secret riêng cho asset-cleanup endpoint.                            | Có       | Có                  | Có      | Tạo random tối thiểu 32 ký tự.       | Cleanup bị 401 hoặc runtime từ chối secret ngắn.               |
+| `FACEBOOK_CRON_SECRET`            | Bearer secret riêng cho sync/reconciliation cron.                          | Có       | Có                  | Có      | Tạo random tối thiểu 32 ký tự.       | Facebook cron bị 401 hoặc runtime từ chối secret ngắn.         |
+| `CLOUDFLARE_ACCESS_CLIENT_ID`     | Credential của Cloudflare Access Service Token cho `staging:access-smoke`. | Không    | Chỉ access smoke/CI | Có      | Cloudflare Zero Trust Service Token. | Smoke không qua được infrastructure gateway.                   |
+| `CLOUDFLARE_ACCESS_CLIENT_SECRET` | Secret cùng cặp Service Token; phải rotate nếu lộ.                         | Không    | Chỉ access smoke/CI | Có      | Cloudflare Zero Trust Service Token. | Smoke bị từ chối hoặc credential bị lộ.                        |
 
 Hai cron secret phải khác nhau. Staging tạo bộ riêng, không reuse production và
 không dùng chung một giá trị cho hai job. `APP_ACCESS_SECRET` không bắt buộc: khi
 trống, request vẫn phải đi qua Google session và policy hiện có.
+
+Hai biến Cloudflare không phải browser/public config và không phải dependency của
+normal application runtime, DB tooling, Storage hay Meta capability smoke. Chúng
+không có tiền tố `NEXT_PUBLIC_` và chỉ được `staging:access-smoke` yêu cầu. Cả Client
+ID và Client Secret đều được coi là sensitive vì dùng cùng nhau sẽ vượt qua lớp
+Cloudflare Access; không commit, log hoặc đưa chúng vào evidence.
+
+Mô hình request staging cuối cùng:
+
+```text
+Human:
+Internet -> Cloudflare Access human authentication
+         -> Content OS authentication -> application
+
+Smoke/CI:
+staging:access-smoke -> Cloudflare Access Service Token
+                     -> Content OS unauthenticated smoke requests
+                     -> expected 200/307/401/404 responses
+```
+
+Cloudflare Access authentication không thay thế Content OS authentication. Service
+Token chỉ vượt qua infrastructure gateway; smoke cố ý không gửi application cookie,
+session, cron secret hay application access secret.
+
+`.env.staging` được Git ignore và hiện giữ Service Token để operator chạy smoke thuận
+tiện. Vì Compose cũng dùng file này, credential có thể được cấp cho staging container
+dù app không cần. Đây là tradeoff vận hành hiện tại; về sau nên chuyển cặp token sang
+ops/CI secret source riêng để giảm quyền, nhưng task này không thay đổi kiến trúc secret
+file.
 
 ### H. Admin và logging
 
@@ -257,6 +288,14 @@ vào isolated target.
 - Không đưa secret lên command line, clipboard history, source control hoặc
   evidence.
 
+### Cloudflare Zero Trust
+
+- Tạo Service Token chỉ dành cho staging smoke trong Cloudflare Zero Trust.
+- Policy `Service Auth` chỉ cho token đó truy cập hostname staging; không tạo broad
+  bypass policy.
+- Lưu cả Client ID và Client Secret trong approved local/CI secret source. Rotate
+  cả cặp theo quy trình Cloudflare nếu một giá trị bị lộ.
+
 ### Operator identity
 
 - Chọn account email được phê duyệt cho `INITIAL_ADMIN_EMAIL`; production và
@@ -275,6 +314,8 @@ HAN_CONTENT_ENV_FILE=.env.local
 HAN_CONTENT_PORT=3210
 DEPLOYMENT_ENVIRONMENT=
 STAGING_BASE_URL=
+CLOUDFLARE_ACCESS_CLIENT_ID=
+CLOUDFLARE_ACCESS_CLIENT_SECRET=
 NEXT_PUBLIC_SITE_URL=https://social.vutiendung.io.vn
 FACEBOOK_CRON_BASE_URL=http://app:3000
 
@@ -315,6 +356,8 @@ HAN_CONTENT_ENV_FILE=.env.staging
 HAN_CONTENT_PORT=3211
 DEPLOYMENT_ENVIRONMENT=staging
 STAGING_BASE_URL=https://staging-social.vutiendung.io.vn
+CLOUDFLARE_ACCESS_CLIENT_ID=
+CLOUDFLARE_ACCESS_CLIENT_SECRET=
 NEXT_PUBLIC_SITE_URL=https://staging-social.vutiendung.io.vn
 FACEBOOK_CRON_BASE_URL=http://app:3000
 

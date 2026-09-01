@@ -40,7 +40,7 @@ Git.
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runtime configuration    | `FACEBOOK_APP_ID`, `FACEBOOK_GRAPH_API_VERSION`, `TOKEN_ENCRYPTION_KEY_VERSION`, `SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `FACEBOOK_CRON_BASE_URL`, `HAN_CONTENT_COMPOSE_PROJECT`, `HAN_CONTENT_IMAGE`, `HAN_CONTENT_ENV_FILE`, `HAN_CONTENT_PORT`, `INITIAL_ADMIN_EMAIL`, optional `LOG_LEVEL` |
 | Server secrets           | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `FACEBOOK_APP_SECRET`, `FACEBOOK_USER_ACCESS_TOKEN`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `SUPABASE_SERVICE_ROLE_KEY`, `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`, optional `APP_ACCESS_SECRET`                                                                                                               |
-| Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                                                                                                                |
+| Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `CLOUDFLARE_ACCESS_CLIENT_ID`, `CLOUDFLARE_ACCESS_CLIENT_SECRET`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                                              |
 | Intentionally absent     | `AI_PROVIDER_API_KEY` while AI is deferred; capability-test variables in normal production runtime                                                                                                                                                                                                                                                                            |
 
 `FACEBOOK_USER_ACCESS_TOKEN` is a normal staging runtime dependency, not merely a
@@ -51,6 +51,14 @@ inspection in `/api/facebook/status` require it through `requireServerEnv`. Norm
 publish/read mutations use stored encrypted Page credentials, but staging readiness
 keeps the user token required so these Page-management runtime paths remain usable.
 The capability smoke independently requires the same secret when invoked.
+
+The Cloudflare Access Service Token pair is operational configuration for
+`staging:access-smoke`, not a normal runtime or global staging-readiness dependency.
+Keep both values only in an approved ignored local or CI secret source. The current
+operator setup uses ignored `.env.staging`; because Compose also consumes that file,
+the values may be present in staging containers even though the application does
+not use them. A future least-privilege improvement can split smoke-only credentials
+into a dedicated ops/CI secret source.
 
 Before release:
 
@@ -175,9 +183,33 @@ check, not an observability/metrics system.
   credential;
 - the removed legacy password endpoint returns 404.
 
-Run it through the internal/gateway-authorized staging URL so requests reach the
-application. Separately verify from outside the gateway that the application is not
-openly reachable. Existing automated evidence covers role and machine boundaries:
+The Cloudflare Tunnel public hostname must route
+`staging-social.vutiendung.io.vn` to staging loopback port `3211`. Protect that
+hostname with Cloudflare Access using two separate policy paths:
+
+1. Human policy: allow only authorized staging testers/admins. Browser Cloudflare
+   authentication happens before the Content OS login.
+2. Machine policy: `Service Auth`, scoped only to the designated staging smoke
+   Service Token. Store its Client ID and Client Secret in an approved local/CI
+   secret source.
+
+Run:
+
+```powershell
+corepack pnpm staging:access-smoke
+```
+
+Expected output has `ok: true` and no failures. The command sends only the two
+Cloudflare Access headers needed to pass the infrastructure layer. It deliberately
+does not send Content OS session cookies, `APP_ACCESS_SECRET`, Facebook cron secret
+or asset-cleanup secret, so the application-level expectations remain
+200/307/401/404. Missing local values fail before HTTP with
+`CLOUDFLARE_ACCESS_SERVICE_TOKEN_MISSING`. A missing/invalid Cloudflare Service Auth
+policy or token normally produces a Cloudflare denial/login response, causing the
+status checks to fail without exposing either credential.
+
+Separately verify from outside the gateway that the application is not openly
+reachable. Existing automated evidence covers role and machine boundaries:
 
 - `src/modules/auth/admin-policy.test.ts` verifies Admin/Super Admin role limits;
 - `src/lib/access/internal-access.test.ts` verifies Google session or dedicated
@@ -190,6 +222,13 @@ openly reachable. Existing automated evidence covers role and machine boundaries
 For the live authenticated drill, sign in with one approved staging member and one
 staging Admin. Confirm the member cannot access `/admin`, while the Admin can read
 the user directory. Do not change production users.
+
+Record only safe outcomes as evidence:
+
+- an unauthorized human/email is denied by Cloudflare Access;
+- an authorized tester passes Cloudflare and reaches Content OS authentication;
+- the Service Token smoke passes through Cloudflare;
+- Content OS application-auth expectations remain intact after gateway access.
 
 ## Secret exposure verification
 

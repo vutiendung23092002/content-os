@@ -122,6 +122,64 @@ describe("explicit environment selection", () => {
     expect(result.childEnvironment.__NEXT_PROCESSED_ENV).toBe("true");
   });
 
+  it("replaces inherited Cloudflare Access credentials with selected values", () => {
+    const directory = temporaryDirectory();
+    writeEnvironment(directory, ".env.staging", {
+      ...stagingValues(),
+      CLOUDFLARE_ACCESS_CLIENT_ID: "selected-client-id",
+      CLOUDFLARE_ACCESS_CLIENT_SECRET: "selected-client-secret",
+    });
+
+    const result = loadExplicitEnvironment({
+      cwd: directory,
+      envFile: ".env.staging",
+      expect: "staging",
+      inheritedEnvironment: {
+        CLOUDFLARE_ACCESS_CLIENT_ID: "inherited-client-id",
+        CLOUDFLARE_ACCESS_CLIENT_SECRET: "inherited-client-secret",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected staging environment to pass");
+    expect(result.childEnvironment.CLOUDFLARE_ACCESS_CLIENT_ID).toBe(
+      "selected-client-id",
+    );
+    expect(result.childEnvironment.CLOUDFLARE_ACCESS_CLIENT_SECRET).toBe(
+      "selected-client-secret",
+    );
+  });
+
+  it("does not borrow missing Cloudflare Access credentials from inherited env", () => {
+    const directory = temporaryDirectory();
+    writeEnvironment(directory, ".env.staging", stagingValues());
+
+    const result = loadExplicitEnvironment({
+      cwd: directory,
+      envFile: ".env.staging",
+      expect: "staging",
+      inheritedEnvironment: {
+        CLOUDFLARE_ACCESS_CLIENT_ID: "inherited-client-id-must-not-cross",
+        CLOUDFLARE_ACCESS_CLIENT_SECRET:
+          "inherited-client-secret-must-not-cross",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected staging environment to pass");
+    expect(result.childEnvironment.CLOUDFLARE_ACCESS_CLIENT_ID).toBeUndefined();
+    expect(
+      result.childEnvironment.CLOUDFLARE_ACCESS_CLIENT_SECRET,
+    ).toBeUndefined();
+    expect(result.failures).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain(
+      "inherited-client-id-must-not-cross",
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      "inherited-client-secret-must-not-cross",
+    );
+  });
+
   it("blocks default env loading for explicit selection and restore verification", () => {
     expect(shouldLoadDefaultEnvironment({})).toBe(true);
     expect(

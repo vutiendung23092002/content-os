@@ -1,7 +1,7 @@
 import "server-only";
 import pino from "pino";
 
-const redactPaths = [
+export const loggerRedactPaths = [
   "req.headers.authorization",
   "req.headers.cookie",
   "headers.authorization",
@@ -18,12 +18,20 @@ const redactPaths = [
   "FACEBOOK_CRON_SECRET",
   "ASSET_CLEANUP_SECRET",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "CLOUDFLARE_ACCESS_CLIENT_ID",
+  "CLOUDFLARE_ACCESS_CLIENT_SECRET",
+  "['CF-Access-Client-Id']",
+  "['CF-Access-Client-Secret']",
+  "headers['cf-access-client-id']",
+  "headers['cf-access-client-secret']",
+  "req.headers['cf-access-client-id']",
+  "req.headers['cf-access-client-secret']",
 ];
 
 export const logger = pino({
   level: process.env.LOG_LEVEL?.trim() || "info",
   redact: {
-    paths: redactPaths,
+    paths: loggerRedactPaths,
     censor: "[REDACTED]",
   },
   base: {

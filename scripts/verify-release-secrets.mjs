@@ -14,6 +14,8 @@ const secretEnvironmentNames = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "ASSET_CLEANUP_SECRET",
   "FACEBOOK_CRON_SECRET",
+  "CLOUDFLARE_ACCESS_CLIENT_ID",
+  "CLOUDFLARE_ACCESS_CLIENT_SECRET",
 ];
 const findings = [];
 
