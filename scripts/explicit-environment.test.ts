@@ -31,6 +31,10 @@ function stagingValues(): Record<string, string> {
     FACEBOOK_APP_SECRET: "staging-app-secret",
     FACEBOOK_GRAPH_API_VERSION: "v26.0",
     FACEBOOK_USER_ACCESS_TOKEN: "staging-user-token",
+    FACEBOOK_CONNECT_APP_ID: "staging-connect-app-id",
+    FACEBOOK_CONNECT_APP_SECRET: "staging-connect-app-secret",
+    FACEBOOK_CONNECT_REDIRECT_URI:
+      "https://staging-social.vutiendung.io.vn/api/facebook/callback",
     TOKEN_ENCRYPTION_KEY: "staging-encryption-key",
     TOKEN_ENCRYPTION_KEY_VERSION: "1",
     NEXT_PUBLIC_SUPABASE_URL: "https://staging-supabase.example.test",
@@ -120,6 +124,56 @@ describe("explicit environment selection", () => {
     );
     expect(result.childEnvironment.HAN_CONTENT_EXPLICIT_ENV).toBe("true");
     expect(result.childEnvironment.__NEXT_PROCESSED_ENV).toBe("true");
+  });
+
+  it("does not borrow missing App B credentials from inherited production", () => {
+    const directory = temporaryDirectory();
+    const staging = stagingValues();
+    delete staging.FACEBOOK_CONNECT_APP_SECRET;
+    writeEnvironment(directory, ".env.staging", staging);
+
+    const result = loadExplicitEnvironment({
+      cwd: directory,
+      envFile: ".env.staging",
+      expect: "staging",
+      inheritedEnvironment: {
+        FACEBOOK_CONNECT_APP_SECRET: "production-connect-secret-must-not-cross",
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      failures: [
+        expect.objectContaining({
+          code: "STAGING_ENV_MISSING",
+          names: expect.arrayContaining(["FACEBOOK_CONNECT_APP_SECRET"]),
+        }),
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("production-connect-secret");
+  });
+
+  it("does not borrow App B credentials into production from an inherited staging environment", () => {
+    const directory = temporaryDirectory();
+    writeEnvironment(directory, ".env.local", {
+      DATABASE_URL: "production-runtime-database",
+    });
+
+    const result = loadExplicitEnvironment({
+      cwd: directory,
+      envFile: ".env.local",
+      expect: "production",
+      inheritedEnvironment: {
+        FACEBOOK_CONNECT_APP_ID: "staging-connect-app-id-must-not-cross",
+        FACEBOOK_CONNECT_APP_SECRET: "staging-connect-secret-must-not-cross",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected production environment to pass");
+    expect(result.childEnvironment.FACEBOOK_CONNECT_APP_ID).toBeUndefined();
+    expect(result.childEnvironment.FACEBOOK_CONNECT_APP_SECRET).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain("staging-connect");
   });
 
   it("replaces inherited Cloudflare Access credentials with selected values", () => {

@@ -5,6 +5,8 @@ const requiredStagingVariables = [
   "FACEBOOK_APP_SECRET",
   "FACEBOOK_GRAPH_API_VERSION",
   "FACEBOOK_USER_ACCESS_TOKEN",
+  "FACEBOOK_CONNECT_APP_ID",
+  "FACEBOOK_CONNECT_APP_SECRET",
   "HAN_CONTENT_COMPOSE_PROJECT",
   "HAN_CONTENT_ENV_FILE",
   "HAN_CONTENT_IMAGE",
@@ -77,9 +79,13 @@ export function validateStagingEnvironment(env) {
 
   validateHttpsUrl(env, "NEXT_PUBLIC_SITE_URL", failures);
   validateHttpsUrl(env, "STAGING_BASE_URL", failures);
+  if (value(env, "FACEBOOK_CONNECT_REDIRECT_URI")) {
+    validateHttpsUrl(env, "FACEBOOK_CONNECT_REDIRECT_URI", failures);
+  }
 
   const siteUrl = value(env, "NEXT_PUBLIC_SITE_URL");
   const stagingBaseUrl = value(env, "STAGING_BASE_URL");
+  const connectRedirectUri = value(env, "FACEBOOK_CONNECT_REDIRECT_URI");
   try {
     if (
       siteUrl &&
@@ -89,6 +95,19 @@ export function validateStagingEnvironment(env) {
       failures.push({
         code: "STAGING_PUBLIC_ORIGIN_MISMATCH",
         names: ["NEXT_PUBLIC_SITE_URL", "STAGING_BASE_URL"],
+      });
+    }
+    if (
+      siteUrl &&
+      connectRedirectUri &&
+      (new URL(connectRedirectUri).origin !== new URL(siteUrl).origin ||
+        new URL(connectRedirectUri).pathname !== "/api/facebook/callback" ||
+        new URL(connectRedirectUri).search ||
+        new URL(connectRedirectUri).hash)
+    ) {
+      failures.push({
+        code: "FACEBOOK_CONNECT_REDIRECT_URI_MISMATCH",
+        names: ["FACEBOOK_CONNECT_REDIRECT_URI", "NEXT_PUBLIC_SITE_URL"],
       });
     }
     if (
@@ -104,6 +123,16 @@ export function validateStagingEnvironment(env) {
     }
   } catch {
     // Individual URL failures above already provide the safe diagnostics.
+  }
+
+  if (
+    value(env, "FACEBOOK_APP_ID") &&
+    value(env, "FACEBOOK_APP_ID") === value(env, "FACEBOOK_CONNECT_APP_ID")
+  ) {
+    failures.push({
+      code: "FACEBOOK_CONNECT_APP_NOT_DISTINCT",
+      names: ["FACEBOOK_APP_ID", "FACEBOOK_CONNECT_APP_ID"],
+    });
   }
 
   if (value(env, "HAN_CONTENT_ENV_FILE") !== ".env.staging") {

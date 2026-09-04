@@ -71,7 +71,11 @@ describe("post reschedule API", () => {
     expect(mocks.assertMutationRateLimit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "post:reschedule" }),
     );
-    expect(mocks.reschedule).toHaveBeenCalledWith(postId, scheduledFor);
+    expect(mocks.reschedule).toHaveBeenCalledWith(
+      postId,
+      scheduledFor,
+      "viewer-1",
+    );
   });
 
   it("rejects extra request fields before calling the use-case", async () => {

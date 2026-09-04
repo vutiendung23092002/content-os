@@ -126,4 +126,105 @@ describe("manual Page verification", () => {
     ).rejects.toThrow("Page ID phải là một dãy số hợp lệ");
     expect(clientFactory).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      name: "User token from another Meta App",
+      userInspection: { appId: "app-a" },
+      code: "FACEBOOK_USER_TOKEN_INVALID",
+    },
+    {
+      name: "Page token from another Meta App",
+      pageInspection: { appId: "app-a" },
+      code: "FACEBOOK_PAGE_TOKEN_INVALID",
+    },
+    {
+      name: "Page token for another Page",
+      pageInspection: { profileId: "99999" },
+      code: "FACEBOOK_PAGE_TOKEN_INVALID",
+    },
+    {
+      name: "invalid Page token",
+      pageInspection: { isValid: false },
+      code: "FACEBOOK_PAGE_TOKEN_INVALID",
+    },
+  ])("rejects $name", async ({ userInspection, pageInspection, code }) => {
+    const userClient = {
+      getCurrentUser: vi
+        .fn()
+        .mockResolvedValue({ id: "facebook-user", name: "Facebook User" }),
+      inspectCurrentToken: vi.fn().mockResolvedValue({
+        appId: "app-b",
+        isValid: true,
+        type: "USER",
+        userId: "facebook-user",
+        scopes: [],
+        ...userInspection,
+      }),
+      getPageCredential: vi.fn().mockResolvedValue({
+        externalPageId: "12345",
+        name: "Page",
+        accessToken: "page-token",
+      }),
+    };
+    const pageClient = {
+      inspectCurrentToken: vi.fn().mockResolvedValue({
+        appId: "app-b",
+        isValid: true,
+        type: "PAGE",
+        profileId: "12345",
+        scopes: [],
+        ...pageInspection,
+      }),
+      probePageReadAccess: vi.fn().mockResolvedValue({
+        publishedPosts: true,
+        scheduledPosts: true,
+      }),
+    };
+
+    await expect(
+      verifyManualPage({
+        pageId: "12345",
+        graphVersion: "v26.0",
+        userAccessToken: "user-token",
+        appId: "app-b",
+        appSecret: "app-b-secret",
+        tokenEncryption,
+        clientFactory: (accessToken) =>
+          (accessToken === "user-token" ? userClient : pageClient) as never,
+      }),
+    ).rejects.toMatchObject({ code });
+  });
+
+  it("rejects a Page response whose ID differs from the selected Page", async () => {
+    const userClient = {
+      getCurrentUser: vi
+        .fn()
+        .mockResolvedValue({ id: "facebook-user", name: "Facebook User" }),
+      inspectCurrentToken: vi.fn().mockResolvedValue({
+        appId: "app-b",
+        isValid: true,
+        type: "USER",
+        userId: "facebook-user",
+        scopes: [],
+      }),
+      getPageCredential: vi.fn().mockResolvedValue({
+        externalPageId: "99999",
+        name: "Wrong Page",
+        accessToken: "page-token",
+      }),
+    };
+
+    await expect(
+      verifyManualPage({
+        pageId: "12345",
+        graphVersion: "v26.0",
+        userAccessToken: "user-token",
+        appId: "app-b",
+        appSecret: "app-b-secret",
+        tokenEncryption,
+        clientFactory: () => userClient as never,
+      }),
+    ).rejects.toMatchObject({ code: "FACEBOOK_PAGE_ID_MISMATCH" });
+  });
 });

@@ -45,6 +45,7 @@ export type SubmissionPersistence = {
     kind: SubmissionKind;
     requestFingerprint: string;
     scheduledFor?: Date;
+    actorUserId?: string;
   }): Promise<PreparedSubmission>;
   succeed(input: {
     operationId: string;
@@ -53,6 +54,7 @@ export type SubmissionPersistence = {
     remoteMediaIds: string[];
     kind: SubmissionKind;
     scheduledFor?: Date;
+    actorUserId?: string;
   }): Promise<void>;
   fail(input: {
     operationId: string;
@@ -62,6 +64,8 @@ export type SubmissionPersistence = {
     message: string;
     uncertain: boolean;
     credentialIncident?: PageCredentialIncidentStatus;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   }): Promise<void>;
 };
 
@@ -109,6 +113,7 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
     kind: SubmissionKind;
     requestFingerprint: string;
     scheduledFor?: Date;
+    actorUserId?: string;
   }): Promise<PreparedSubmission> {
     const prepared = await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
@@ -129,7 +134,10 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
       const page = await pages.findById(candidate.pageId);
       assertPageReadyForMutation(page, "Page chưa sẵn sàng để đăng bài.");
 
-      const credential = await credentials.findByPageId(page.id);
+      const credential = await credentials.findForPage(
+        page.id,
+        input.actorUserId,
+      );
       if (!credential || credential.revokedAt) {
         throw new AppError({
           code: "PAGE_CREDENTIAL_MISSING",
@@ -143,6 +151,8 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
           pageId: page.id,
           expiresAt: credential.expiresAt!,
           detectedAt: checkedAt,
+          credentialId: credential.id,
+          facebookConnectionId: credential.facebookConnectionId,
         });
         return null;
       }
@@ -228,6 +238,8 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
     message: string;
     uncertain: boolean;
     credentialIncident?: PageCredentialIncidentStatus;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   }): Promise<void> {
     await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
@@ -254,6 +266,8 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
           status: input.credentialIncident,
           errorCode: input.code,
           operationId: input.operationId,
+          credentialId: input.credentialId,
+          facebookConnectionId: input.facebookConnectionId,
         });
       }
     });
@@ -286,13 +300,21 @@ export class SubmitPostService {
     private readonly assetUrls: SubmissionAssetUrlProvider = new AssetStorage(),
   ) {}
 
-  async publish(postId: string): Promise<SubmissionResult> {
-    return this.submit({ postId: z.uuid().parse(postId), kind: "publish_now" });
+  async publish(
+    postId: string,
+    actorUserId?: string,
+  ): Promise<SubmissionResult> {
+    return this.submit({
+      postId: z.uuid().parse(postId),
+      kind: "publish_now",
+      actorUserId,
+    });
   }
 
   async schedule(
     postId: string,
     scheduledForInput: unknown,
+    actorUserId?: string,
   ): Promise<SubmissionResult> {
     const scheduledFor = parseFacebookScheduleTime(
       scheduledForInput,
@@ -302,6 +324,7 @@ export class SubmitPostService {
       postId: z.uuid().parse(postId),
       kind: "schedule",
       scheduledFor,
+      actorUserId,
     });
   }
 
@@ -309,12 +332,14 @@ export class SubmitPostService {
     postId: string;
     kind: SubmissionKind;
     scheduledFor?: Date;
+    actorUserId?: string;
   }): Promise<SubmissionResult> {
     const prepared = await this.persistence.prepare({
       postId: input.postId,
       kind: input.kind,
       requestFingerprint: fingerprint(input),
       scheduledFor: input.scheduledFor,
+      actorUserId: input.actorUserId,
     });
     let remotePostId: string;
     let remoteMediaIds: string[] = [];
@@ -418,6 +443,8 @@ export class SubmitPostService {
         uncertain,
         credentialIncident:
           getPageCredentialIncidentStatus(normalized) ?? undefined,
+        credentialId: prepared.pageCredential.credentialId,
+        facebookConnectionId: prepared.pageCredential.facebookConnectionId,
       });
       throw normalized;
     }

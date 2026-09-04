@@ -31,13 +31,14 @@ export async function GET(request: Request) {
       weekStart: url.searchParams.get("weekStart") ?? undefined,
       refresh: url.searchParams.get("refresh") ?? undefined,
     });
-    await assertRequestPageAccess(request, query.pageId);
+    const viewer = await assertRequestPageAccess(request, query.pageId);
     if (query.weekStart) {
       const result = await new RemotePostWeekCache().list({
         localPageId: query.pageId,
         kind: query.kind,
         weekStart: new Date(query.weekStart),
         forceRefresh: query.refresh === "1",
+        actorUserId: viewer?.id,
       });
       return NextResponse.json({ ...result, after: null, requestId });
     }
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
       localPageId: query.pageId,
       kind: query.kind,
       after: query.after,
+      actorUserId: viewer?.id,
     });
 
     return NextResponse.json({ ...result, requestId });

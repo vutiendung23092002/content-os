@@ -6,7 +6,10 @@ import { getTokenKeyring, type TokenKeyring } from "@/lib/crypto/token-keyring";
 import { requireServerEnv } from "@/lib/env/server";
 import { MetaGraphClient } from "./meta-client";
 
-export type StoredPageToken = EncryptedToken;
+export type StoredPageToken = EncryptedToken & {
+  credentialId?: string;
+  facebookConnectionId?: string | null;
+};
 
 export function toStoredPageToken(
   credential: Pick<
@@ -16,6 +19,8 @@ export function toStoredPageToken(
     | "authTag"
     | "keyVersion"
     | "tokenFingerprint"
+    | "id"
+    | "facebookConnectionId"
   >,
 ): StoredPageToken {
   return {
@@ -24,6 +29,11 @@ export function toStoredPageToken(
     authTag: credential.authTag,
     keyVersion: credential.keyVersion,
     fingerprint: credential.tokenFingerprint,
+    credentialId: "id" in credential ? (credential.id as string) : undefined,
+    facebookConnectionId:
+      "facebookConnectionId" in credential
+        ? (credential.facebookConnectionId as string | null)
+        : undefined,
   };
 }
 

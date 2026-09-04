@@ -244,6 +244,7 @@ export class RemotePostWeekCache {
     kind: RemotePostKind;
     weekStart: Date;
     forceRefresh?: boolean;
+    actorUserId?: string;
   }): Promise<{
     posts: RemoteFacebookPost[];
     fetchedAt: string;
@@ -287,7 +288,7 @@ export class RemotePostWeekCache {
       };
     }
 
-    const key = `${input.localPageId}:${type}`;
+    const key = `${input.localPageId}:${type}:${input.actorUserId ?? "machine"}`;
 
     let sync = inFlightSyncs.get(key);
 
@@ -317,6 +318,7 @@ export class RemotePostWeekCache {
     weekStart: Date;
     weekEnd: Date;
     syncType: string;
+    actorUserId?: string;
   }): Promise<RemoteFacebookPost[]> {
     let after: string | undefined;
 
@@ -339,6 +341,7 @@ export class RemotePostWeekCache {
                 until: input.weekEnd,
               }
             : undefined,
+        actorUserId: input.actorUserId,
       });
 
       collected.push(...result.posts);

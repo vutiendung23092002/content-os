@@ -22,6 +22,10 @@ function validStagingEnvironment(): NodeJS.ProcessEnv {
     FACEBOOK_APP_SECRET: "test-app-secret",
     FACEBOOK_GRAPH_API_VERSION: "v26.0",
     FACEBOOK_USER_ACCESS_TOKEN: "test-user-token",
+    FACEBOOK_CONNECT_APP_ID: "test-connect-app-id",
+    FACEBOOK_CONNECT_APP_SECRET: "test-connect-app-secret",
+    FACEBOOK_CONNECT_REDIRECT_URI:
+      "https://staging-social.vutiendung.io.vn/api/facebook/callback",
     TOKEN_ENCRYPTION_KEY: "test-encryption-key",
     TOKEN_ENCRYPTION_KEY_VERSION: "1",
     NEXT_PUBLIC_SUPABASE_URL: "https://staging-supabase.example.test",
@@ -83,6 +87,52 @@ describe("staging environment URL validation", () => {
         failures: [],
       },
     );
+  });
+
+  it("derives a missing App B callback and validates an explicit callback", () => {
+    const missing = validStagingEnvironment();
+    delete missing.FACEBOOK_CONNECT_REDIRECT_URI;
+    expect(validateStagingEnvironment(missing)).toMatchObject({
+      ok: true,
+      failures: [],
+    });
+
+    const http = validStagingEnvironment();
+    http.FACEBOOK_CONNECT_REDIRECT_URI =
+      "http://staging-social.vutiendung.io.vn/api/facebook/callback";
+    expect(validateStagingEnvironment(http).failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "FACEBOOK_CONNECT_REDIRECT_URI_NOT_HTTPS",
+        }),
+      ]),
+    );
+
+    const wrongPath = validStagingEnvironment();
+    wrongPath.FACEBOOK_CONNECT_REDIRECT_URI =
+      "https://staging-social.vutiendung.io.vn/wrong";
+    expect(validateStagingEnvironment(wrongPath).failures).toContainEqual({
+      code: "FACEBOOK_CONNECT_REDIRECT_URI_MISMATCH",
+      names: ["FACEBOOK_CONNECT_REDIRECT_URI", "NEXT_PUBLIC_SITE_URL"],
+    });
+
+    const query = validStagingEnvironment();
+    query.FACEBOOK_CONNECT_REDIRECT_URI =
+      "https://staging-social.vutiendung.io.vn/api/facebook/callback?unsafe=1";
+    expect(validateStagingEnvironment(query).failures).toContainEqual({
+      code: "FACEBOOK_CONNECT_REDIRECT_URI_MISMATCH",
+      names: ["FACEBOOK_CONNECT_REDIRECT_URI", "NEXT_PUBLIC_SITE_URL"],
+    });
+  });
+
+  it("requires App B to be distinct from the admin-managed Meta App", () => {
+    const env = validStagingEnvironment();
+    env.FACEBOOK_CONNECT_APP_ID = env.FACEBOOK_APP_ID;
+
+    expect(validateStagingEnvironment(env).failures).toContainEqual({
+      code: "FACEBOOK_CONNECT_APP_NOT_DISTINCT",
+      names: ["FACEBOOK_APP_ID", "FACEBOOK_CONNECT_APP_ID"],
+    });
   });
 
   it("rejects production Compose and image identities", () => {

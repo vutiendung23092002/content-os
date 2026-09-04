@@ -22,7 +22,7 @@ export async function POST(request: Request, context: RouteContext) {
       action: "post:publish",
     });
     await assertEmptyBody(request);
-    const result = await new SubmitPostService().publish(postId);
+    const result = await new SubmitPostService().publish(postId, viewer?.id);
     return NextResponse.json({ operation: result, requestId });
   } catch (error) {
     return toErrorResponse(error, requestId);

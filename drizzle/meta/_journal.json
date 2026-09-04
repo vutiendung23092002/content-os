@@ -57,6 +57,20 @@
       "when": 1788139965574,
       "tag": "0007_magenta_sumo",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788491447654,
+      "tag": "0008_remarkable_garia",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788492981784,
+      "tag": "0009_aspiring_black_tom",
+      "breakpoints": true
     }
   ]
 }

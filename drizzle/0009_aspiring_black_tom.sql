@@ -1,0 +1,1 @@
+ALTER TABLE "hancontent_os"."page_credentials" ADD COLUMN "provider_metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;

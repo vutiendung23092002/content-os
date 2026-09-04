@@ -39,6 +39,32 @@ export class UserPageAssignmentRepository {
       .where(eq(userPageAssignments.pageId, pageId));
   }
 
+  async assignFromConnection(input: {
+    userId: string;
+    pageId: string;
+    facebookConnectionId: string;
+  }): Promise<void> {
+    await this.database
+      .insert(userPageAssignments)
+      .values({
+        userId: input.userId,
+        pageId: input.pageId,
+        assignedByUserId: input.userId,
+        facebookConnectionId: input.facebookConnectionId,
+      })
+      .onConflictDoNothing({
+        target: [userPageAssignments.userId, userPageAssignments.pageId],
+      });
+  }
+
+  async deleteForConnection(facebookConnectionId: string): Promise<void> {
+    await this.database
+      .delete(userPageAssignments)
+      .where(
+        eq(userPageAssignments.facebookConnectionId, facebookConnectionId),
+      );
+  }
+
   async replace(input: {
     userId: string;
     pageIds: string[];

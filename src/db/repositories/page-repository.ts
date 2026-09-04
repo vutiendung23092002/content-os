@@ -117,11 +117,13 @@ export class PageRepository {
   async markMissingManagedPages(
     seenExternalPageIds: string[],
     detectedAt = new Date(),
+    preservedPageIds: string[] = [],
   ): Promise<number> {
     const seen = new Set(seenExternalPageIds);
+    const preserved = new Set(preservedPageIds);
     const activePages = await this.listActive();
     const missing = activePages.filter((page) => {
-      if (seen.has(page.externalPageId)) return false;
+      if (seen.has(page.externalPageId) || preserved.has(page.id)) return false;
 
       const metadata = page.remoteMetadata;
       return (

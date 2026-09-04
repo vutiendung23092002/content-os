@@ -53,7 +53,10 @@ export type RemotePostPage = {
 };
 
 export type RemotePostAccess = {
-  load(localPageId: string): Promise<{
+  load(
+    localPageId: string,
+    actorUserId?: string,
+  ): Promise<{
     page: RemotePostPage;
     pageCredential: StoredPageToken;
   }>;
@@ -68,6 +71,8 @@ export type RemotePostIncidentRecorder = (input: {
   pageId: string;
   status: PageCredentialIncidentStatus;
   errorCode: string;
+  credentialId?: string;
+  facebookConnectionId?: string | null;
 }) => Promise<void>;
 
 const defaultIncidentRecorder: RemotePostIncidentRecorder = (input) =>
@@ -76,7 +81,7 @@ const defaultIncidentRecorder: RemotePostIncidentRecorder = (input) =>
   );
 
 class DatabaseRemotePostAccess implements RemotePostAccess {
-  async load(localPageId: string) {
+  async load(localPageId: string, actorUserId?: string) {
     const database = getDatabase();
     const page = await new PageRepository(database).findById(localPageId);
     if (!page || !page.isActive || page.connectionStatus !== "active") {
@@ -87,9 +92,10 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
       });
     }
 
-    const credential = await new PageCredentialRepository(
-      database,
-    ).findByPageId(page.id);
+    const credential = await new PageCredentialRepository(database).findForPage(
+      page.id,
+      actorUserId,
+    );
     if (!credential || credential.revokedAt) {
       throw new AppError({
         code: "PAGE_CREDENTIAL_MISSING",
@@ -103,6 +109,8 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
         pageId: page.id,
         expiresAt: credential.expiresAt!,
         detectedAt: checkedAt,
+        credentialId: credential.id,
+        facebookConnectionId: credential.facebookConnectionId,
       });
       throw pageCredentialExpiredError();
     }
@@ -208,6 +216,7 @@ export class RemotePostReader {
     after?: string;
     limit?: number;
     window?: { since: Date; until: Date };
+    actorUserId?: string;
   }): Promise<{
     page: RemotePostPage;
     posts: RemoteFacebookPost[];
@@ -219,21 +228,27 @@ export class RemotePostReader {
     const after = input.after
       ? z.string().trim().min(1).max(2048).parse(input.after)
       : undefined;
-    const context = await this.access.load(localPageId);
+    const context = input.actorUserId
+      ? await this.access.load(localPageId, input.actorUserId)
+      : await this.access.load(localPageId);
     const client = await this.readWithCredentialGuard(
       context.page.id,
+      context.pageCredential,
       async () => this.clientFactory(context.pageCredential),
     );
 
     if (kind === "scheduled") {
-      const result = await this.readWithCredentialGuard(context.page.id, () =>
-        input.limit
-          ? client.getScheduledPosts(
-              context.page.externalPageId,
-              after,
-              input.limit,
-            )
-          : client.getScheduledPosts(context.page.externalPageId, after),
+      const result = await this.readWithCredentialGuard(
+        context.page.id,
+        context.pageCredential,
+        () =>
+          input.limit
+            ? client.getScheduledPosts(
+                context.page.externalPageId,
+                after,
+                input.limit,
+              )
+            : client.getScheduledPosts(context.page.externalPageId, after),
       );
 
       return {
@@ -262,15 +277,18 @@ export class RemotePostReader {
       };
     }
 
-    const result = await this.readWithCredentialGuard(context.page.id, () =>
-      input.limit || input.window
-        ? client.getPublishedPosts(
-            context.page.externalPageId,
-            after,
-            input.limit ?? 50,
-            input.window,
-          )
-        : client.getPublishedPosts(context.page.externalPageId, after),
+    const result = await this.readWithCredentialGuard(
+      context.page.id,
+      context.pageCredential,
+      () =>
+        input.limit || input.window
+          ? client.getPublishedPosts(
+              context.page.externalPageId,
+              after,
+              input.limit ?? 50,
+              input.window,
+            )
+          : client.getPublishedPosts(context.page.externalPageId, after),
     );
 
     return {
@@ -308,6 +326,7 @@ export class RemotePostReader {
 
   private async readWithCredentialGuard<Result>(
     pageId: string,
+    credential: StoredPageToken,
     read: () => Promise<Result>,
   ): Promise<Result> {
     try {
@@ -320,6 +339,8 @@ export class RemotePostReader {
           status,
           errorCode:
             error instanceof AppError ? error.code : "FACEBOOK_API_ERROR",
+          credentialId: credential.credentialId,
+          facebookConnectionId: credential.facebookConnectionId,
         });
       }
       throw error;

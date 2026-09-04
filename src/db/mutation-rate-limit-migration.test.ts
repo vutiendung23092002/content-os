@@ -40,7 +40,9 @@ describe("mutation rate-limit migration contract", () => {
     const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8")) as Snapshot;
     const table = snapshot.tables["hancontent_os.mutation_rate_limits"];
 
-    expect(journal.entries.at(-1)?.tag).toBe("0007_magenta_sumo");
+    expect(journal.entries.map((entry) => entry.tag)).toContain(
+      "0007_magenta_sumo",
+    );
     expect(table).toBeDefined();
     expect(Object.keys(table!.columns)).toEqual([
       "actor_id",

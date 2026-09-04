@@ -101,6 +101,7 @@ export type RemotePostMutationPersistence = {
     kind: MutationKind;
     message?: string;
     requestFingerprint: string;
+    actorUserId?: string;
   }): Promise<PreparedMutation>;
 
   updateSucceeded(
@@ -118,6 +119,8 @@ export type RemotePostMutationPersistence = {
     credentialIncident?: {
       pageId: string;
       status: PageCredentialIncidentStatus;
+      credentialId?: string;
+      facebookConnectionId?: string | null;
     },
   ): Promise<void>;
 
@@ -130,6 +133,7 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
     kind: MutationKind;
     message?: string;
     requestFingerprint: string;
+    actorUserId?: string;
   }): Promise<PreparedMutation> {
     const prepared = await runInTransaction(async (transaction) => {
       const post = await new PostRepository(transaction).findById(input.postId);
@@ -177,7 +181,7 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
 
       const credential = await new PageCredentialRepository(
         transaction,
-      ).findByPageId(page.id);
+      ).findForPage(page.id, input.actorUserId);
 
       if (!credential || credential.revokedAt) {
         throw new AppError({
@@ -192,6 +196,8 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
           pageId: page.id,
           expiresAt: credential.expiresAt!,
           detectedAt: checkedAt,
+          credentialId: credential.id,
+          facebookConnectionId: credential.facebookConnectionId,
         });
         return null;
       }
@@ -304,6 +310,8 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
     credentialIncident?: {
       pageId: string;
       status: PageCredentialIncidentStatus;
+      credentialId?: string;
+      facebookConnectionId?: string | null;
     },
   ) {
     await runInTransaction(async (transaction) => {
@@ -318,6 +326,8 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
           status: credentialIncident.status,
           errorCode: code,
           operationId,
+          credentialId: credentialIncident.credentialId,
+          facebookConnectionId: credentialIncident.facebookConnectionId,
         });
       }
     });
@@ -344,7 +354,11 @@ export class RemotePostMutationService {
     ) => RemotePostMutationClient = createMetaClientFromCredential,
   ) {}
 
-  async updateMessage(postIdInput: unknown, messageInput: unknown) {
+  async updateMessage(
+    postIdInput: unknown,
+    messageInput: unknown,
+    actorUserId?: string,
+  ) {
     const postId = z.uuid().parse(postIdInput);
 
     const message = z.string().trim().max(63_206).parse(messageInput);
@@ -358,13 +372,18 @@ export class RemotePostMutationService {
         kind: "update",
         message,
       }),
+      actorUserId,
     });
 
-    await this.runRemoteMutation(prepared.operationId, prepared.pageId, () =>
-      this.clientFactory(prepared.pageCredential).updatePostMessage(
-        prepared.remotePostId,
-        message,
-      ),
+    await this.runRemoteMutation(
+      prepared.operationId,
+      prepared.pageId,
+      prepared.pageCredential,
+      () =>
+        this.clientFactory(prepared.pageCredential).updatePostMessage(
+          prepared.remotePostId,
+          message,
+        ),
     );
 
     await this.persistRemoteSuccess(prepared.operationId, () =>
@@ -382,7 +401,7 @@ export class RemotePostMutationService {
     };
   }
 
-  async remove(postIdInput: unknown) {
+  async remove(postIdInput: unknown, actorUserId?: string) {
     const postId = z.uuid().parse(postIdInput);
 
     const prepared = await this.persistence.prepare({
@@ -392,11 +411,13 @@ export class RemotePostMutationService {
         postId,
         kind: "remove",
       }),
+      actorUserId,
     });
 
     const client = await this.runRemoteLookup(
       prepared.operationId,
       prepared.pageId,
+      prepared.pageCredential,
       async () => this.clientFactory(prepared.pageCredential),
     );
 
@@ -414,12 +435,16 @@ export class RemotePostMutationService {
         ? ((await this.runRemoteLookup(
             prepared.operationId,
             prepared.pageId,
+            prepared.pageCredential,
             () => client.resolveVideoPostId(prepared.remotePostId),
           )) ?? prepared.remotePostId)
         : prepared.remotePostId;
 
-    await this.runRemoteMutation(prepared.operationId, prepared.pageId, () =>
-      client.deletePost(deletedRemotePostId),
+    await this.runRemoteMutation(
+      prepared.operationId,
+      prepared.pageId,
+      prepared.pageCredential,
+      () => client.deletePost(deletedRemotePostId),
     );
 
     const completed = {
@@ -444,12 +469,13 @@ export class RemotePostMutationService {
   private async runRemoteLookup<T>(
     operationId: string,
     pageId: string,
+    credential: StoredPageToken,
     lookup: () => Promise<T>,
   ): Promise<T> {
     try {
       return await lookup();
     } catch (error) {
-      await this.recordRemoteFailure(operationId, pageId, error);
+      await this.recordRemoteFailure(operationId, pageId, credential, error);
 
       throw error;
     }
@@ -458,12 +484,13 @@ export class RemotePostMutationService {
   private async runRemoteMutation(
     operationId: string,
     pageId: string,
+    credential: StoredPageToken,
     mutate: () => Promise<void>,
   ) {
     try {
       await mutate();
     } catch (error) {
-      await this.recordRemoteFailure(operationId, pageId, error);
+      await this.recordRemoteFailure(operationId, pageId, credential, error);
 
       throw error;
     }
@@ -494,6 +521,7 @@ export class RemotePostMutationService {
   private async recordRemoteFailure(
     operationId: string,
     pageId: string,
+    credential: StoredPageToken,
     error: unknown,
   ) {
     const normalized =
@@ -514,7 +542,14 @@ export class RemotePostMutationService {
         operationId,
         normalized.code,
         normalized.message,
-        credentialIncident ? { pageId, status: credentialIncident } : undefined,
+        credentialIncident
+          ? {
+              pageId,
+              status: credentialIncident,
+              credentialId: credential.credentialId,
+              facebookConnectionId: credential.facebookConnectionId,
+            }
+          : undefined,
       );
     }
   }

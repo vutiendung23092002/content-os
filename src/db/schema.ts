@@ -92,6 +92,11 @@ export const generationTypeEnum = applicationSchema.enum("generation_type", [
   "idea",
 ]);
 
+export const facebookConnectionTypeEnum = applicationSchema.enum(
+  "facebook_connection_type",
+  ["admin_managed", "user_connected"],
+);
+
 export const appUsers = applicationSchema.table(
   "app_users",
   {
@@ -129,20 +134,51 @@ export const facebookConnection = applicationSchema.table(
   "facebook_connection",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    appUserId: uuid("app_user_id").references(() => appUsers.id, {
+      onDelete: "cascade",
+    }),
     externalUserId: text("external_user_id"),
+    metaAppId: text("meta_app_id"),
+    connectionType: facebookConnectionTypeEnum("connection_type")
+      .notNull()
+      .default("admin_managed"),
     status: connectionStatusEnum("status").notNull().default("error"),
+    accountName: text("account_name"),
+    accountAvatarUrl: text("account_avatar_url"),
     grantedScopes: text("granted_scopes")
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    dataAccessExpiresAt: timestamp("data_access_expires_at", {
+      withTimezone: true,
+    }),
+    userTokenCiphertext: bytea("user_token_ciphertext"),
+    userTokenNonce: bytea("user_token_nonce"),
+    userTokenAuthTag: bytea("user_token_auth_tag"),
+    userTokenKeyVersion: integer("user_token_key_version"),
+    userTokenFingerprint: text("user_token_fingerprint"),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+    disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
     providerMetadata: jsonb("provider_metadata")
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
     ...timestamps,
   },
+  (table) => [
+    uniqueIndex("facebook_connection_user_app_type_unique")
+      .on(table.appUserId, table.metaAppId, table.connectionType)
+      .where(sql`${table.appUserId} is not null`),
+    index("facebook_connection_user_status_idx").on(
+      table.appUserId,
+      table.status,
+    ),
+    check(
+      "facebook_connection_user_connected_fields",
+      sql`${table.connectionType} <> 'user_connected' or (${table.appUserId} is not null and ${table.externalUserId} is not null and ${table.metaAppId} is not null and ${table.userTokenCiphertext} is not null and ${table.userTokenNonce} is not null and ${table.userTokenAuthTag} is not null and ${table.userTokenKeyVersion} is not null and ${table.userTokenFingerprint} is not null)`,
+    ),
+  ],
 );
 
 export const pages = applicationSchema.table(
@@ -189,6 +225,10 @@ export const userPageAssignments = applicationSchema.table(
       () => appUsers.id,
       { onDelete: "set null" },
     ),
+    facebookConnectionId: uuid("facebook_connection_id").references(
+      () => facebookConnection.id,
+      { onDelete: "set null" },
+    ),
     ...timestamps,
   },
   (table) => [
@@ -207,6 +247,10 @@ export const pageCredentials = applicationSchema.table(
     pageId: uuid("page_id")
       .notNull()
       .references(() => pages.id, { onDelete: "cascade" }),
+    facebookConnectionId: uuid("facebook_connection_id").references(
+      () => facebookConnection.id,
+      { onDelete: "restrict" },
+    ),
     accessTokenCiphertext: bytea("access_token_ciphertext").notNull(),
     nonce: bytea("nonce").notNull(),
     authTag: bytea("auth_tag").notNull(),
@@ -215,9 +259,39 @@ export const pageCredentials = applicationSchema.table(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    providerMetadata: jsonb("provider_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     ...timestamps,
   },
-  (table) => [uniqueIndex("page_credentials_page_id_unique").on(table.pageId)],
+  (table) => [
+    uniqueIndex("page_credentials_legacy_page_unique")
+      .on(table.pageId)
+      .where(sql`${table.facebookConnectionId} is null`),
+    uniqueIndex("page_credentials_page_connection_unique").on(
+      table.pageId,
+      table.facebookConnectionId,
+    ),
+    index("page_credentials_connection_idx").on(table.facebookConnectionId),
+  ],
+);
+
+export const facebookOauthStates = applicationSchema.table(
+  "facebook_oauth_states",
+  {
+    stateHash: text("state_hash").primaryKey(),
+    appUserId: uuid("app_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    redirectPath: text("redirect_path").notNull().default("/pages"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("facebook_oauth_states_expiry_idx").on(table.expiresAt)],
 );
 
 export const assets = applicationSchema.table(
@@ -484,6 +558,7 @@ export const mutationRateLimits = applicationSchema.table(
 export const schema = {
   appUsers,
   facebookConnection,
+  facebookOauthStates,
   pages,
   userPageAssignments,
   pageCredentials,

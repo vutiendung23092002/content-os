@@ -35,12 +35,18 @@ export type PersistManagedPages = (
 
 async function persistManagedPages(
   pagesToPersist: PersistableManagedPage[],
+  metaAppId?: string,
 ): Promise<SafeSyncedPage[]> {
   return runInTransaction(async (transaction) => {
     const pageRepository = new PageRepository(transaction);
     const credentialRepository = new PageCredentialRepository(transaction);
     const connectionRepository = new FacebookConnectionRepository(transaction);
     const safePages: SafeSyncedPage[] = [];
+    const connection = await connectionRepository.markActive({
+      metaAppId,
+      providerMetadata: { managedPageCount: pagesToPersist.length },
+    });
+    if (!connection) throw new Error("Failed to persist admin Meta connection");
 
     for (const managedPage of pagesToPersist) {
       const page = await pageRepository.upsertManagedPage({
@@ -53,9 +59,12 @@ async function persistManagedPages(
           tasks: managedPage.tasks,
         },
       });
+      await credentialRepository.adoptLegacyCredential(page.id, connection.id);
       await credentialRepository.upsert(
         page.id,
         managedPage.encryptedAccessToken,
+        undefined,
+        connection.id,
       );
       safePages.push({
         id: page.id,
@@ -67,13 +76,30 @@ async function persistManagedPages(
       });
     }
 
+    const seenExternalPageIds = pagesToPersist.map(
+      (page) => page.externalPageId,
+    );
+    const preservedPageIds: string[] = [];
+    for (const page of await pageRepository.listActive()) {
+      if (
+        !seenExternalPageIds.includes(page.externalPageId) &&
+        (page.remoteMetadata.source === "managed_pages_sync" ||
+          (page.remoteMetadata.source === undefined &&
+            Array.isArray(page.remoteMetadata.tasks))) &&
+        (await credentialRepository.hasActiveUserCredentialOutsideConnection(
+          page.id,
+          connection.id,
+        ))
+      ) {
+        preservedPageIds.push(page.id);
+      }
+    }
     await pageRepository.markMissingManagedPages(
-      pagesToPersist.map((page) => page.externalPageId),
+      seenExternalPageIds,
+      new Date(),
+      preservedPageIds,
     );
 
-    await connectionRepository.markActive({
-      providerMetadata: { managedPageCount: safePages.length },
-    });
     return safePages;
   });
 }
@@ -85,6 +111,7 @@ export async function syncManagedPages(input: {
     "encrypt"
   >;
   persist?: PersistManagedPages;
+  metaAppId?: string;
 }): Promise<SafeSyncedPage[]> {
   const managedPages: ManagedPageCredential[] = [];
   const seenCursors = new Set<string>();
@@ -106,5 +133,7 @@ export async function syncManagedPages(input: {
     encryptedAccessToken: input.tokenEncryption.encrypt(accessToken),
   }));
 
-  return (input.persist ?? persistManagedPages)(pagesToPersist);
+  return input.persist
+    ? input.persist(pagesToPersist)
+    : persistManagedPages(pagesToPersist, input.metaAppId);
 }

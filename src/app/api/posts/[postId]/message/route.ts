@@ -26,6 +26,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const operation = await new RemotePostMutationService().updateMessage(
       postId,
       body.message,
+      viewer?.id,
     );
     return NextResponse.json({ operation, requestId });
   } catch (error) {

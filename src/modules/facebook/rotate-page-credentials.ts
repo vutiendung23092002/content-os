@@ -2,6 +2,10 @@ import "server-only";
 
 import { runInTransaction } from "@/db/client";
 import {
+  FacebookConnectionRepository,
+  type FacebookConnectionRecord,
+} from "@/db/repositories/facebook-connection-repository";
+import {
   PageCredentialRepository,
   type PageCredentialRecord,
 } from "@/db/repositories/page-credential-repository";
@@ -12,7 +16,17 @@ import { toStoredPageToken } from "./page-credential";
 export type PageCredentialRotationStore = {
   listByKeyVersion(keyVersion: number): Promise<PageCredentialRecord[]>;
   replaceEncryption(input: {
+    credentialId?: string;
     pageId: string;
+    expectedKeyVersion: number;
+    expectedFingerprint: string;
+    encrypted: ReturnType<TokenKeyring["encrypt"]>;
+  }): Promise<boolean>;
+  listUserConnectedByKeyVersion(
+    keyVersion: number,
+  ): Promise<FacebookConnectionRecord[]>;
+  replaceUserTokenEncryption(input: {
+    id: string;
     expectedKeyVersion: number;
     expectedFingerprint: string;
     encrypted: ReturnType<TokenKeyring["encrypt"]>;
@@ -24,6 +38,7 @@ export type PageCredentialRotationResult = {
   fromVersion: number;
   toVersion: number;
   credentialCount: number;
+  userConnectionCount: number;
 };
 
 type RunRotationTransaction = <Result>(
@@ -33,9 +48,41 @@ type RunRotationTransaction = <Result>(
 function defaultTransaction<Result>(
   work: (store: PageCredentialRotationStore) => Promise<Result>,
 ): Promise<Result> {
-  return runInTransaction((transaction) =>
-    work(new PageCredentialRepository(transaction)),
-  );
+  return runInTransaction((transaction) => {
+    const pageCredentials = new PageCredentialRepository(transaction);
+    const connections = new FacebookConnectionRepository(transaction);
+    return work({
+      listByKeyVersion: (version) => pageCredentials.listByKeyVersion(version),
+      replaceEncryption: (input) => pageCredentials.replaceEncryption(input),
+      listUserConnectedByKeyVersion: (version) =>
+        connections.listUserConnectedByKeyVersion(version),
+      replaceUserTokenEncryption: (input) =>
+        connections.replaceUserTokenEncryption(input),
+    });
+  });
+}
+
+function storedConnectionToken(connection: FacebookConnectionRecord) {
+  if (
+    !connection.userTokenCiphertext ||
+    !connection.userTokenNonce ||
+    !connection.userTokenAuthTag ||
+    !connection.userTokenKeyVersion ||
+    !connection.userTokenFingerprint
+  ) {
+    throw new AppError({
+      code: "FACEBOOK_CONNECTION_CREDENTIAL_MISSING",
+      message: "Facebook connection không có credential mã hóa đầy đủ.",
+      status: 500,
+    });
+  }
+  return {
+    ciphertext: connection.userTokenCiphertext,
+    nonce: connection.userTokenNonce,
+    authTag: connection.userTokenAuthTag,
+    keyVersion: connection.userTokenKeyVersion,
+    fingerprint: connection.userTokenFingerprint,
+  };
 }
 
 export class PageCredentialRotationService {
@@ -51,6 +98,13 @@ export class PageCredentialRotationService {
   async countByVersion(keyVersion: number): Promise<number> {
     return this.transaction(
       async (store) => (await store.listByKeyVersion(keyVersion)).length,
+    );
+  }
+
+  async countUserConnectionsByVersion(keyVersion: number): Promise<number> {
+    return this.transaction(
+      async (store) =>
+        (await store.listUserConnectedByKeyVersion(keyVersion)).length,
     );
   }
 
@@ -83,6 +137,9 @@ export class PageCredentialRotationService {
     const dryRun = input.dryRun ?? false;
     return this.transaction(async (store) => {
       const credentials = await store.listByKeyVersion(input.fromVersion);
+      const connections = await store.listUserConnectedByKeyVersion(
+        input.fromVersion,
+      );
 
       for (const credential of credentials) {
         const encrypted = this.keyring.reencrypt(toStoredPageToken(credential));
@@ -97,6 +154,7 @@ export class PageCredentialRotationService {
 
         if (!dryRun) {
           const updated = await store.replaceEncryption({
+            credentialId: credential.id,
             pageId: credential.pageId,
             expectedKeyVersion: input.fromVersion,
             expectedFingerprint: credential.tokenFingerprint,
@@ -113,11 +171,42 @@ export class PageCredentialRotationService {
         }
       }
 
+      for (const connection of connections) {
+        const encrypted = this.keyring.reencrypt(
+          storedConnectionToken(connection),
+        );
+        if (encrypted.fingerprint !== connection.userTokenFingerprint) {
+          throw new AppError({
+            code: "TOKEN_FINGERPRINT_MISMATCH",
+            message:
+              "Facebook connection credential fingerprint không khớp; đã hủy rotation.",
+            status: 500,
+          });
+        }
+        if (!dryRun) {
+          const updated = await store.replaceUserTokenEncryption({
+            id: connection.id,
+            expectedKeyVersion: input.fromVersion,
+            expectedFingerprint: connection.userTokenFingerprint!,
+            encrypted,
+          });
+          if (!updated) {
+            throw new AppError({
+              code: "FACEBOOK_CONNECTION_ROTATION_CONFLICT",
+              message:
+                "Facebook connection đã thay đổi trong lúc rotation; đã hủy toàn bộ batch.",
+              status: 409,
+            });
+          }
+        }
+      }
+
       return {
         dryRun,
         fromVersion: input.fromVersion,
         toVersion: this.keyring.currentVersion,
         credentialCount: credentials.length,
+        userConnectionCount: connections.length,
       };
     });
   }

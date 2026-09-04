@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { DatabaseExecutor } from "@/db/client";
+import { FacebookConnectionRepository } from "@/db/repositories/facebook-connection-repository";
 import {
   PageCredentialRepository,
   type PageCredentialRecord,
@@ -81,9 +82,25 @@ export async function recordPageCredentialIncident(
     operationId?: string;
     detectedAt?: Date;
     credentialExpiresAt?: Date;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   },
 ): Promise<void> {
   const detectedAt = input.detectedAt ?? new Date();
+  const credentials = new PageCredentialRepository(database);
+  if (input.facebookConnectionId) {
+    await new FacebookConnectionRepository(database).markStatus(
+      input.facebookConnectionId,
+      input.status,
+    );
+    if (input.status === "revoked" && input.credentialId) {
+      await credentials.markRevokedById(input.credentialId, detectedAt);
+    }
+    if (await credentials.findByPageId(input.pageId)) return;
+  } else if (input.status === "revoked") {
+    await credentials.markRevoked(input.pageId, detectedAt);
+  }
+
   await new PageRepository(database).lockForCredentialIncident({
     pageId: input.pageId,
     status: input.status,
@@ -92,13 +109,6 @@ export async function recordPageCredentialIncident(
     detectedAt,
     credentialExpiresAt: input.credentialExpiresAt,
   });
-
-  if (input.status === "revoked") {
-    await new PageCredentialRepository(database).markRevoked(
-      input.pageId,
-      detectedAt,
-    );
-  }
 }
 
 export function recordExpiredPageCredential(
@@ -107,6 +117,8 @@ export function recordExpiredPageCredential(
     pageId: string;
     expiresAt: Date;
     detectedAt?: Date;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   },
 ): Promise<void> {
   return recordPageCredentialIncident(database, {
@@ -115,5 +127,7 @@ export function recordExpiredPageCredential(
     errorCode: "PAGE_CREDENTIAL_EXPIRED",
     detectedAt: input.detectedAt,
     credentialExpiresAt: input.expiresAt,
+    credentialId: input.credentialId,
+    facebookConnectionId: input.facebookConnectionId,
   });
 }

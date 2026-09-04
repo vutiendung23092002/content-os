@@ -58,6 +58,24 @@ type StoredPageDto = {
 
 type ViewerRole = "super_admin" | "admin" | "member";
 
+type PersonalConnectionDto = {
+  id: string;
+  status: string;
+  account: { id: string; name: string; avatarUrl?: string };
+  scopes: string[];
+  tokenExpiresAt: string | null;
+  dataAccessExpiresAt: string | null;
+};
+
+type DiscoverablePageDto = {
+  externalPageId: string;
+  name: string;
+  avatarUrl?: string;
+  category?: string;
+  tasks: string[];
+  alreadyConnected: boolean;
+};
+
 const capabilityLabels: Array<
   [keyof ManualPageDto["capabilities"], string, string]
 > = [
@@ -112,6 +130,16 @@ export default function PagesPage() {
     null,
   );
   const [viewerRole, setViewerRole] = useState<ViewerRole>("member");
+  const [personalConfigured, setPersonalConfigured] = useState(false);
+  const [personalConnection, setPersonalConnection] =
+    useState<PersonalConnectionDto | null>(null);
+  const [discoverablePages, setDiscoverablePages] = useState<
+    DiscoverablePageDto[]
+  >([]);
+  const [selectedPersonalPageIds, setSelectedPersonalPageIds] = useState<
+    string[]
+  >([]);
+  const [personalBusy, setPersonalBusy] = useState(false);
 
   async function loadStoredPages() {
     const response = await fetch("/api/pages", {
@@ -138,13 +166,27 @@ export default function PagesPage() {
       }).then((response) =>
         readPayload<{ viewer?: { role: ViewerRole } }>(response),
       ),
-    ])
-      .then(([statusPayload, pagesPayload, sessionPayload]) => {
-        if (!active) return;
-        setConnection(statusPayload.connection ?? null);
-        setStoredPages(pagesPayload.pages ?? []);
-        setViewerRole(sessionPayload.viewer?.role ?? "member");
+      fetch("/api/facebook/connection", {
+        headers: { accept: "application/json" },
       })
+        .then((response) =>
+          readPayload<{
+            configured: boolean;
+            connection: PersonalConnectionDto | null;
+          }>(response),
+        )
+        .catch(() => ({ configured: false, connection: null })),
+    ])
+      .then(
+        ([statusPayload, pagesPayload, sessionPayload, personalPayload]) => {
+          if (!active) return;
+          setConnection(statusPayload.connection ?? null);
+          setStoredPages(pagesPayload.pages ?? []);
+          setViewerRole(sessionPayload.viewer?.role ?? "member");
+          setPersonalConfigured(personalPayload.configured);
+          setPersonalConnection(personalPayload.connection);
+        },
+      )
       .catch((reason: unknown) => {
         if (active) {
           showToast({
@@ -165,6 +207,94 @@ export default function PagesPage() {
       active = false;
     };
   }, [showToast]);
+
+  async function discoverPersonalPages() {
+    setPersonalBusy(true);
+    try {
+      const response = await fetch("/api/facebook/connection/pages", {
+        headers: { accept: "application/json" },
+      });
+      const payload = await readPayload<{
+        connection: PersonalConnectionDto;
+        pages: DiscoverablePageDto[];
+      }>(response);
+      setPersonalConnection(payload.connection);
+      setDiscoverablePages(payload.pages);
+    } catch (reason) {
+      showToast({
+        tone: "error",
+        title: "Không thể tải Page Facebook",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại.",
+      });
+    } finally {
+      setPersonalBusy(false);
+    }
+  }
+
+  async function connectSelectedPersonalPages() {
+    if (!personalConnection || selectedPersonalPageIds.length === 0) return;
+    setPersonalBusy(true);
+    try {
+      const response = await fetch("/api/facebook/connection/pages/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          connectionId: personalConnection.id,
+          pageIds: selectedPersonalPageIds,
+        }),
+      });
+      await readPayload(response);
+      await Promise.all([loadStoredPages(), discoverPersonalPages()]);
+      setSelectedPersonalPageIds([]);
+      showToast({
+        tone: "success",
+        title: "Đã kết nối Page",
+        description: "Page token đã được xác minh và mã hóa an toàn.",
+      });
+    } catch (reason) {
+      showToast({
+        tone: "error",
+        title: "Không thể kết nối Page",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại.",
+      });
+    } finally {
+      setPersonalBusy(false);
+    }
+  }
+
+  async function disconnectPersonalFacebook() {
+    if (!personalConnection) return;
+    setPersonalBusy(true);
+    try {
+      const response = await fetch("/api/facebook/disconnect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ connectionId: personalConnection.id }),
+      });
+      await readPayload(response);
+      setPersonalConnection(null);
+      setDiscoverablePages([]);
+      setSelectedPersonalPageIds([]);
+      await loadStoredPages();
+      showToast({
+        tone: "success",
+        title: "Đã ngắt kết nối Facebook",
+        description:
+          "Chỉ credential và phân quyền tạo bởi kết nối này bị vô hiệu hóa.",
+      });
+    } catch (reason) {
+      showToast({
+        tone: "error",
+        title: "Không thể ngắt kết nối",
+        description:
+          reason instanceof Error ? reason.message : "Vui lòng thử lại.",
+      });
+    } finally {
+      setPersonalBusy(false);
+    }
+  }
 
   async function checkPage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -287,6 +417,111 @@ export default function PagesPage() {
 
   return (
     <div className="pageStack">
+      <section className="surfaceCard addPageCard">
+        <div className="sectionHeading">
+          <div>
+            <span className="stepLabel">FACEBOOK CÁ NHÂN</span>
+            <h2>
+              {personalConnection
+                ? personalConnection.status === "active"
+                  ? `Đã kết nối: ${personalConnection.account.name}`
+                  : "Chưa kết nối Facebook"
+                : "Chưa kết nối Facebook"}
+            </h2>
+            <p>
+              Kết nối tài khoản Facebook của bạn để chọn các Page mà tài khoản
+              này được cấp quyền.
+            </p>
+          </div>
+        </div>
+        {!personalConfigured ? (
+          <p className="statusError">
+            Meta App kết nối cá nhân chưa được cấu hình.
+          </p>
+        ) : personalConnection?.status === "active" ? (
+          <>
+            <div className="verificationFooter">
+              <a
+                className="button buttonSecondary"
+                href="/api/facebook/connect"
+              >
+                Kết nối lại
+              </a>
+              <button
+                className="button buttonSecondary"
+                disabled={personalBusy}
+                onClick={() => void disconnectPersonalFacebook()}
+                type="button"
+              >
+                Ngắt kết nối
+              </button>
+              <button
+                className="button"
+                disabled={personalBusy}
+                onClick={() => void discoverPersonalPages()}
+                type="button"
+              >
+                {personalBusy ? "Đang tải..." : "Xem các Page có thể quản lý"}
+              </button>
+            </div>
+            {discoverablePages.length > 0 ? (
+              <div className="managedPageTable">
+                {discoverablePages.map((page) => (
+                  <label
+                    className="managedPageTableRow"
+                    key={page.externalPageId}
+                  >
+                    <div className="managedPageIdentity">
+                      <input
+                        checked={selectedPersonalPageIds.includes(
+                          page.externalPageId,
+                        )}
+                        disabled={personalBusy}
+                        onChange={(event) =>
+                          setSelectedPersonalPageIds((current) =>
+                            event.target.checked
+                              ? [...current, page.externalPageId]
+                              : current.filter(
+                                  (id) => id !== page.externalPageId,
+                                ),
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      <Avatar name={page.name} url={page.avatarUrl} />
+                      <div>
+                        <strong>{page.name}</strong>
+                        <small>{page.category ?? page.externalPageId}</small>
+                      </div>
+                    </div>
+                    <span className="badge badgeNeutral">
+                      {page.alreadyConnected
+                        ? "Đã có trong hệ thống"
+                        : "Chưa kết nối"}
+                    </span>
+                  </label>
+                ))}
+                <div className="verificationFooter">
+                  <button
+                    className="button"
+                    disabled={
+                      personalBusy || selectedPersonalPageIds.length === 0
+                    }
+                    onClick={() => void connectSelectedPersonalPages()}
+                    type="button"
+                  >
+                    Kết nối Page đã chọn
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <a className="button" href="/api/facebook/connect">
+            Kết nối Facebook
+          </a>
+        )}
+      </section>
       <div className="pageManagementGrid">
         <div className="pageManagementMain">
           <section className="surfaceCard addPageCard">

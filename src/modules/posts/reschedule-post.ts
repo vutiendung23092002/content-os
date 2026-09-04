@@ -56,6 +56,7 @@ export type ReschedulePersistence = {
     postId: string;
     scheduledFor: Date;
     requestFingerprint: string;
+    actorUserId?: string;
   }): Promise<PreparedReschedule>;
   succeed(input: {
     operationId: string;
@@ -69,6 +70,8 @@ export type ReschedulePersistence = {
     code: string;
     message: string;
     credentialIncident?: PageCredentialIncidentStatus;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   }): Promise<void>;
   uncertain(input: {
     operationId: string;
@@ -76,6 +79,8 @@ export type ReschedulePersistence = {
     code: string;
     evidence: Record<string, unknown>;
     credentialIncident?: PageCredentialIncidentStatus;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   }): Promise<void>;
 };
 
@@ -84,6 +89,7 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
     postId: string;
     scheduledFor: Date;
     requestFingerprint: string;
+    actorUserId?: string;
   }): Promise<PreparedReschedule> {
     const prepared = await runInTransaction(async (transaction) => {
       const posts = new PostRepository(transaction);
@@ -121,7 +127,7 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
       );
       const credential = await new PageCredentialRepository(
         transaction,
-      ).findByPageId(page.id);
+      ).findForPage(page.id, input.actorUserId);
       if (!credential || credential.revokedAt) {
         throw new AppError({
           code: "PAGE_CREDENTIAL_MISSING",
@@ -135,6 +141,8 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
           pageId: page.id,
           expiresAt: credential.expiresAt!,
           detectedAt: checkedAt,
+          credentialId: credential.id,
+          facebookConnectionId: credential.facebookConnectionId,
         });
         return null;
       }
@@ -196,6 +204,8 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
     code: string;
     message: string;
     credentialIncident?: PageCredentialIncidentStatus;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   }) {
     await runInTransaction(async (transaction) => {
       await new FacebookOperationRepository(transaction).markFailed(
@@ -209,6 +219,8 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
           status: input.credentialIncident,
           errorCode: input.code,
           operationId: input.operationId,
+          credentialId: input.credentialId,
+          facebookConnectionId: input.facebookConnectionId,
         });
       }
     });
@@ -220,6 +232,8 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
     code: string;
     evidence: Record<string, unknown>;
     credentialIncident?: PageCredentialIncidentStatus;
+    credentialId?: string;
+    facebookConnectionId?: string | null;
   }) {
     void input.evidence;
     await runInTransaction(async (transaction) => {
@@ -233,6 +247,8 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
           status: input.credentialIncident,
           errorCode: input.code,
           operationId: input.operationId,
+          credentialId: input.credentialId,
+          facebookConnectionId: input.facebookConnectionId,
         });
       }
     });
@@ -265,7 +281,11 @@ export class ReschedulePostService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async reschedule(postIdInput: unknown, scheduledForInput: unknown) {
+  async reschedule(
+    postIdInput: unknown,
+    scheduledForInput: unknown,
+    actorUserId?: string,
+  ) {
     const postId = z.uuid().parse(postIdInput);
     const scheduledFor = parseFacebookScheduleTime(
       scheduledForInput,
@@ -275,6 +295,7 @@ export class ReschedulePostService {
       postId,
       scheduledFor,
       requestFingerprint: fingerprint(postId, scheduledFor),
+      actorUserId,
     });
     let client: RescheduleMetaClient;
     let before: ScheduledRemotePost | undefined;
@@ -298,6 +319,8 @@ export class ReschedulePostService {
         message: normalized.message,
         credentialIncident:
           getPageCredentialIncidentStatus(normalized) ?? undefined,
+        credentialId: prepared.pageCredential.credentialId,
+        facebookConnectionId: prepared.pageCredential.facebookConnectionId,
       });
       throw normalized;
     }
@@ -334,6 +357,8 @@ export class ReschedulePostService {
           message: normalized.message,
           credentialIncident:
             getPageCredentialIncidentStatus(normalized) ?? undefined,
+          credentialId: prepared.pageCredential.credentialId,
+          facebookConnectionId: prepared.pageCredential.facebookConnectionId,
         });
         throw normalized;
       }
@@ -442,6 +467,8 @@ export class ReschedulePostService {
       pageId: prepared.pageId,
       code,
       credentialIncident,
+      credentialId: prepared.pageCredential.credentialId,
+      facebookConnectionId: prepared.pageCredential.facebookConnectionId,
       evidence: {
         version: 1,
         reason: "reschedule_readback_unconfirmed",

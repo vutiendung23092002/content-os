@@ -21,7 +21,10 @@ export async function DELETE(request: Request, context: RouteContext) {
       action: "post:remote:delete",
     });
     await assertEmptyBody(request);
-    const operation = await new RemotePostMutationService().remove(postId);
+    const operation = await new RemotePostMutationService().remove(
+      postId,
+      viewer?.id,
+    );
     return NextResponse.json({ operation, requestId });
   } catch (error) {
     return toErrorResponse(error, requestId);

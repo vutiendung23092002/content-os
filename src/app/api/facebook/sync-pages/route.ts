@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     const pages = await syncManagedPages({
       client,
       tokenEncryption: getTokenKeyring(),
+      metaAppId: requireServerEnv("FACEBOOK_APP_ID"),
     });
 
     return NextResponse.json({ pages, requestId });

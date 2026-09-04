@@ -215,6 +215,21 @@ export async function persistManualPage(input: {
     const pageRepository = new PageRepository(transaction);
     const credentialRepository = new PageCredentialRepository(transaction);
     const connectionRepository = new FacebookConnectionRepository(transaction);
+    const connection = await connectionRepository.markActive({
+      externalUserId: input.verification.account.id,
+      metaAppId: input.verification.userToken.appId,
+      grantedScopes: input.verification.userToken.scopes,
+      tokenExpiresAt:
+        unixSecondsToDate(input.verification.userToken.expiresAt) ?? null,
+      providerMetadata: {
+        accountName: input.verification.account.name,
+        accountAvatarUrl: input.verification.account.avatarUrl,
+        appId: input.verification.userToken.appId,
+        dataAccessExpiresAt: unixSecondsToIso(
+          input.verification.userToken.dataAccessExpiresAt,
+        ),
+      },
+    });
     const page = await pageRepository.upsertManagedPage({
       externalPageId: input.verification.page.externalPageId,
       name: input.verification.page.name,
@@ -228,25 +243,14 @@ export async function persistManualPage(input: {
         capabilities: input.verification.capabilities,
       },
     });
+    if (!connection) throw new Error("Failed to persist admin Meta connection");
+    await credentialRepository.adoptLegacyCredential(page.id, connection.id);
     await credentialRepository.upsert(
       page.id,
       input.verification.pageCredential,
       unixSecondsToDate(input.verification.pageToken.expiresAt),
+      connection.id,
     );
-    await connectionRepository.markActive({
-      externalUserId: input.verification.account.id,
-      grantedScopes: input.verification.userToken.scopes,
-      tokenExpiresAt:
-        unixSecondsToDate(input.verification.userToken.expiresAt) ?? null,
-      providerMetadata: {
-        accountName: input.verification.account.name,
-        accountAvatarUrl: input.verification.account.avatarUrl,
-        appId: input.verification.userToken.appId,
-        dataAccessExpiresAt: unixSecondsToIso(
-          input.verification.userToken.dataAccessExpiresAt,
-        ),
-      },
-    });
 
     return toSafeManualPage(input.verification, page.id);
   });

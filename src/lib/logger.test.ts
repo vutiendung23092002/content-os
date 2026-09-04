@@ -56,6 +56,32 @@ describe("logger redaction contract", () => {
     expect(output).not.toContain("nested-client-secret-value");
     expect(output).toContain("[REDACTED]");
   });
+
+  it("redacts App B OAuth secrets without hiding safe error codes", () => {
+    let output = "";
+    const destination = new Writable({
+      write(chunk, _encoding, callback) {
+        output += chunk.toString();
+        callback();
+      },
+    });
+    const testLogger = pino(
+      { redact: { paths: loggerRedactPaths, censor: "[REDACTED]" } },
+      destination,
+    );
+
+    testLogger.error({
+      code: "FACEBOOK_OAUTH_EXCHANGE_FAILED",
+      authorizationCode: "oauth-code-secret",
+      FACEBOOK_CONNECT_APP_SECRET: "app-b-secret",
+      oauth: { code: "nested-oauth-code" },
+    });
+
+    expect(output).toContain("FACEBOOK_OAUTH_EXCHANGE_FAILED");
+    expect(output).not.toContain("oauth-code-secret");
+    expect(output).not.toContain("app-b-secret");
+    expect(output).not.toContain("nested-oauth-code");
+  });
 });
 
 describe("logger configuration", () => {

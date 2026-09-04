@@ -21,7 +21,7 @@ const mutationExport = /^export async function (?:POST|PUT|PATCH|DELETE)\b/m;
 const csrfOrMachineGuard =
   /assertSameOrigin|assertFacebookCronAccess|assertAssetCleanupAccess/;
 const authorizationGuard =
-  /assertRequestPageAccess|assertRequestPostAccess|authorizeRequestPostAccess|assertInternalAccess|assertInternalAdminAccess|requireAdmin|assertFacebookCronAccess|assertAssetCleanupAccess|createSupabaseServerClient/;
+  /assertRequestPageAccess|assertRequestPostAccess|authorizeRequestPostAccess|assertInternalAccess|assertInternalAdminAccess|requireApprovedViewer|requireAdmin|assertFacebookCronAccess|assertAssetCleanupAccess|createSupabaseServerClient/;
 const browserRateLimitBoundary = /assertMutationRateLimit/;
 const boundedBodyBoundary =
   /parseJsonBody|parseMultipartBody|assertEmptyBody|assertFacebookCronAccess|assertAssetCleanupAccess/;

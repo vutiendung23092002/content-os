@@ -19,6 +19,8 @@ export const mutationActions = [
   "facebook:page:add",
   "facebook:page:check",
   "facebook:pages:sync",
+  "facebook:connection:disconnect",
+  "facebook:connection:pages",
   "page:delete",
   "post:draft:create",
   "post:draft:delete",

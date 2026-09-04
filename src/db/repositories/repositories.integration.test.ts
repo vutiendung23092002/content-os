@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { closeDatabase, getDatabase, runInTransaction } from "@/db/client";
 import { FacebookOperationRepository } from "./facebook-operation-repository";
+import { FacebookConnectionRepository } from "./facebook-connection-repository";
+import { FacebookOauthStateRepository } from "./facebook-oauth-state-repository";
 import { PageCredentialRepository } from "./page-credential-repository";
 import { PageRepository } from "./page-repository";
 import { PostRepository } from "./post-repository";
@@ -293,6 +295,200 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
       }),
     ).rejects.toBe(rollbackSignal);
   });
+
+  it("isolates per-user Facebook connections, credentials and assignments", async () => {
+    const rollbackSignal = new Error("EXPECTED_FACEBOOK_CONNECTION_ROLLBACK");
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const [userA, userB] = await transaction
+          .insert(appUsers)
+          .values([
+            {
+              email: `facebook-a-${randomUUID()}@example.com`,
+              name: "Facebook User A",
+              approvalStatus: "approved",
+            },
+            {
+              email: `facebook-b-${randomUUID()}@example.com`,
+              name: "Facebook User B",
+              approvalStatus: "approved",
+            },
+          ])
+          .returning();
+        const page = await new PageRepository(transaction).upsertManagedPage({
+          externalPageId: `facebook-shared-${randomUUID()}`,
+          name: "Shared Facebook Page",
+          remoteMetadata: { source: "managed_pages_sync" },
+        });
+        const connectionRepository = new FacebookConnectionRepository(
+          transaction,
+        );
+        const credentialRepository = new PageCredentialRepository(transaction);
+        const assignmentRepository = new UserPageAssignmentRepository(
+          transaction,
+        );
+        const key = randomBytes(32).toString("base64");
+        const encryptedUserA = encryptToken("user-a-token", key);
+        const encryptedUserB = encryptToken("user-b-token", key);
+        const adminConnection = await connectionRepository.markActive({
+          externalUserId: "admin-facebook-user",
+          metaAppId: "meta-app-a",
+        });
+        const connectionA = await connectionRepository.upsertUserConnected({
+          appUserId: userA!.id,
+          externalUserId: "facebook-user-a",
+          metaAppId: "meta-app-b",
+          accountName: "Account A",
+          grantedScopes: ["pages_show_list"],
+          encryptedUserToken: encryptedUserA,
+        });
+        const connectionB = await connectionRepository.upsertUserConnected({
+          appUserId: userB!.id,
+          externalUserId: "facebook-user-b",
+          metaAppId: "meta-app-b",
+          accountName: "Account B",
+          grantedScopes: ["pages_show_list"],
+          encryptedUserToken: encryptedUserB,
+        });
+
+        expect(connectionA.id).not.toBe(connectionB.id);
+        await expect(
+          connectionRepository.upsertUserConnected({
+            appUserId: userA!.id,
+            externalUserId: "facebook-user-a-reconnected",
+            metaAppId: "meta-app-b",
+            accountName: "Account A reconnected",
+            grantedScopes: ["pages_show_list", "pages_manage_posts"],
+            encryptedUserToken: encryptedUserA,
+          }),
+        ).resolves.toMatchObject({ id: connectionA.id });
+        await expect(
+          connectionRepository.findOwnedUserConnection(
+            connectionB.id,
+            userA!.id,
+          ),
+        ).resolves.toBeUndefined();
+
+        const adminCredential = await credentialRepository.upsert(
+          page.id,
+          encryptToken("admin-page-token", key),
+          undefined,
+          adminConnection!.id,
+        );
+        const credentialA = await credentialRepository.upsert(
+          page.id,
+          encryptToken("user-a-page-token", key),
+          undefined,
+          connectionA.id,
+        );
+        const credentialB = await credentialRepository.upsert(
+          page.id,
+          encryptToken("user-b-page-token", key),
+          undefined,
+          connectionB.id,
+        );
+        expect(
+          (await credentialRepository.findForPage(page.id, userA!.id))?.id,
+        ).toBe(credentialA.id);
+        expect(
+          (await credentialRepository.findForPage(page.id, userB!.id))?.id,
+        ).toBe(credentialB.id);
+
+        expect(
+          await credentialRepository.hasActiveUserCredentialOutsideConnection(
+            page.id,
+            adminConnection!.id,
+          ),
+        ).toBe(true);
+        await new PageRepository(transaction).markMissingManagedPages(
+          [],
+          new Date(),
+          [page.id],
+        );
+        await expect(
+          new PageRepository(transaction).findById(page.id),
+        ).resolves.toMatchObject({ connectionStatus: "active" });
+        expect(
+          (await credentialRepository.findForPage(page.id, randomUUID()))?.id,
+        ).toBe(adminCredential.id);
+        expect((await credentialRepository.findForPage(page.id))?.id).toBe(
+          adminCredential.id,
+        );
+
+        await recordPageCredentialIncident(transaction, {
+          pageId: page.id,
+          status: "revoked",
+          errorCode: "FACEBOOK_TOKEN_INVALID",
+          credentialId: credentialA.id,
+          facebookConnectionId: connectionA.id,
+        });
+        await expect(
+          new PageRepository(transaction).findById(page.id),
+        ).resolves.toMatchObject({ connectionStatus: "active" });
+        expect(
+          (await credentialRepository.findForPage(page.id, userA!.id))?.id,
+        ).toBe(adminCredential.id);
+        expect(
+          (await credentialRepository.findForPage(page.id, userB!.id))?.id,
+        ).toBe(credentialB.id);
+
+        await assignmentRepository.assignFromConnection({
+          userId: userA!.id,
+          pageId: page.id,
+          facebookConnectionId: connectionA.id,
+        });
+        await assignmentRepository.assignFromConnection({
+          userId: userB!.id,
+          pageId: page.id,
+          facebookConnectionId: connectionB.id,
+        });
+        const state = new FacebookOauthStateRepository(transaction);
+        const stateHash = randomBytes(32).toString("hex");
+        await state.create({
+          stateHash,
+          appUserId: userA!.id,
+          redirectPath: "/pages",
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+        await expect(
+          state.consume({ stateHash, appUserId: userB!.id, now: new Date() }),
+        ).resolves.toBeUndefined();
+        await expect(
+          state.consume({ stateHash, appUserId: userA!.id, now: new Date() }),
+        ).resolves.toMatchObject({ appUserId: userA!.id });
+        await expect(
+          state.consume({ stateHash, appUserId: userA!.id, now: new Date() }),
+        ).resolves.toBeUndefined();
+
+        expect(
+          await connectionRepository.markDisconnected(
+            connectionA.id,
+            userA!.id,
+          ),
+        ).toBe(true);
+        await credentialRepository.markRevokedByConnection(connectionA.id);
+        await assignmentRepository.deleteForConnection(connectionA.id);
+
+        expect(await assignmentRepository.has(userA!.id, page.id)).toBe(false);
+        expect(await assignmentRepository.has(userB!.id, page.id)).toBe(true);
+        expect(
+          (await credentialRepository.findForPage(page.id, userA!.id))?.id,
+        ).toBe(adminCredential.id);
+        expect(
+          (await credentialRepository.findForPage(page.id, userB!.id))?.id,
+        ).toBe(credentialB.id);
+        expect(
+          await connectionRepository.findOwnedUserConnection(
+            adminConnection!.id,
+            userA!.id,
+          ),
+        ).toBeUndefined();
+
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  }, 15_000);
 
   it("preserves a local published mapping through remote edits and deletion", async () => {
     const rollbackSignal = new Error("EXPECTED_PUBLISHED_SYNC_ROLLBACK");

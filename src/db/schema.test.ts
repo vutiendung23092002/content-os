@@ -4,6 +4,7 @@ import {
   appRoleEnum,
   connectionStatusEnum,
   generationTypeEnum,
+  facebookConnectionTypeEnum,
   operationStatusEnum,
   operationTypeEnum,
   postStatusEnum,
@@ -21,6 +22,7 @@ describe("database schema", () => {
     expect(Object.keys(schema)).toEqual(
       expect.arrayContaining([
         "facebookConnection",
+        "facebookOauthStates",
         "appUsers",
         "pages",
         "userPageAssignments",
@@ -46,5 +48,9 @@ describe("database schema", () => {
     expect(generationTypeEnum.enumValues).toContain("rewrite");
     expect(appRoleEnum.enumValues).toEqual(["super_admin", "admin", "member"]);
     expect(userApprovalStatusEnum.enumValues).toContain("suspended");
+    expect(facebookConnectionTypeEnum.enumValues).toEqual([
+      "admin_managed",
+      "user_connected",
+    ]);
   });
 });

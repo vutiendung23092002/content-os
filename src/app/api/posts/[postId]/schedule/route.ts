@@ -30,6 +30,7 @@ export async function POST(request: Request, context: RouteContext) {
     const result = await new SubmitPostService().schedule(
       postId,
       body.scheduledFor,
+      viewer?.id,
     );
     return NextResponse.json({ operation: result, requestId });
   } catch (error) {

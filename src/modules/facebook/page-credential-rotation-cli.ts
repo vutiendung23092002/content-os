@@ -8,7 +8,10 @@ import type {
 
 export type RotationCliService = Pick<
   PageCredentialRotationService,
-  "targetVersion" | "rotate" | "countByVersion"
+  | "targetVersion"
+  | "rotate"
+  | "countByVersion"
+  | "countUserConnectionsByVersion"
 >;
 
 type RotationCliOutput = {
@@ -87,6 +90,7 @@ export async function runPageCredentialRotationCli(input: {
       sourceVersion: dryRun.fromVersion,
       targetVersion: dryRun.toVersion,
       credentialCount: dryRun.credentialCount,
+      userConnectionCount: dryRun.userConnectionCount,
     });
 
     if (!execute) {
@@ -113,17 +117,20 @@ export async function runPageCredentialRotationCli(input: {
       dryRun: false,
     });
     const remaining = await input.service.countByVersion(fromVersion);
+    const remainingUserConnections =
+      await input.service.countUserConnectionsByVersion(fromVersion);
     report(output, "rotation_execution_succeeded", {
       sourceVersion: rotated.fromVersion,
       targetVersion: rotated.toVersion,
       credentialCount: rotated.credentialCount,
       remainingSourceVersionCredentials: remaining,
+      remainingSourceVersionUserConnections: remainingUserConnections,
     });
 
-    if (remaining !== 0) {
+    if (remaining !== 0 || remainingUserConnections !== 0) {
       throw new AppError({
         code: "PAGE_CREDENTIAL_ROTATION_INCOMPLETE",
-        message: `Còn ${remaining} Page credential ở source version sau rotation.`,
+        message: "Vẫn còn credential Facebook ở source version sau rotation.",
         status: 500,
       });
     }
@@ -131,6 +138,7 @@ export async function runPageCredentialRotationCli(input: {
       sourceVersion: fromVersion,
       targetVersion,
       remainingSourceVersionCredentials: 0,
+      remainingSourceVersionUserConnections: 0,
     });
     return 0;
   } catch (error) {

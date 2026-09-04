@@ -9,6 +9,7 @@ function setup(
   overrides: {
     rotate?: RotationCliService["rotate"];
     countByVersion?: RotationCliService["countByVersion"];
+    countUserConnectionsByVersion?: RotationCliService["countUserConnectionsByVersion"];
   } = {},
 ) {
   const messages: string[] = [];
@@ -22,18 +23,30 @@ function setup(
         fromVersion: 1,
         toVersion: 2,
         credentialCount: 3,
+        userConnectionCount: 2,
       }));
   const countByVersion =
     overrides.countByVersion ??
     vi.fn<RotationCliService["countByVersion"]>().mockResolvedValue(0);
+  const countUserConnectionsByVersion =
+    overrides.countUserConnectionsByVersion ??
+    vi
+      .fn<RotationCliService["countUserConnectionsByVersion"]>()
+      .mockResolvedValue(0);
 
   return {
     messages,
     errors,
     rotate,
     countByVersion,
+    countUserConnectionsByVersion,
     input: {
-      service: { targetVersion: 2, rotate, countByVersion },
+      service: {
+        targetVersion: 2,
+        rotate,
+        countByVersion,
+        countUserConnectionsByVersion,
+      },
       output: {
         write: (message: string) => messages.push(message),
         writeError: (message: string) => errors.push(message),
@@ -60,6 +73,7 @@ describe("Page credential rotation CLI", () => {
     });
     expect(context.countByVersion).not.toHaveBeenCalled();
     expect(context.messages.join("\n")).toContain('"credentialCount":3');
+    expect(context.messages.join("\n")).toContain('"userConnectionCount":2');
     expect(context.messages.join("\n")).toContain('"targetVersion":2');
   });
 
@@ -83,6 +97,7 @@ describe("Page credential rotation CLI", () => {
       [{ fromVersion: 1, dryRun: false }],
     ]);
     expect(context.countByVersion).toHaveBeenCalledWith(1);
+    expect(context.countUserConnectionsByVersion).toHaveBeenCalledWith(1);
     expect(context.messages.join("\n")).toContain(
       '"remainingSourceVersionCredentials":0',
     );
@@ -119,6 +134,24 @@ describe("Page credential rotation CLI", () => {
       countByVersion: vi
         .fn<RotationCliService["countByVersion"]>()
         .mockResolvedValue(2),
+    });
+
+    await expect(
+      runPageCredentialRotationCli({
+        ...context.input,
+        argv: ["--from-version=1", "--execute", "--confirm-target-version=2"],
+      }),
+    ).resolves.toBe(1);
+    expect(context.errors.join("\n")).toContain(
+      "PAGE_CREDENTIAL_ROTATION_INCOMPLETE",
+    );
+  });
+
+  it("fails verification when old-version App B user connections remain", async () => {
+    const context = setup({
+      countUserConnectionsByVersion: vi
+        .fn<RotationCliService["countUserConnectionsByVersion"]>()
+        .mockResolvedValue(1),
     });
 
     await expect(
