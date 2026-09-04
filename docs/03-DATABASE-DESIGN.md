@@ -20,6 +20,7 @@ operation_status: pending, succeeded, failed, uncertain, needs_attention
 generation_type: caption, rewrite, idea
 app_role: super_admin, admin, member
 user_approval_status: pending, approved, rejected, suspended
+facebook_connection_type: admin_managed, user_connected
 ```
 
 ## `app_users`
@@ -41,18 +42,37 @@ Allowlist người dùng Google. Supabase `auth.users` xác thực danh tính; b
 
 ## `facebook_connection`
 
-Single-row connection metadata. User token itself remains in server secret manager for MVP.
+Nguồn ủy quyền Meta. Row cũ và flow App A là `admin_managed` với
+`app_user_id = null`; mỗi user Google có tối đa một row `user_connected` cho một
+Meta App B. User token App B chỉ được lưu dưới dạng AES-256-GCM.
 
-| Field                      | Type              | Null | Constraint                                  |
-| -------------------------- | ----------------- | ---: | ------------------------------------------- |
-| `id`                       | uuid              |   no | PK                                          |
-| `external_user_id`         | text              |  yes | safe Meta identity metadata                 |
-| `status`                   | connection_status |   no |                                             |
-| `granted_scopes`           | text[]            |   no | default `{}`                                |
-| `token_expires_at`         | timestamptz       |  yes | hint; provider validation remains authority |
-| `last_validated_at`        | timestamptz       |  yes |                                             |
-| `provider_metadata`        | jsonb             |   no | redacted/minimal                            |
-| `created_at`, `updated_at` | timestamptz       |   no |                                             |
+| Field                                                              | Type                     | Null | Constraint/meaning                       |
+| ------------------------------------------------------------------ | ------------------------ | ---: | ---------------------------------------- |
+| `id`                                                               | uuid                     |   no | PK                                       |
+| `app_user_id`                                                      | uuid                     |  yes | FK app_users CASCADE; null cho App A     |
+| `external_user_id`, `meta_app_id`                                  | text                     |  yes | Facebook user và Meta App tạo connection |
+| `connection_type`                                                  | facebook_connection_type |   no | default `admin_managed`                  |
+| `status`                                                           | connection_status        |   no | lock cục bộ cho connection               |
+| `account_name`, `account_avatar_url`                               | text                     |  yes | safe profile metadata                    |
+| `granted_scopes`                                                   | text[]                   |   no | default `{}`                             |
+| `token_expires_at`, `data_access_expires_at`, `last_validated_at`  | timestamptz              |  yes | lifecycle metadata                       |
+| `user_token_ciphertext`, `user_token_nonce`, `user_token_auth_tag` | bytea                    |  yes | bắt buộc cùng nhau với `user_connected`  |
+| `user_token_key_version`                                           | integer                  |  yes | keyring version                          |
+| `user_token_fingerprint`                                           | text                     |  yes | non-reversible correlation               |
+| `disconnected_at`                                                  | timestamptz              |  yes | audit disconnect                         |
+| `provider_metadata`                                                | jsonb                    |   no | safe metadata only                       |
+| `created_at`, `updated_at`                                         | timestamptz              |   no |                                          |
+
+Partial unique `(app_user_id,meta_app_id,connection_type)` ngăn user A ghi đè
+connection của user B. Check constraint yêu cầu toàn bộ encrypted-token fields cho
+`user_connected`.
+
+## `facebook_oauth_states`
+
+Server-side, one-time OAuth state cho App B: `state_hash text PK`,
+`app_user_id uuid FK CASCADE`, fixed safe `redirect_path`, `expires_at`,
+`consumed_at`, `created_at`. Raw state không được persist. Atomic consume theo hash,
+user, expiry và `consumed_at is null` chống replay.
 
 ## `pages`
 
@@ -75,28 +95,35 @@ Index `(connection_status,last_synced_at)`.
 
 Encrypted Page Access Token. Generic Page queries must not select this table.
 
-| Field                                           | Type        | Null | Constraint                 |
-| ----------------------------------------------- | ----------- | ---: | -------------------------- |
-| `id`                                            | uuid        |   no | PK                         |
-| `page_id`                                       | uuid        |   no | unique FK pages CASCADE    |
-| `access_token_ciphertext`                       | bytea       |   no |                            |
-| `nonce`, `auth_tag`                             | bytea       |   no | AEAD material              |
-| `key_version`                                   | integer     |   no |                            |
-| `token_fingerprint`                             | text        |   no | non-reversible correlation |
-| `expires_at`, `last_validated_at`, `revoked_at` | timestamptz |  yes |                            |
-| timestamps                                      | timestamptz |   no |                            |
+| Field                                           | Type        | Null | Constraint/meaning                               |
+| ----------------------------------------------- | ----------- | ---: | ------------------------------------------------ |
+| `id`                                            | uuid        |   no | PK                                               |
+| `page_id`                                       | uuid        |   no | FK pages CASCADE                                 |
+| `facebook_connection_id`                        | uuid        |  yes | FK connection RESTRICT; null = legacy App A      |
+| `access_token_ciphertext`                       | bytea       |   no |                                                  |
+| `nonce`, `auth_tag`                             | bytea       |   no | AEAD material                                    |
+| `key_version`                                   | integer     |   no |                                                  |
+| `token_fingerprint`                             | text        |   no | non-reversible correlation                       |
+| `expires_at`, `last_validated_at`, `revoked_at` | timestamptz |  yes |                                                  |
+| `provider_metadata`                             | jsonb       |   no | source/App/owner/scopes/capability, không secret |
+| timestamps                                      | timestamptz |   no |                                                  |
+
+Unique `(page_id,facebook_connection_id)` cho credential có provenance; partial
+unique `page_id` chỉ áp dụng row legacy có connection null. Một Page vì vậy có thể
+có App A credential và các App B credential độc lập.
 
 ## `user_page_assignments`
 
 Phạm vi Page mà một tài khoản Google được phép sử dụng trong tool. Super Admin có quyền ngầm trên toàn bộ Page nên không cần tạo assignment.
 
-| Field                 | Type        | Null | Constraint            |
-| --------------------- | ----------- | ---: | --------------------- |
-| `id`                  | uuid        |   no | PK                    |
-| `user_id`             | uuid        |   no | FK app_users CASCADE  |
-| `page_id`             | uuid        |   no | FK pages CASCADE      |
-| `assigned_by_user_id` | uuid        |  yes | FK app_users SET NULL |
-| timestamps            | timestamptz |   no |                       |
+| Field                    | Type        | Null | Constraint                                         |
+| ------------------------ | ----------- | ---: | -------------------------------------------------- |
+| `id`                     | uuid        |   no | PK                                                 |
+| `user_id`                | uuid        |   no | FK app_users CASCADE                               |
+| `page_id`                | uuid        |   no | FK pages CASCADE                                   |
+| `assigned_by_user_id`    | uuid        |  yes | FK app_users SET NULL                              |
+| `facebook_connection_id` | uuid        |  yes | FK connection SET NULL; provenance auto-assignment |
+| timestamps               | timestamptz |   no |                                                    |
 
 Unique `(user_id,page_id)`; index `(page_id,user_id)`.
 
@@ -159,8 +186,9 @@ Fields: `job_key text PK`; `cursor text NULL`; `lease_owner text NULL`; `lease_e
 ## ER diagram
 
 ```text
-facebook_connection
-app_users ──< user_page_assignments >── pages ──1 page_credentials
+app_users ──< facebook_connection ──< page_credentials >── pages
+    │                 └──< facebook_oauth_states
+    └──< user_page_assignments >──────────────────────────┘
   ├──< posts ──< post_assets >── assets
   ├──< facebook_operations
   ├──< ai_generations
@@ -177,6 +205,10 @@ cron_jobs (global lease/cursor, không tạo quan hệ với publish intent)
 - Operation chưa quét đủ dữ liệu remote, còn trong cửa sổ visibility hoặc có nhiều candidate phải ở `needs_attention`; không được kết luận remote absent.
 - Missing remote scheduled post becomes `published`, `canceled` or `deleted_remote` only after querying Meta evidence.
 - Page credential is decrypted only inside the Meta adapter.
+- Credential selection ưu tiên App B credential active của actor, rồi mới dùng App A
+  admin-managed credential; không dùng credential App B của user khác.
+- Disconnect App B chỉ revoke credentials/auto-assignments mang cùng
+  `facebook_connection_id`; không xóa Page hoặc nội dung remote.
 - Admin/member chỉ đọc hoặc thao tác Page có assignment; Super Admin có quyền ngầm trên mọi Page active.
 
 ## Removed schemas

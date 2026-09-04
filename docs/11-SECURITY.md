@@ -2,7 +2,10 @@
 
 ## 1. Mô hình sử dụng
 
-Đây là công cụ nội bộ cho một nhóm nhỏ, dùng Facebook token cố định phía server để quản lý các Page mà tài khoản Facebook đó có quyền. Google chỉ xác thực người dùng công cụ; nhân sự không kết nối Facebook riêng và không nhận token Facebook.
+Đây là công cụ nội bộ cho một nhóm nhỏ. Google/Supabase là login duy nhất;
+Facebook chỉ là integration sau đăng nhập. App A dùng token admin-managed phía
+server. App B cho phép từng approved user OAuth tài khoản Facebook riêng nhưng
+không trả raw token cho browser.
 
 "Không có đăng nhập phức tạp" không đồng nghĩa ứng dụng được public. Production phải nằm sau ít nhất một lớp bảo vệ như Cloudflare Access, VPN, private network hoặc một admin secret/session đơn giản.
 
@@ -24,7 +27,10 @@ Quyền dự kiến gồm `pages_show_list`, `pages_read_engagement` và `pages_
 
 ### User access token
 
-- Nhập thủ công qua biến môi trường/secret manager phía server.
+- App A được nhập thủ công qua biến môi trường/secret manager phía server.
+- App B đổi authorization code ở server, inspect đúng App ID/Facebook user rồi lưu
+  AES-256-GCM trong `facebook_connection`; raw state không được persist và hash
+  one-time state hết hạn sau 10 phút.
 - Không gửi xuống browser và không lưu trong localStorage.
 - Không commit vào Git, paste vào issue hoặc đưa vào prompt AI.
 - Không in URL Graph API có query parameter chứa token.
@@ -39,6 +45,10 @@ Quyền dự kiến gồm `pages_show_list`, `pages_read_engagement` và `pages_
 
 Không log token, kể cả token đã cắt ngắn. Hash/fingerprint một chiều chỉ dùng khi thật sự cần đối chiếu.
 
+Khi rotate encryption key, transaction xoay cả Page credentials và App B encrypted
+user tokens; operator chỉ bỏ previous key sau khi cả hai remaining counts bằng 0.
+Rotation không tự mở lại connection bị khóa do auth/permission incident.
+
 ## 4. Kiểm soát truy cập ứng dụng
 
 Ưu tiên theo môi trường:
@@ -50,6 +60,11 @@ Không log token, kể cả token đã cắt ngắn. Hash/fingerprint một chi�
 - database/object storage: private network hoặc credential giới hạn quyền.
 
 Các mutation publish/schedule/cancel phải có CSRF protection hoặc same-site session phù hợp và rate limit, kể cả chỉ có một operator.
+
+Mutation chọn Page/ngắt App B yêu cầu same-origin, approved viewer, actor rate limit
+và ownership check lại trong service/repository. Disconnect chỉ tác động record có
+cùng `facebook_connection_id`; không xóa remote content hoặc credential của user/App
+khác.
 
 ## 5. Bảo vệ request và dữ liệu
 

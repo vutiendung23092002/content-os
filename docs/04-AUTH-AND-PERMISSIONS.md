@@ -3,9 +3,11 @@
 ## Hai lớp danh tính tách biệt
 
 - Google OAuth qua Supabase Auth xác định ai đang dùng HanContent.
-- Facebook User/Page token cố định ở server xác định Page nào backend có thể đọc hoặc quản lý.
+- Meta App A admin-managed và Meta App B per-user xác định Page nào backend có thể đọc hoặc quản lý.
 
-Đăng nhập Google không cấp thêm quyền Facebook. Nhân sự không nhìn thấy và không cần nhập `FACEBOOK_USER_ACCESS_TOKEN`, Page token hoặc `APP_ACCESS_SECRET`.
+Đăng nhập Google không cấp thêm quyền Facebook. Meta App B là integration OAuth sau
+khi user đã đăng nhập/được duyệt, không phải Supabase sign-in provider. User không
+nhìn thấy hoặc nhập raw User/Page token hay `APP_ACCESS_SECRET`.
 
 ## Luồng đăng nhập
 
@@ -29,7 +31,12 @@
 - Admin chỉ được gán cho nhân viên những Page chính Admin đó đang được quản lý; Super Admin có thể gán mọi Page.
 - Danh sách chọn Page vẫn hiển thị Page chưa được cấp ở trạng thái mờ, khóa và không thể chọn.
 - Backend kiểm tra lại `page_id` hoặc Page của `post_id` tại từng API. Ẩn/khóa trên UI không phải lớp bảo mật.
-- Thu hồi assignment có hiệu lực ở request tiếp theo. Facebook token dùng chung ở server không làm phát sinh quyền ứng dụng cho người dùng.
+- User kết nối một Page bằng Meta App B tự nhận đúng một assignment có provenance
+  connection; không tự cấp Page đó cho user khác.
+- Thu hồi assignment có hiệu lực ở request tiếp theo. Có token Facebook không thay
+  thế authorization bằng Google session/allowlist.
+- Khi thao tác, backend chỉ chọn App B credential active của chính actor hoặc App A
+  admin-managed credential; không chọn App B credential của user khác.
 
 Trạng thái gồm `pending`, `approved`, `rejected`, `suspended`. Chỉ `approved` được gọi API nghiệp vụ.
 
@@ -63,6 +70,9 @@ Trong Supabase Dashboard:
 - API nghiệp vụ chấp nhận Google session đã duyệt hoặc `x-han-access-secret` đúng cho automation server-to-server.
 - Cron tương lai phải có credential riêng, không dùng browser session.
 - Publish/schedule/update/delete vẫn phải qua Page capability và confirmation riêng; quyền Google không tự tạo quyền Facebook.
+- `/api/facebook/connect` và callback yêu cầu approved viewer. OAuth state ngẫu nhiên
+  được lưu dạng hash, bind với `app_user_id`, hết hạn sau 10 phút và atomic consume
+  một lần. Các mutation chọn Page/ngắt kết nối còn yêu cầu same-origin và rate limit.
 
 ## Kiểm thử bắt buộc
 

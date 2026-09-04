@@ -2,17 +2,63 @@
 
 ## Integration model
 
-Tool dùng Meta App của operator và server-side User Access Token. Không có OAuth UI trong MVP.
+Google OAuth qua Supabase vẫn là cơ chế đăng nhập Content OS duy nhất. Facebook có
+hai Meta App và hai nguồn credential độc lập:
 
 ```text
-FACEBOOK_USER_ACCESS_TOKEN
--> GET /me/accounts?fields=id,name,access_token,tasks
--> selected Pages
--> encrypt Page Access Tokens
--> use the correct Page token for Graph API calls
+Google session/approved app_user
+        |
+        +--> App A admin-managed
+        |    FACEBOOK_APP_ID / FACEBOOK_APP_SECRET
+        |    FACEBOOK_USER_ACCESS_TOKEN
+        |    -> existing Pages and encrypted Page credentials
+        |
+        +--> App B user-connected OAuth
+             FACEBOOK_CONNECT_APP_ID / FACEBOOK_CONNECT_APP_SECRET
+             -> encrypted per-user token
+             -> discovered/selected Pages
+             -> encrypted Page credential linked to connection + assignment
 ```
 
-Token phải được tạo cho đúng Meta App, đúng Facebook account có Page access và đúng permissions. Không dùng token mua/chia sẻ từ bên thứ ba.
+App A tiếp tục phục vụ sync/manual admin hiện có. App B chỉ phục vụ onboarding của
+từng approved user. Mỗi User/Page token đều được debug/inspect với App ID và App
+secret tương ứng; token App A không được chấp nhận trong App B và ngược lại. Không
+dùng token mua/chia sẻ từ bên thứ ba.
+
+## App B OAuth và Page onboarding
+
+1. `GET /api/facebook/connect` tạo 32 random bytes làm state, chỉ persist SHA-256
+   hash cùng `app_user_id`, fixed callback intent và expiry 10 phút.
+2. Browser được redirect đến versioned Meta OAuth dialog với scope tối thiểu của
+   các chức năng hiện tại.
+3. `GET /api/facebook/callback` yêu cầu lại approved Google viewer, atomic-consume
+   state, đổi code và long-lived user token hoàn toàn server-side.
+4. Backend gọi `/me` và debug token để xác nhận token valid, `app_id` là App B và
+   `user_id` khớp account vừa đọc.
+5. User token được mã hóa bằng keyring hiện có; browser chỉ nhận safe account,
+   scope và expiry metadata.
+6. Page discovery phân trang có giới hạn và loại bỏ `access_token` trước response.
+7. Khi user chọn Page, backend xác nhận connection thuộc chính viewer rồi tái dùng
+   `verifyManualPage()` để kiểm tra Page ID/type/App B/capabilities và mã hóa Page
+   token trước transaction persist.
+
+Callback hợp lệ duy nhất là `${NEXT_PUBLIC_SITE_URL}/api/facebook/callback` (hoặc
+explicit URI cùng origin/path, không query/hash). Callback cuối luôn redirect về
+`/pages?facebook=...`; authorization code, state và token không được đặt vào URL đó.
+
+## Credential selection và disconnect
+
+- Browser read/mutation truyền actor ID xuống credential repository. Repository ưu
+  tiên active App B credential của actor, sau đó mới fallback App A
+  admin-managed/legacy; App B credential của user khác không bao giờ được chọn.
+- Cron/machine flow không có actor và ưu tiên App A để giữ hành vi cũ.
+- Disconnect giữ connection/Page/history, đánh dấu connection `revoked`, revoke chỉ
+  Page credentials cùng `facebook_connection_id` và xóa chỉ auto-assignment do
+  connection đó tạo. Không gọi delete Facebook, không đụng App A/user khác.
+- Reconnect upsert đúng `(app_user_id,meta_app_id,connection_type)`, mã hóa token mới;
+  Page selection tiếp theo refresh credential và assignment.
+- Expired/data-access-expired/revoked/permission failures khóa đúng App B connection.
+  Một credential active khác không bị khóa theo lỗi của connection này.
 
 ## Capability smoke test before implementation
 
@@ -127,6 +173,9 @@ Do not send the create request again immediately. Mark operation `uncertain`, fe
 
 ## External references
 
+- Meta Facebook Login documentation: <https://developers.facebook.com/docs/facebook-login/>
+- Access tokens and debugging: <https://developers.facebook.com/docs/facebook-login/guides/access-tokens/>
+- Pages API getting started: <https://developers.facebook.com/docs/pages-api/getting-started/>
 - Pages API posts: <https://developers.facebook.com/docs/pages-api/posts/>
 - Graph API Page feed: <https://developers.facebook.com/docs/graph-api/reference/page/feed/>
 - Meta official SDK Page model: <https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/page.py>
@@ -135,4 +184,9 @@ Do not send the create request again immediately. Mark operation `uncertain`, fe
 
 ## Deferred
 
-OAuth/reconnect UI, webhooks, system user migration, Instagram, analytics insights, Reel và bulk multi-Page publishing. Video thường của Page đã có adapter riêng qua `/videos`.
+Webhooks, system user migration, Instagram, analytics insights, Reel và bulk
+multi-Page publishing. Video thường của Page đã có adapter riêng qua `/videos`.
+
+Meta App B production use cho external users phụ thuộc App mode, Business
+Verification, Advanced Access/App Review và permission approval thực tế trong Meta
+Dashboard. Repository không coi unit test là bằng chứng những approval này đã có.

@@ -21,7 +21,8 @@
 
 - Trigger.dev for publishing.
 - pgvector/RAG and historical performance ranking.
-- Auth provider, invite, users/teams/roles.
+- Facebook as an application sign-in provider; Google through Supabase remains
+  the only Content OS login.
 - WebSocket, Redis, message broker and microservices.
 - Kubernetes, GraphQL, Elasticsearch and standalone vector DB.
 
@@ -33,7 +34,12 @@ FACEBOOK_APP_ID
 FACEBOOK_APP_SECRET
 FACEBOOK_GRAPH_API_VERSION
 FACEBOOK_USER_ACCESS_TOKEN
+FACEBOOK_CONNECT_APP_ID
+FACEBOOK_CONNECT_APP_SECRET
+FACEBOOK_CONNECT_REDIRECT_URI (optional exact callback override)
 TOKEN_ENCRYPTION_KEY
+TOKEN_ENCRYPTION_KEY_VERSION
+TOKEN_ENCRYPTION_PREVIOUS_KEYS
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY

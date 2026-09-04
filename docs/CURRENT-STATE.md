@@ -1,6 +1,6 @@
 # CURRENT STATE
 
-**Kiểm tra tại:** 2026-08-31
+**Kiểm tra tại:** 2026-09-04
 **Workspace:** `C:\Users\Dung\Documents\Project\han-content-os`
 
 ## Kết luận
@@ -41,12 +41,16 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 ### Database
 
 - Cả pooled `DATABASE_URL` và migration `DIRECT_DATABASE_URL` đã kết nối thành công.
-- Drizzle schema `hancontent_os` cho 13 bảng hiện hành, gồm `app_users`, `user_page_assignments`, `mutation_rate_limits` và `cron_jobs` phục vụ allowlist, phạm vi Page, mutation guard và lease/cursor cron.
+- Drizzle schema `hancontent_os` cho 14 bảng hiện hành, gồm per-user
+  `facebook_connection`, one-time `facebook_oauth_states`, credential/assignment
+  provenance, `mutation_rate_limits` và `cron_jobs`.
 - Enum, foreign key, unique/index và check constraint cốt lõi.
 - Supabase-compatible runtime client dùng pooled URL với prepared statement tắt.
 - Drizzle config dùng direct URL cho migration.
 - Migration nền, Google allowlist và Page assignment: `0000_empty_human_cannonball.sql`, `0001_whole_stepford_cuckoos.sql`, `0002_curious_kitty_pryde.sql`.
-- Migration đã áp dụng thành công lên Supabase.
+- Các migration trước `0008` đã áp dụng thành công lên Supabase. Additive migration
+  `0008_remarkable_garia.sql` và `0009_aspiring_black_tom.sql` cho App B chưa được
+  task này chạy lên staging/production.
 - Catalog verification xác nhận đủ bảng hiện hành; ba bảng OAuth thử nghiệm cũ được giữ nguyên, không dùng và không xóa để tránh thao tác phá hủy dữ liệu.
 
 Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migration; toàn bộ application table/enum nằm trong `hancontent_os`, không nằm trong `public`.
@@ -57,7 +61,9 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Nonce ngẫu nhiên, authentication tag, key version và SHA-256 fingerprint.
 - Test round-trip, tamper detection và invalid configuration.
 - Versioned keyring hỗ trợ current/previous keys và fail closed với unknown version, không fallback.
-- Operator CLI `credentials:rotate-pages` bắt buộc dry-run trước execution, xác nhận target version và verify old-version count bằng `0`.
+- Operator CLI `credentials:rotate-pages` bắt buộc dry-run trước execution, xác nhận
+  target version và verify old-version count bằng `0` cho cả Page credentials và
+  encrypted App B user connection tokens trong cùng transaction.
 - Meta invalid/revoked/permission errors và stored credential hết hạn khóa mutation theo Page, lưu sanitized incident evidence và được unlock chỉ sau Page verify/sync thành công; expired credential không bị đánh dấu revoked.
 - Crypto incident (`TOKEN_DECRYPTION_FAILED`/`UNKNOWN_TOKEN_KEY_VERSION`) chuyển Page sang `error`; key rotation chỉ sửa credential ciphertext/version và không tự unlock Page.
 - Runbook rotation/recovery nằm tại `docs/runbooks/credential-rotation-and-recovery.md`.
@@ -66,6 +72,14 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 
 ### Meta adapter
 
+- Google vẫn là login provider duy nhất. Meta App A giữ nguyên admin-managed flow;
+  Meta App B thêm OAuth per-user với state hash one-time/user-bound, server-side code
+  exchange, App ID/Facebook user validation và encrypted user token persistence.
+- App B Page discovery phân trang có giới hạn, không trả Page token; selection tái
+  dùng hardened manual verification rồi persist encrypted Page credential,
+  connection provenance và assignment cho đúng viewer.
+- Disconnect/reconnect chỉ tác động App B connection/credentials/auto-assignments
+  của owner; App A và user khác không bị thay đổi.
 - User/Page token chỉ đi qua `Authorization: Bearer`, không nằm trong URL.
 - `GET /me/accounts` để đọc Page và Page token.
 - Publish text qua Page feed.
@@ -78,6 +92,8 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 ### Repository và local application
 
 - Repository cho Page, encrypted Page credential, draft và Facebook operation.
+- Credential selection theo browser actor ưu tiên owned App B rồi App A fallback;
+  cron/machine ưu tiên App A và không dùng App B credential của user khác.
 - Transaction boundary đã chạy integration test thật trên Supabase và rollback sạch dữ liệu test.
 - Page sync service đọc hết pagination trước persistence, mã hóa Page token và chỉ trả safe DTO; Page managed biến mất khỏi snapshot hoàn chỉnh được đánh dấu `permission_missing` mà không ảnh hưởng Page thêm thủ công.
 - Draft create/list/get/update/delete service và API.
@@ -105,7 +121,10 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 - Prettier: pass.
 - ESLint: pass.
 - TypeScript: pass.
-- Vitest: 318 tests pass; 12 database integration tests được tách khỏi quality gate mặc định và có rollback/dọn sạch dữ liệu test, gồm credential rotation/recovery, managed-Page reconciliation, duplicate submission claim và published/scheduled remote mirror behavior.
+- Vitest unit suite hiện có coverage cho App B OAuth/state, callback, token/App
+  mismatch, Page selection, ownership/isolation, disconnect, migration contract,
+  secret redaction và key rotation. DB integration App B đã được thêm nhưng chưa
+  chạy vì task không được cấp isolated migrated database.
 - Database readiness audit hiện tại: pooled/direct connectivity, Drizzle migration check, schema verification và cả 12 integration tests đều pass; audit không chạy `db:migrate`.
 - Next.js production build: pass.
 - Local production smoke: chưa đăng nhập bị chuyển về `/login`; API trả 401; endpoint mật khẩu nội bộ cũ trả 404.
@@ -122,6 +141,10 @@ Meta contracts vẫn có mock tests. Read-only discovery trên Graph API `v26.0`
 
 - `FB-001` đến `FB-011` đã đóng. Capability report tại `docs/evidence/facebook-capability-v26.md` ghi run `v26.0` trên Nero Team với discovery/tasks/scopes/token types, published/scheduled reads, pagination, plain-text publish, native schedule, reschedule, cancel/delete và cleanup thành công. Exact 20-minute/29-day boundary posts không live-probe; report phân biệt rõ contract evidence và access tier không được Meta debug-token expose.
 - Live smoke cho reschedule/edit/cancel/delete đã hoàn tất trên Page test; không cần chạy lại destructive Facebook mutations cho audit này.
+- `FB-012` App B implementation đã hoàn tất ở code/unit tests nhưng top-level còn
+  mở: chưa cấu hình Meta App B staging, chưa chạy DB migration/integration drill và
+  chưa có live connect/select/isolation/disconnect/reconnect evidence. App
+  Review/Advanced Access cũng phải xác minh riêng trước external-user production.
 - SEC-003 mutation hardening/rate limit đã hoàn thành; không còn là gap của staging readiness.
 - DEPLOY-001 hiện `PARTIAL`: repository đã hỗ trợ production/staging cô lập chạy đồng thời và restore verification được pin tường minh vào isolated target, nhưng chưa có evidence cho staging Supabase/secrets/Page riêng, private gateway, fresh deploy, isolated database restore, authenticated role smoke và rollback rehearsal thật.
 - Metrics/alert vẫn thuộc OBS-001/OBS-002. SEC-004 đã hoàn thành sau code/CLI coverage, automated integration drill, incident recovery runbook và staging rotation drill của operator.
@@ -156,6 +179,9 @@ FACEBOOK_APP_ID
 FACEBOOK_APP_SECRET
 FACEBOOK_GRAPH_API_VERSION
 FACEBOOK_USER_ACCESS_TOKEN
+FACEBOOK_CONNECT_APP_ID
+FACEBOOK_CONNECT_APP_SECRET
+FACEBOOK_CONNECT_REDIRECT_URI
 ```
 
 Không gửi các giá trị này vào chat và không commit `.env.local`.

@@ -25,7 +25,10 @@ TOKEN_ENCRYPTION_PREVIOUS_KEYS={"1":"<old version-1 key>"}
 corepack pnpm credentials:rotate-pages -- --from-version=1
 ```
 
-Output phải hiển thị `sourceVersion: 1`, `targetVersion: 2`, `credentialCount` và `rotation_dry_run_succeeded`. Output không được chứa token/key. Nếu dry-run lỗi, dừng tại đây và làm theo phần rollback/recovery.
+Output phải hiển thị `sourceVersion: 1`, `targetVersion: 2`,
+`credentialCount`, `userConnectionCount` và `rotation_dry_run_succeeded`. Hai count
+lần lượt là Page credentials và encrypted App B user connections. Output không được
+chứa token/key. Nếu dry-run lỗi, dừng tại đây và làm theo phần rollback/recovery.
 
 ### Thực thi
 
@@ -39,13 +42,15 @@ CLI luôn chạy dry-run lại trước ghi thật. Thành công cần có:
 
 - `rotation_execution_succeeded`;
 - `remainingSourceVersionCredentials: 0`;
+- `remainingSourceVersionUserConnections: 0`;
 - `rotation_verification_succeeded`.
 
 Sau đó smoke-test Facebook read, publish/schedule trên Page test, và một mutation có readback. Không dùng Page production để tạo nội dung thử.
 
 Chỉ xóa version `1` khỏi `TOKEN_ENCRYPTION_PREVIOUS_KEYS` sau khi:
 
-1. CLI xác nhận không còn credential version `1`;
+1. CLI xác nhận không còn Page credential hoặc App B user connection token version
+   `1`;
 2. Facebook read và mutation smoke pass;
 3. application logs không có `TOKEN_DECRYPTION_FAILED` hoặc `UNKNOWN_TOKEN_KEY_VERSION`.
 

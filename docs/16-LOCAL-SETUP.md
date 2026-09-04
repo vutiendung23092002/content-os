@@ -9,7 +9,9 @@ Tài liệu này hướng dẫn chạy Han Content OS trực tiếp bằng Node.
 - Node.js 24.x.
 - Corepack đi kèm Node.js.
 - Một dự án Supabase Cloud.
-- Meta App, Facebook user access token dài hạn và quyền trên các Page cần quản lý.
+- Meta App A, Facebook user access token dài hạn và quyền trên các
+  Page admin-managed cần quản lý.
+- Meta App B riêng nếu cần bật luồng approved user tự kết nối Facebook.
 - Google Cloud OAuth client dùng cho đăng nhập qua Supabase.
 - Cloudflare Tunnel nếu cần public ứng dụng từ máy local.
 
@@ -51,10 +53,17 @@ Không commit `.env.local`.
 
 ### Meta/Facebook
 
-- `FACEBOOK_APP_ID`: App ID của Meta App.
-- `FACEBOOK_APP_SECRET`: App Secret của Meta App.
+- `FACEBOOK_APP_ID`: App ID của Meta App A admin-managed hiện có.
+- `FACEBOOK_APP_SECRET`: App Secret của Meta App A.
 - `FACEBOOK_GRAPH_API_VERSION`: phiên bản Graph API đang được dự án hỗ trợ.
-- `FACEBOOK_USER_ACCESS_TOKEN`: long-lived user token của tài khoản quản trị gốc.
+- `FACEBOOK_USER_ACCESS_TOKEN`: long-lived user token App A của tài khoản
+  quản trị gốc.
+- `FACEBOOK_CONNECT_APP_ID`, `FACEBOOK_CONNECT_APP_SECRET`: Meta App B
+  server-only cho per-user integration OAuth; không dùng App B làm Supabase
+  sign-in provider.
+- `FACEBOOK_CONNECT_REDIRECT_URI`: tùy chọn. Nếu đặt, phải bằng
+  `${NEXT_PUBLIC_SITE_URL}/api/facebook/callback`; nếu bỏ trống, runtime
+  derive chính xác callback này từ public site URL.
 - `TOKEN_ENCRYPTION_KEY`: khóa base64 32 byte dùng để mã hóa token trước khi lưu.
 - `TOKEN_ENCRYPTION_KEY_VERSION`: version số nguyên dương của khóa hiện tại; mặc định `1` để tương thích credential production hiện có.
 - `TOKEN_ENCRYPTION_PREVIOUS_KEYS`: JSON map các version cũ sang khóa base64, chỉ cấu hình trong thời gian cần decrypt/rotate credential cũ, ví dụ `{"1":"<old-base64-key>"}`.
@@ -220,6 +229,8 @@ Server đang chạy không tự nạp lại mọi biến môi trường. Hãy d�
 - [ ] Database migration và verify thành công.
 - [ ] Storage smoke test thành công.
 - [ ] Google OAuth quay về đúng domain.
+- [ ] Nếu bật App B, callback exact đã allowlist trong Meta Dashboard và
+      App B không dùng chung credential với App A.
 - [ ] `/api/health` trả về thành công.
 - [ ] Lint, test và build đều qua.
 - [ ] Cron đã được chạy thử và có lịch tự động phù hợp.

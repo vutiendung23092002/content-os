@@ -36,12 +36,12 @@ host-local ignored environment file. Never put secrets in image layers, build
 arguments, GitHub Actions variables intended for client builds, command output or
 Git.
 
-| Classification           | Variables                                                                                                                                                                                                                                                                                                                                                                     |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime configuration    | `FACEBOOK_APP_ID`, `FACEBOOK_GRAPH_API_VERSION`, `TOKEN_ENCRYPTION_KEY_VERSION`, `SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `FACEBOOK_CRON_BASE_URL`, `HAN_CONTENT_COMPOSE_PROJECT`, `HAN_CONTENT_IMAGE`, `HAN_CONTENT_ENV_FILE`, `HAN_CONTENT_PORT`, `INITIAL_ADMIN_EMAIL`, optional `LOG_LEVEL` |
-| Server secrets           | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `FACEBOOK_APP_SECRET`, `FACEBOOK_USER_ACCESS_TOKEN`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `SUPABASE_SERVICE_ROLE_KEY`, `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`, optional `APP_ACCESS_SECRET`                                                                                                               |
-| Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `CLOUDFLARE_ACCESS_CLIENT_ID`, `CLOUDFLARE_ACCESS_CLIENT_SECRET`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                                              |
-| Intentionally absent     | `AI_PROVIDER_API_KEY` while AI is deferred; capability-test variables in normal production runtime                                                                                                                                                                                                                                                                            |
+| Classification           | Variables                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime configuration    | `FACEBOOK_APP_ID`, `FACEBOOK_CONNECT_APP_ID`, `FACEBOOK_GRAPH_API_VERSION`, `TOKEN_ENCRYPTION_KEY_VERSION`, `SUPABASE_STORAGE_BUCKET`, `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `FACEBOOK_CRON_BASE_URL`, `HAN_CONTENT_COMPOSE_PROJECT`, `HAN_CONTENT_IMAGE`, `HAN_CONTENT_ENV_FILE`, `HAN_CONTENT_PORT`, `INITIAL_ADMIN_EMAIL`, optional `FACEBOOK_CONNECT_REDIRECT_URI`/`LOG_LEVEL` |
+| Server secrets           | `DATABASE_URL`, `DIRECT_DATABASE_URL`, `FACEBOOK_APP_SECRET`, `FACEBOOK_USER_ACCESS_TOKEN`, `FACEBOOK_CONNECT_APP_SECRET`, `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`, `SUPABASE_SERVICE_ROLE_KEY`, `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`, optional `APP_ACCESS_SECRET`                                                                                                                                           |
+| Staging/local smoke only | `DEPLOYMENT_ENVIRONMENT=staging`, `STAGING_BASE_URL`, `CLOUDFLARE_ACCESS_CLIENT_ID`, `CLOUDFLARE_ACCESS_CLIENT_SECRET`, `FACEBOOK_CAPABILITY_TEST_PAGE_ID`, `FACEBOOK_CAPABILITY_TEST_PAGE_NAME`                                                                                                                                                                                                                                         |
+| Intentionally absent     | `AI_PROVIDER_API_KEY` while AI is deferred; capability-test variables in normal production runtime                                                                                                                                                                                                                                                                                                                                       |
 
 `FACEBOOK_USER_ACCESS_TOKEN` is a normal staging runtime dependency, not merely a
 capability-smoke secret. The runtime Page sync route
@@ -75,7 +75,11 @@ to fill omissions. It requires `HAN_CONTENT_COMPOSE_PROJECT=han-content-os-stagi
 `HAN_CONTENT_IMAGE=han-content-os:staging`, `HAN_CONTENT_ENV_FILE=.env.staging`,
 `HAN_CONTENT_PORT=3211`, and
 `STAGING_BASE_URL` and both public staging URLs to be valid credential-free HTTPS
-URLs. It prints variable names and safe error codes only, never URL values. It cannot
+URLs. App B ID/secret cũng bắt buộc cho staging onboarding acceptance. Callback
+được derive thành exact
+`https://staging-social.vutiendung.io.vn/api/facebook/callback`; nếu khai báo env
+riêng thì validator yêu cầu cùng URL đó. It prints variable names and safe error
+codes only, never URL values. It cannot
 prove that a supplied database or Page belongs to staging; the operator must compare
 project/Page identity in the provider consoles without copying credentials into
 evidence.
@@ -271,6 +275,28 @@ run in CI. The tool rejects Page/version mismatches, never retries an unknown cr
 outcome and cleans only the exact unique marker match. Production Page IDs and names
 must never be configured as capability-test variables.
 
+### App B user-connection acceptance
+
+Đây là manual staging drill, không chạy trong CI và không dùng production Page:
+
+1. Xác nhận Google login vẫn là provider đăng nhập duy nhất và App A Page hiện có
+   vẫn đọc được.
+2. Một approved staging user chọn **Kết nối Facebook**; Meta dialog phải thuộc App
+   B và callback quay về đúng staging origin.
+3. Kiểm tra debug-token evidence an toàn xác nhận App B ID, không ghi token/code.
+4. User chỉ thấy Pages account Facebook đó quản lý, chọn designated test Page và
+   xác nhận encrypted user/Page credential cùng assignment đúng user trong DB.
+5. Smoke read rồi publish/schedule theo capability; user khác không thấy/dùng Page
+   khi chưa được gán.
+6. Ngắt kết nối: App B credential bị vô hiệu hóa, không xóa remote content và App A
+   vẫn hoạt động. Reconnect/select Page lại phải phục hồi App B capability.
+7. Chạy release secret scan và kiểm tra logs không có token, OAuth code hoặc App B
+   secret.
+
+External user production rollout còn phụ thuộc App mode, Business Verification và
+Advanced Access/App Review cho permission thực tế. Không đánh dấu production-ready
+chỉ từ unit/integration tests.
+
 ## Fresh staging evidence checklist
 
 Record commit/image digest, timestamps and PASS/FAIL only—never environment values:
@@ -284,6 +310,7 @@ Record commit/image digest, timestamps and PASS/FAIL only—never environment va
 - [ ] Approved staging member/Admin login and role checks pass.
 - [ ] Staging Page/read smoke passes.
 - [ ] Capability discovery passes on the designated test Page.
+- [ ] App B per-user connect/select/isolation/disconnect/reconnect drill passes.
 - [ ] Explicit capability write smoke/cleanup passes if required for this release.
 - [ ] `staging:restore-verify` passes against the explicitly pinned isolated restore
       target.

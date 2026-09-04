@@ -138,16 +138,26 @@ Supabase. Không tự thêm hai biến này vào `.env.local`/`.env.staging`.
 
 ### E. Meta / Facebook
 
-| Variable                             | Mục đích                                                 | Prod                     | Staging | Secret? | Lấy/tạo ở đâu                           | Cấu hình sai                                                 |
-| ------------------------------------ | -------------------------------------------------------- | ------------------------ | ------- | ------- | --------------------------------------- | ------------------------------------------------------------ |
-| `FACEBOOK_APP_ID`                    | Nhận diện Meta App cho Page-management/token inspection. | Có                       | Có      | Không   | Meta App được cấp cho môi trường.       | Page verify/sync hoặc token inspection thất bại.             |
-| `FACEBOOK_APP_SECRET`                | Xác thực Meta App khi inspect token.                     | Có                       | Có      | Có      | Secret của Meta App.                    | Token inspection thất bại hoặc secret bị lộ.                 |
-| `FACEBOOK_GRAPH_API_VERSION`         | Pin version trong mọi Graph request.                     | Có                       | Có      | Không   | Theo version được repo hỗ trợ.          | Contract API không đúng; staging guard từ chối version khác. |
-| `FACEBOOK_USER_ACCESS_TOKEN`         | Runtime credential để discover/verify/sync Page.         | Có                       | Có      | Có      | Flow ủy quyền Meta của user phù hợp.    | Không quản lý/refresh danh sách Page được.                   |
-| `FACEBOOK_CAPABILITY_TEST_PAGE_ID`   | Khóa smoke tool vào Page test chỉ định.                  | Không cho normal runtime | Có      | Không   | ID của non-production Page đã xác nhận. | Smoke bị từ chối hoặc có nguy cơ nhắm Page sai.              |
-| `FACEBOOK_CAPABILITY_TEST_PAGE_NAME` | Đối chiếu tên Page test cùng với ID.                     | Không cho normal runtime | Có      | Không   | Tên chính xác của cùng Page test.       | Guard fail closed; không có `--force` bypass.                |
+| Variable                             | Mục đích                                                 | Prod                     | Staging  | Secret? | Lấy/tạo ở đâu                           | Cấu hình sai                                                 |
+| ------------------------------------ | -------------------------------------------------------- | ------------------------ | -------- | ------- | --------------------------------------- | ------------------------------------------------------------ |
+| `FACEBOOK_APP_ID`                    | Nhận diện Meta App cho Page-management/token inspection. | Có                       | Có       | Không   | Meta App được cấp cho môi trường.       | Page verify/sync hoặc token inspection thất bại.             |
+| `FACEBOOK_APP_SECRET`                | Xác thực Meta App khi inspect token.                     | Có                       | Có       | Có      | Secret của Meta App.                    | Token inspection thất bại hoặc secret bị lộ.                 |
+| `FACEBOOK_GRAPH_API_VERSION`         | Pin version trong mọi Graph request.                     | Có                       | Có       | Không   | Theo version được repo hỗ trợ.          | Contract API không đúng; staging guard từ chối version khác. |
+| `FACEBOOK_USER_ACCESS_TOKEN`         | Runtime credential để discover/verify/sync Page.         | Có                       | Có       | Có      | Flow ủy quyền Meta của user phù hợp.    | Không quản lý/refresh danh sách Page được.                   |
+| `FACEBOOK_CONNECT_APP_ID`            | Meta App B cho per-user Facebook OAuth.                  | Khi bật connect cá nhân  | Có       | Không   | Meta App B riêng cho môi trường.        | OAuth/token inspection dùng sai App.                         |
+| `FACEBOOK_CONNECT_APP_SECRET`        | Server secret của Meta App B.                            | Khi bật connect cá nhân  | Có       | Có      | Secret manager/Meta Dashboard.          | OAuth exchange thất bại hoặc secret bị lộ.                   |
+| `FACEBOOK_CONNECT_REDIRECT_URI`      | Exact callback App B; runtime có thể derive an toàn.     | Tùy chọn                 | Tùy chọn | Không   | HTTPS callback đã allowlist.            | Redirect mismatch; validator fail closed.                    |
+| `FACEBOOK_CAPABILITY_TEST_PAGE_ID`   | Khóa smoke tool vào Page test chỉ định.                  | Không cho normal runtime | Có       | Không   | ID của non-production Page đã xác nhận. | Smoke bị từ chối hoặc có nguy cơ nhắm Page sai.              |
+| `FACEBOOK_CAPABILITY_TEST_PAGE_NAME` | Đối chiếu tên Page test cùng với ID.                     | Không cho normal runtime | Có       | Không   | Tên chính xác của cùng Page test.       | Guard fail closed; không có `--force` bypass.                |
 
-Version hiện được staging validator pin là `v26.0`. User Access Token không chỉ là
+Version hiện được staging validator pin là `v26.0`. App A giữ nguyên bốn biến
+`FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_GRAPH_API_VERSION` và
+`FACEBOOK_USER_ACCESS_TOKEN`. App B dùng ba biến `FACEBOOK_CONNECT_*`; secret không
+có tiền tố `NEXT_PUBLIC_`. Production và staging phải dùng App B/secret/callback
+riêng. Nếu redirect không đặt, runtime derive `/api/facebook/callback` từ public
+site URL; nếu đặt, origin/path phải khớp và không được có query/hash.
+
+User Access Token App A không chỉ là
 test token: các route Page sync, Page add/check và Facebook status dùng nó ở
 runtime. Khi Page được sync/verify, Page Access Token được mã hóa AES-256-GCM trước
 khi lưu database. Các mutation/read bình thường giải mã stored Page credential
@@ -280,6 +290,10 @@ không thêm chúng vào `.env.example`. Backup/restore scope chỉ là applicat
 
 - Lấy App ID/App Secret từ Meta App được dùng cho môi trường.
 - Tạo/ủy quyền User Access Token bằng account và scopes đã phê duyệt.
+- Tạo App B riêng cho user onboarding, allowlist exact HTTPS callback và không
+  reuse App A secret. Xác minh App mode, Business Verification, Advanced
+  Access/App Review cho scopes thực tế trước production; code không chứng minh
+  approval.
 - Xác nhận ID và tên designated non-production Page trước khi cấu hình capability
   smoke.
 
@@ -333,6 +347,9 @@ FACEBOOK_APP_ID=
 FACEBOOK_APP_SECRET=
 FACEBOOK_GRAPH_API_VERSION=v26.0
 FACEBOOK_USER_ACCESS_TOKEN=
+FACEBOOK_CONNECT_APP_ID=
+FACEBOOK_CONNECT_APP_SECRET=
+FACEBOOK_CONNECT_REDIRECT_URI=
 FACEBOOK_CAPABILITY_TEST_PAGE_ID=
 FACEBOOK_CAPABILITY_TEST_PAGE_NAME=
 
@@ -375,6 +392,9 @@ FACEBOOK_APP_ID=
 FACEBOOK_APP_SECRET=
 FACEBOOK_GRAPH_API_VERSION=v26.0
 FACEBOOK_USER_ACCESS_TOKEN=
+FACEBOOK_CONNECT_APP_ID=
+FACEBOOK_CONNECT_APP_SECRET=
+FACEBOOK_CONNECT_REDIRECT_URI=https://staging-social.vutiendung.io.vn/api/facebook/callback
 FACEBOOK_CAPABILITY_TEST_PAGE_ID=
 FACEBOOK_CAPABILITY_TEST_PAGE_NAME=
 
@@ -391,15 +411,15 @@ AI_PROVIDER_API_KEY=
 
 ## Không copy giữa hai môi trường
 
-| Phải độc lập ở staging                                                                                           | Lý do                                                    |
-| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `DATABASE_URL`, `DIRECT_DATABASE_URL`                                                                            | Ngăn app/migration chạm production database.             |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`                                               | Browser/Auth phải thuộc staging project.                 |
-| `SUPABASE_SERVICE_ROLE_KEY`                                                                                      | Không cấp quyền production cho staging server.           |
-| `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_USER_ACCESS_TOKEN`, stored Page credentials, capability Page | Staging chỉ dùng Meta resources/Page test được chỉ định. |
-| `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`                                                         | Không đưa production key material vào staging.           |
-| `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`                                                                   | Không cho staging machine gọi production endpoints.      |
-| `APP_ACCESS_SECRET` khi bật                                                                                      | Không dùng chung break-glass/machine credential.         |
+| Phải độc lập ở staging                                                                      | Lý do                                                    |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `DATABASE_URL`, `DIRECT_DATABASE_URL`                                                       | Ngăn app/migration chạm production database.             |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`                          | Browser/Auth phải thuộc staging project.                 |
+| `SUPABASE_SERVICE_ROLE_KEY`                                                                 | Không cấp quyền production cho staging server.           |
+| App A ID/secret/user token, App B `FACEBOOK_CONNECT_*`, stored credentials, capability Page | Staging chỉ dùng Meta resources/Page test được chỉ định. |
+| `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_PREVIOUS_KEYS`                                    | Không đưa production key material vào staging.           |
+| `ASSET_CLEANUP_SECRET`, `FACEBOOK_CRON_SECRET`                                              | Không cho staging machine gọi production endpoints.      |
+| `APP_ACCESS_SECRET` khi bật                                                                 | Không dùng chung break-glass/machine credential.         |
 
 Các giá trị structural cũng cố ý khác: `HAN_CONTENT_COMPOSE_PROJECT`,
 `HAN_CONTENT_IMAGE`, `HAN_CONTENT_ENV_FILE`, `HAN_CONTENT_PORT` và

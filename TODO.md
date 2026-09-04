@@ -110,7 +110,7 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Sync/thêm Page mã hóa token bằng current key/version trước khi persist; database và API response không chứa plaintext.
   - [x] Versioned keyring giải mã đúng stored `keyVersion`, hỗ trợ current/previous keys và fail rõ ràng với version không biết, không fallback.
   - [x] Plaintext của credential đã lưu chỉ tồn tại trong crypto/Meta adapter boundary; post/read/rotation orchestration chỉ truyền encrypted credential.
-  - [x] Rotation utility hỗ trợ dry-run và rotate old → current trong một transaction, update có điều kiện, giữ nguyên expiry/validation/revocation metadata và rollback toàn batch khi lỗi.
+  - [x] Rotation utility hỗ trợ dry-run và rotate old → current trong một transaction, update có điều kiện, giữ nguyên expiry/validation/revocation metadata và rollback toàn batch khi lỗi; App B encrypted user token dùng cùng keyring cũng được rotate/verify count.
   - [x] Regression tests bao phủ round-trip, wrong valid key, tamper, exact/unknown key version, rotate thành công, dry-run và rollback không corruption.
 
 - [x] SEC-003 — Mutation protection and input limits
@@ -274,6 +274,34 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Cron đối soát chỉ tự xử lý `uncertain`/stale `pending`; `needs_attention` chờ Admin, không lặp vô hạn.
   - [x] Có script host cron cho Windows và test lock contention, partial failure, resume cursor, stale lease, app offline lúc Facebook native publish.
   - [x] Migration `0006_faithful_spitfire.sql` đã áp dụng lên Supabase; stale-lease integration test pass.
+
+- [ ] FB-012 — Per-user Facebook onboarding with Meta App B
+  - Priority: P1
+  - Goal: Cho approved Content OS user kết nối Facebook riêng, chọn Page họ quản lý
+    mà không thay thế Google login hoặc App A admin-managed.
+  - Depends on: FOUND-006, SEC-002, SEC-003, FB-002, FB-003.
+  - Acceptance criteria: OAuth state one-time/user-bound; App B token validation;
+    encrypted user/Page credentials có provenance; assignment và disconnect cô lập
+    theo user/connection; App A backward compatible.
+  - Tests: OAuth/callback failures, App mismatch, Page verification, multi-user
+    isolation, disconnect/reconnect, migration/repository integration và secret scan.
+  - [x] Additive migrations `0008`/`0009` thêm per-user connection, hashed OAuth
+        state, credential/assignment provenance và safe credential metadata; không đổi
+        plaintext/encryption format của App A rows.
+  - [x] Server-side App B connect/callback, code exchange, long-lived token inspect,
+        Page discovery/selection, encrypted persistence và same-origin/rate-limited
+        disconnect đã implement với strict validation.
+  - [x] Browser read/mutation chọn owned App B credential trước rồi App A fallback;
+        cron giữ ưu tiên App A và không bao giờ chọn App B credential của user khác.
+  - [x] UI Pages có connect/reconnect/disconnect, Page selection và không expose raw
+        User/Page token; Google vẫn là Supabase login provider duy nhất.
+  - [x] Unit/migration tests pass; DB integration drill đã được thêm nhưng chỉ chạy
+        trên database an toàn sau khi áp dụng migration.
+  - [ ] Cấu hình Meta App B staging thật và hoàn tất live acceptance: Google/App A
+        regression, OAuth App B, designated Page select, encrypted rows/assignment,
+        read/write capability, user isolation, disconnect/reconnect và clean logs.
+  - [ ] Xác nhận App mode/Business Verification/Advanced Access/App Review phù hợp
+        trước production external-user rollout; không suy ra approval từ automated tests.
 
 ## Posts and operator UI
 

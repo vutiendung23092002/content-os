@@ -43,7 +43,7 @@ Archive này không restore:
 - Meta credentials nằm ngoài application database boundary;
 - Drizzle migration history trong schema vận hành `drizzle`.
 
-`src/db/schema.ts` hiện khai báo 13 tables và 8 enum types qua
+`src/db/schema.ts` hiện khai báo 14 tables và 9 enum types qua
 `pgSchema("hancontent_os")`. Indexes, foreign keys và constraints đều tham chiếu
 object trong schema này; không có sequence hoặc cross-schema foreign key do
 application khai báo. Custom archive với `--schema=hancontent_os` chứa schema-local

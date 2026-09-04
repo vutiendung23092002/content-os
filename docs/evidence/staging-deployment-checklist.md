@@ -24,6 +24,7 @@ ciphertext.
 | Member/Admin authenticated smoke             | PENDING |                |
 | Designated Page discovery/read               | PENDING |                |
 | Explicit Meta write smoke and cleanup        | PENDING |                |
+| App B connect/select/isolation/disconnect    | PENDING |                |
 | Isolated restore target identity confirmed   | PENDING |                |
 | Pinned restore schema + DB test verification | PENDING |                |
 | Application rollback rehearsal               | PENDING |                |
