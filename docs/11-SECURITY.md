@@ -71,6 +71,12 @@ system/cron chỉ App A. Incident revoke theo credential/connection cụ thể, 
 legacy App A chỉ update row null-provenance. Page global lock chỉ xảy ra sau khi
 không còn credential usable khác.
 
+Disconnect và đổi Facebook identity recompute Page health trong cùng transaction.
+Availability của App B có thể giữ Page global active cho đúng actor, nhưng không bao
+giờ mở quyền system/cron dùng App B. Mọi Facebook mutation mới ghi exact credential
+provenance trước remote call; cron chỉ reconcile App A. Operation App B cần authorized
+manual reconciliation bằng đúng stored credential/connection, không credential fallback.
+
 ## 5. Bảo vệ request và dữ liệu
 
 - Validate tất cả body, path parameter và timestamp.
@@ -89,7 +95,7 @@ Meta có thể đã tạo bài dù client nhận timeout. Hệ thống phải gh
 
 ### Database lỗi sau Meta thành công
 
-Ghi operation intent trước khi gọi Meta. Nếu lưu remote ID thất bại, reconciliation dùng Page, loại thao tác, thời gian và fingerprint nội dung để tìm kết quả; người vận hành được cảnh báo thay vì tự đăng lại.
+Ghi operation intent và credential provenance trước khi gọi Meta. Nếu lưu remote ID thất bại, reconciliation dùng Page, loại thao tác, thời gian và fingerprint nội dung với đúng credential policy để tìm kết quả; người vận hành được cảnh báo thay vì tự đăng lại. Operation legacy chỉ dùng App A; operation App B không được cron đoán credential.
 
 ### Token hết hạn hoặc mất quyền
 

@@ -23,6 +23,7 @@ import {
 } from "./manual-page-service";
 import { MetaGraphClient, type ManagedPageCredential } from "./meta-client";
 import { MetaOauthClient } from "./meta-oauth-client";
+import { reconcileConnectionPageCredentialHealth } from "./page-credential-health";
 
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
 const MAX_PAGE_BATCHES = 20;
@@ -124,12 +125,18 @@ export async function persistUserFacebookConnection(
     input.metaAppId,
   );
   if (existing && existing.externalUserId !== input.externalUserId) {
-    await new PageCredentialRepository(database).markRevokedByConnection(
+    const credentials = new PageCredentialRepository(database);
+    const affectedPageIds = await credentials.listPageIdsForConnection(
       existing.id,
     );
+    await credentials.markRevokedByConnection(existing.id);
     await new UserPageAssignmentRepository(database).deleteForConnection(
       existing.id,
     );
+    await reconcileConnectionPageCredentialHealth(database, affectedPageIds, {
+      status: "revoked",
+      errorCode: "FACEBOOK_CONNECTION_IDENTITY_CHANGED",
+    });
   }
   return connections.upsertUserConnected(input);
 }
@@ -396,12 +403,21 @@ export class UserFacebookConnectionService {
           status: 404,
         });
       }
+      const credentialRepository = new PageCredentialRepository(transaction);
+      const affectedPageIds =
+        await credentialRepository.listPageIdsForConnection(id);
       await connections.markDisconnected(id, viewer.id);
-      await new PageCredentialRepository(transaction).markRevokedByConnection(
-        id,
-      );
+      await credentialRepository.markRevokedByConnection(id);
       await new UserPageAssignmentRepository(transaction).deleteForConnection(
         id,
+      );
+      await reconcileConnectionPageCredentialHealth(
+        transaction,
+        affectedPageIds,
+        {
+          status: "revoked",
+          errorCode: "FACEBOOK_CONNECTION_DISCONNECTED",
+        },
       );
     });
   }

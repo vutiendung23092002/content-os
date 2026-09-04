@@ -4,6 +4,12 @@ import { facebookOperations } from "@/db/schema";
 
 export type FacebookOperationRecord = typeof facebookOperations.$inferSelect;
 export type FacebookOperationType = FacebookOperationRecord["type"];
+export type FacebookOperationCredentialProvenance = {
+  credentialSource: NonNullable<FacebookOperationRecord["credentialSource"]>;
+  facebookConnectionId: string | null;
+  pageCredentialId: string;
+  actorUserId?: string;
+};
 
 export class FacebookOperationRepository {
   constructor(private readonly database: DatabaseExecutor) {}
@@ -14,6 +20,7 @@ export class FacebookOperationRepository {
     type: FacebookOperationType;
     requestFingerprint?: string;
     requestMetadata?: Record<string, unknown>;
+    credentialProvenance?: FacebookOperationCredentialProvenance;
   }): Promise<FacebookOperationRecord> {
     const [record] = await this.database
       .insert(facebookOperations)
@@ -24,6 +31,10 @@ export class FacebookOperationRepository {
         status: "pending",
         requestFingerprint: input.requestFingerprint,
         requestMetadata: input.requestMetadata ?? {},
+        credentialSource: input.credentialProvenance?.credentialSource,
+        facebookConnectionId: input.credentialProvenance?.facebookConnectionId,
+        pageCredentialId: input.credentialProvenance?.pageCredentialId,
+        actorUserId: input.credentialProvenance?.actorUserId,
       })
       .returning();
 

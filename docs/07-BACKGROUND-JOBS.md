@@ -35,7 +35,7 @@ MVP background work is reconciliation only and may use Vercel Cron or host cron.
 
 - Trigger: create request timeout, DB-after-Meta failure or manual action.
 - Input: operation ID.
-- Work: search exact Page/time/fingerprint evidence; resolve scheduled/published/not-found/ambiguous.
+- Work: search exact Page/time/fingerprint evidence; resolve scheduled/published/not-found/ambiguous. App A-origin operation dùng exact stored App A provenance; App B-origin operation không được cron remote-read và chuyển `needs_attention` chờ actor/Admin reconciliation bằng exact stored provenance. Legacy operation thiếu provenance chỉ dùng App A.
 - Safety: never creates another post.
 
 ### `assets.cleanup`
@@ -61,6 +61,9 @@ MVP background work is reconciliation only and may use Vercel Cron or host cron.
 - Cả hai yêu cầu `Authorization: Bearer <FACEBOOK_CRON_SECRET>` với secret tối thiểu 32 ký tự.
 - `cron_jobs` giữ lease toàn cục, checkpoint cursor sau từng Page/operation và cho phép owner mới nhận lại lease đã stale.
 - Mỗi lần sync tối đa 5 Page mặc định, 10 trang Graph cho mỗi loại dữ liệu và 2 lần đọc khi lỗi tạm thời.
+- Sync cron chỉ dùng App A. Page chỉ có App B hoặc không có admin credential usable
+  được đếm `pagesSkippedNoAdminCredential`, checkpoint và bỏ qua để Page sau vẫn chạy;
+  không load hoặc tạo client App B. Lỗi Graph tạm thời trên App A vẫn fail/retry như cũ.
 - Lỗi từng phần giữ checkpoint đã hoàn tất. `needs_attention` không bị cron chạy lặp lại.
 - Response/log chỉ có trạng thái, số lượng và mã lỗi an toàn; không log token, secret hoặc signed URL.
 - Không endpoint nào chứa lệnh đăng/sửa/xóa Facebook. Facebook native scheduling vẫn tự đăng kể cả app dừng đúng giờ publish.

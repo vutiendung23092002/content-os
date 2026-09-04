@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   markDisconnected: vi.fn(),
   markStatus: vi.fn(),
   revokeCredentials: vi.fn(),
+  listCredentialPageIds: vi.fn(),
+  reconcileConnectionHealth: vi.fn(),
   deleteAssignments: vi.fn(),
   assignPage: vi.fn(),
   upsertCredential: vi.fn(),
@@ -49,7 +51,11 @@ vi.mock("@/db/repositories/page-credential-repository", () => ({
     upsert = mocks.upsertCredential;
     findByPageAndConnection = mocks.findCredentialByConnection;
     markRevokedByConnection = mocks.revokeCredentials;
+    listPageIdsForConnection = mocks.listCredentialPageIds;
   },
+}));
+vi.mock("./page-credential-health", () => ({
+  reconcileConnectionPageCredentialHealth: mocks.reconcileConnectionHealth,
 }));
 vi.mock("@/db/repositories/user-page-assignment-repository", () => ({
   UserPageAssignmentRepository: class {
@@ -164,6 +170,10 @@ describe("UserFacebookConnectionService", () => {
     mocks.findOwnedConnection.mockResolvedValue(connection());
     mocks.getManagedPages.mockResolvedValue({ pages: [], after: undefined });
     mocks.markDisconnected.mockResolvedValue(true);
+    mocks.listCredentialPageIds.mockResolvedValue([
+      "33333333-3333-4333-8333-333333333333",
+    ]);
+    mocks.reconcileConnectionHealth.mockResolvedValue(undefined);
     mocks.upsertPage.mockResolvedValue({
       id: "33333333-3333-4333-8333-333333333333",
     });
@@ -286,6 +296,17 @@ describe("UserFacebookConnectionService", () => {
     expect(mocks.deleteAssignments.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.upsertConnection.mock.invocationCallOrder[0]!,
     );
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      {
+        status: "revoked",
+        errorCode: "FACEBOOK_CONNECTION_IDENTITY_CHANGED",
+      },
+    );
+    expect(
+      mocks.reconcileConnectionHealth.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.upsertConnection.mock.invocationCallOrder[0]!);
   });
 
   it("reactivates a disconnected same-account connection without reviving Page credentials", async () => {
@@ -565,6 +586,14 @@ describe("UserFacebookConnectionService", () => {
     );
     expect(mocks.deleteAssignments).toHaveBeenCalledWith(
       "22222222-2222-4222-8222-222222222222",
+    );
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      {
+        status: "revoked",
+        errorCode: "FACEBOOK_CONNECTION_DISCONNECTED",
+      },
     );
   });
 });

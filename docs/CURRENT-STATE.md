@@ -49,8 +49,9 @@ Windows hiện không cho Corepack tạo global pnpm shim trong `Program Files`;
 - Drizzle config dùng direct URL cho migration.
 - Migration nền, Google allowlist và Page assignment: `0000_empty_human_cannonball.sql`, `0001_whole_stepford_cuckoos.sql`, `0002_curious_kitty_pryde.sql`.
 - Các migration trước `0008` đã áp dụng thành công lên Supabase. Additive migration
-  `0008_remarkable_garia.sql` và `0009_aspiring_black_tom.sql` cho App B chưa được
-  task này chạy lên staging/production.
+  `0008_remarkable_garia.sql`, `0009_aspiring_black_tom.sql` cho App B và
+  `0010_shiny_captain_america.sql` cho operation credential provenance chưa được task
+  này chạy lên staging/production.
 - Catalog verification xác nhận đủ bảng hiện hành; ba bảng OAuth thử nghiệm cũ được giữ nguyên, không dùng và không xóa để tránh thao tác phá hủy dữ liệu.
 
 Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migration; toàn bộ application table/enum nằm trong `hancontent_os`, không nằm trong `public`.
@@ -81,7 +82,9 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Disconnect/reconnect chỉ tác động App B connection/credentials/auto-assignments
   của owner. Same-account reconnect refresh in-place; identity switch revoke derived
   credential/assignment atomically trước khi persist account mới. App A, manual
-  assignment, Page/history và user khác không bị thay đổi.
+  assignment, Page/history và user khác không bị thay đổi. Disconnect/identity switch
+  cũng recompute affected Page health trong transaction; hết credential usable thì
+  Page lock, còn source usable khác thì Page đang active được giữ active.
 - User/Page token chỉ đi qua `Authorization: Bearer`, không nằm trong URL.
 - `GET /me/accounts` để đọc Page và Page token.
 - Publish text qua Page feed.
@@ -97,13 +100,15 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 - Credential selection theo browser actor ưu tiên owned App B rồi App A fallback;
   cron/machine chỉ App A và không thể fallback sang App B. Credential incident
   chỉ revoke source bị lỗi; Page global status chỉ lock khi không còn source usable.
+- Sync cron checkpoint và skip Page không có App A usable thay vì làm hỏng cả batch;
+  lỗi Graph tạm thời trên App A vẫn giữ fail/retry hiện có.
 - Transaction boundary đã chạy integration test thật trên Supabase và rollback sạch dữ liệu test.
 - Page sync service đọc hết pagination trước persistence, mã hóa Page token và chỉ trả safe DTO; Page managed biến mất khỏi snapshot hoàn chỉnh được đánh dấu `permission_missing` mà không ảnh hưởng Page thêm thủ công.
 - Draft create/list/get/update/delete service và API.
 - Publish-now/native-schedule orchestration có operation ledger, double-submit claim và mock Meta client.
 - Timeout/retryable create được đánh dấu `uncertain`; không blind retry.
 - Meta thành công nhưng local commit lỗi được giữ cho reconciliation, không đổi thành remote failure.
-- Reconciliation cho publish/schedule đã dùng intent metadata tối thiểu và remote evidence; chỉ một candidate chính xác mới được tự chốt, còn no-match/ambiguous/incomplete/visibility-window đều chuyển `needs_attention`. Admin resolution được audit theo user và không có blind retry.
+- Reconciliation cho publish/schedule đã dùng intent metadata tối thiểu và remote evidence; chỉ một candidate chính xác mới được tự chốt, còn no-match/ambiguous/incomplete/visibility-window đều chuyển `needs_attention`. Operation mới lưu exact credential source/connection trước remote call. Cron chỉ xử lý App A; App B-origin operation cần Admin-authorized manual reconciliation bằng exact stored provenance, không fallback. Legacy operation thiếu provenance dùng App A-only. Admin resolution được audit theo user và không có blind retry.
 - FB-008 đã có API/use-case đổi lịch native cho remote scheduled post. Operation được ghi trước mutation, lịch local chỉ đổi sau readback đúng Post ID/thời gian; timeout được cron đối soát mà không gửi lại mutation.
 - Popup chi tiết bài viết đã có menu `•••` cho bài remote: đổi lịch, sửa caption, hủy lịch, sửa bài đã đăng và xóa bài đã đăng. Các thao tác đi qua API same-origin, operation ledger, popup xác nhận và refetch dữ liệu từ Meta sau mutation.
 - Live smoke trên Page test đã xác nhận đổi lịch, sửa bài hẹn giờ, hủy lịch, sửa bài đã đăng, xóa bài đã đăng, persisted mirror và Timeline tự cập nhật sau publish; `FB-008`, `FB-009`, `POST-003`, `POST-004` và `POST-005` đã đóng.

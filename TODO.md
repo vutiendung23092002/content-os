@@ -294,6 +294,13 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - [x] Browser read/mutation chọn owned App B credential trước rồi App A fallback;
         cron/system chỉ chọn App A và không bao giờ fallback App B. Reconnect đổi
         Facebook identity và credential incident đều cô lập provenance/assignment.
+  - [x] Sync cron checkpoint/skip Page không có App A usable và tiếp tục batch;
+        disconnect/identity switch recompute affected Page health nhưng availability
+        của App B không cấp quyền App B cho cron.
+  - [x] Additive migration `0010` thêm nullable operation credential provenance;
+        mutation ghi provenance trước remote call, cron chỉ reconcile App A, App B
+        chuyển `needs_attention` chờ exact-provenance Admin reconciliation và legacy
+        operation không đoán App B.
   - [x] UI Pages có connect/reconnect/disconnect, Page selection và không expose raw
         User/Page token; Google vẫn là Supabase login provider duy nhất.
   - [x] Unit/migration tests pass; DB integration drill đã được thêm nhưng chỉ chạy

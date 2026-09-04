@@ -1,6 +1,10 @@
 import "server-only";
 
-import type { PageCredentialRecord } from "@/db/repositories/page-credential-repository";
+import type { FacebookOperationCredentialProvenance } from "@/db/repositories/facebook-operation-repository";
+import type {
+  PageCredentialRecord,
+  SelectedPageCredential,
+} from "@/db/repositories/page-credential-repository";
 import type { EncryptedToken } from "@/lib/crypto/token-crypto";
 import { getTokenKeyring, type TokenKeyring } from "@/lib/crypto/token-keyring";
 import { requireServerEnv } from "@/lib/env/server";
@@ -34,6 +38,21 @@ export function toStoredPageToken(
       "facebookConnectionId" in credential
         ? (credential.facebookConnectionId as string | null)
         : undefined,
+  };
+}
+
+export function toOperationCredentialProvenance(
+  credential: SelectedPageCredential,
+  actorUserId?: string,
+): FacebookOperationCredentialProvenance {
+  if (credential.credentialSource === "user_connected" && !actorUserId) {
+    throw new Error("User-connected credential requires actor provenance");
+  }
+  return {
+    credentialSource: credential.credentialSource,
+    facebookConnectionId: credential.facebookConnectionId,
+    pageCredentialId: credential.id,
+    actorUserId,
   };
 }
 

@@ -37,6 +37,16 @@ function createSetup() {
       },
       pageCredential,
     }),
+    loadExact: vi.fn().mockResolvedValue({
+      page: {
+        id: localPageId,
+        externalPageId: "page-123",
+        name: "Page Test",
+        avatarUrl: null,
+        timezone: "Asia/Ho_Chi_Minh",
+      },
+      pageCredential,
+    }),
   };
   const client: RemotePostMetaClient = {
     getPublishedPosts: vi.fn().mockResolvedValue({
@@ -190,6 +200,27 @@ describe("RemotePostReader", () => {
       localPageId,
       "11111111-1111-4111-8111-111111111111",
     );
+    expect(setup.access.loadAdminManaged).not.toHaveBeenCalled();
+  });
+
+  it("uses only the exact stored credential provenance when provided", async () => {
+    const setup = createSetup();
+    const credentialProvenance = {
+      credentialId: "33333333-3333-4333-8333-333333333333",
+      facebookConnectionId: "44444444-4444-4444-8444-444444444444",
+    };
+
+    await setup.reader.list({
+      localPageId,
+      kind: "published",
+      credentialProvenance,
+    });
+
+    expect(setup.access.loadExact).toHaveBeenCalledWith(
+      localPageId,
+      credentialProvenance,
+    );
+    expect(setup.access.loadForActor).not.toHaveBeenCalled();
     expect(setup.access.loadAdminManaged).not.toHaveBeenCalled();
   });
 

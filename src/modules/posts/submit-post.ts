@@ -20,6 +20,7 @@ import {
 } from "@/modules/facebook/credential-incident";
 import {
   createMetaClientFromCredential,
+  toOperationCredentialProvenance,
   toStoredPageToken,
   type StoredPageToken,
 } from "@/modules/facebook/page-credential";
@@ -171,6 +172,10 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
         postId: post.id,
         type: input.kind,
         requestFingerprint: input.requestFingerprint,
+        credentialProvenance: toOperationCredentialProvenance(
+          credential,
+          input.actorUserId,
+        ),
         requestMetadata: {
           version: 1,
           messageHash: createHash("sha256").update(post.message).digest("hex"),

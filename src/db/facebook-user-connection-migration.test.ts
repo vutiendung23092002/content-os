@@ -111,7 +111,9 @@ describe("per-user Facebook connection migration contract", () => {
     expect(migration).toContain(
       "ADD COLUMN \"provider_metadata\" jsonb DEFAULT '{}'::jsonb NOT NULL",
     );
-    expect(journal.entries.at(-1)?.tag).toBe("0009_aspiring_black_tom");
+    expect(journal.entries.map((entry) => entry.tag)).toContain(
+      "0009_aspiring_black_tom",
+    );
     expect(
       snapshot.tables["hancontent_os.page_credentials"]?.columns,
     ).toHaveProperty("provider_metadata");

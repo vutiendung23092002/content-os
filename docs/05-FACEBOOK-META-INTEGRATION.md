@@ -53,6 +53,9 @@ explicit URI cùng origin/path, không query/hash). Callback cuối luôn redire
   admin-managed/legacy; App B credential của user khác không bao giờ được chọn.
 - Cron/machine flow không có actor chỉ được dùng App A
   admin-managed/legacy; không bao giờ fallback sang bất kỳ App B credential nào.
+- Background sync bỏ qua Page không có App A usable, checkpoint Page đó và tiếp tục
+  Page sau. Chỉ credential-ineligibility được skip; lỗi Graph tạm thời vẫn giữ fail/retry
+  hiện có. Việc skip không load credential hoặc tạo Meta client từ App B.
 - Disconnect giữ connection/Page/history, đánh dấu connection `revoked`, revoke chỉ
   Page credentials cùng `facebook_connection_id` và xóa chỉ auto-assignment do
   connection đó tạo. Không gọi delete Facebook, không đụng App A/user khác.
@@ -66,6 +69,23 @@ explicit URI cùng origin/path, không query/hash). Callback cuối luôn redire
   cùng Page không bị ảnh hưởng. Page chỉ bị global lock khi không còn
   credential usable nào, nhưng availability check này không được dùng để
   cấp App B credential cho cron.
+- Disconnect hoặc đổi Facebook identity recompute health của từng Page bị ảnh hưởng
+  trong cùng transaction: còn bất kỳ credential usable nào thì Page đang active được
+  giữ active; hết credential thì Page chuyển `revoked`. Page/history và assignment
+  manual/admin không bị xóa; verify/connect lại chỉ kích hoạt đúng Page đã verify.
+
+## Reconciliation credential provenance
+
+- Publish, schedule, update, cancel/delete và reschedule ghi `credential_source`,
+  exact `page_credential_id`, nullable `facebook_connection_id` và actor trước khi gọi
+  Meta. Operation không chứa token, ciphertext hoặc App secret.
+- System reconciliation dùng App A-only. Với operation phát sinh từ App B, cron đưa
+  về `needs_attention` với reason `actor_reconciliation_required` và không remote read.
+- Admin đã authorize có thể khởi tạo manual reconciliation; backend vẫn load duy nhất
+  exact credential/connection lưu trên operation. Credential đã revoke/mất không được
+  thay bằng App A hay App B khác và kết quả giữ `needs_attention` an toàn.
+- Operation legacy thiếu provenance giữ compatibility bằng App A-only; không đoán hoặc
+  duyệt qua App B của bất kỳ user nào.
 
 ## Capability smoke test before implementation
 

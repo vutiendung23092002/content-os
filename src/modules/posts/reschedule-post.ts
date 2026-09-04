@@ -19,6 +19,7 @@ import {
 } from "@/modules/facebook/credential-incident";
 import {
   createMetaClientFromCredential,
+  toOperationCredentialProvenance,
   toStoredPageToken,
   type StoredPageToken,
 } from "@/modules/facebook/page-credential";
@@ -155,6 +156,10 @@ class DatabaseReschedulePersistence implements ReschedulePersistence {
         postId: post.id,
         type: "reschedule",
         requestFingerprint: input.requestFingerprint,
+        credentialProvenance: toOperationCredentialProvenance(
+          credential,
+          input.actorUserId,
+        ),
         requestMetadata: {
           version: 1,
           remotePostId: post.remotePostId,

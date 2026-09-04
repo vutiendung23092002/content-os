@@ -20,6 +20,7 @@ import {
 } from "@/modules/facebook/credential-incident";
 import {
   createMetaClientFromCredential,
+  toOperationCredentialProvenance,
   toStoredPageToken,
   type StoredPageToken,
 } from "@/modules/facebook/page-credential";
@@ -210,6 +211,10 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
         postId: post.id,
         type: input.kind === "update" ? "update" : "cancel",
         requestFingerprint: input.requestFingerprint,
+        credentialProvenance: toOperationCredentialProvenance(
+          credential,
+          input.actorUserId,
+        ),
         requestMetadata: {
           version: 1,
           remotePostId: post.remotePostId,

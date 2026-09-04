@@ -52,6 +52,11 @@ export type RemotePostPage = {
   timezone: string | null;
 };
 
+export type RemotePostCredentialProvenance = {
+  credentialId: string;
+  facebookConnectionId: string | null;
+};
+
 export type RemotePostAccess = {
   loadForActor(
     localPageId: string,
@@ -61,6 +66,13 @@ export type RemotePostAccess = {
     pageCredential: StoredPageToken;
   }>;
   loadAdminManaged(localPageId: string): Promise<{
+    page: RemotePostPage;
+    pageCredential: StoredPageToken;
+  }>;
+  loadExact(
+    localPageId: string,
+    provenance: RemotePostCredentialProvenance,
+  ): Promise<{
     page: RemotePostPage;
     pageCredential: StoredPageToken;
   }>;
@@ -93,7 +105,15 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
     return this.load(localPageId);
   }
 
-  private async load(localPageId: string, actorUserId?: string) {
+  loadExact(localPageId: string, provenance: RemotePostCredentialProvenance) {
+    return this.load(localPageId, undefined, provenance);
+  }
+
+  private async load(
+    localPageId: string,
+    actorUserId?: string,
+    provenance?: RemotePostCredentialProvenance,
+  ) {
     const database = getDatabase();
     const page = await new PageRepository(database).findById(localPageId);
     if (!page || !page.isActive || page.connectionStatus !== "active") {
@@ -105,9 +125,11 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
     }
 
     const credentials = new PageCredentialRepository(database);
-    const credential = actorUserId
-      ? await credentials.findForActor(page.id, actorUserId)
-      : await credentials.findAdminManagedForPage(page.id);
+    const credential = provenance
+      ? await credentials.findExactUsable({ pageId: page.id, ...provenance })
+      : actorUserId
+        ? await credentials.findForActor(page.id, actorUserId)
+        : await credentials.findAdminManagedForPage(page.id);
     if (!credential || credential.revokedAt) {
       throw new AppError({
         code: "PAGE_CREDENTIAL_MISSING",
@@ -229,6 +251,7 @@ export class RemotePostReader {
     limit?: number;
     window?: { since: Date; until: Date };
     actorUserId?: string;
+    credentialProvenance?: RemotePostCredentialProvenance;
   }): Promise<{
     page: RemotePostPage;
     posts: RemoteFacebookPost[];
@@ -240,9 +263,18 @@ export class RemotePostReader {
     const after = input.after
       ? z.string().trim().min(1).max(2048).parse(input.after)
       : undefined;
-    const context = input.actorUserId
-      ? await this.access.loadForActor(localPageId, input.actorUserId)
-      : await this.access.loadAdminManaged(localPageId);
+    if (input.actorUserId && input.credentialProvenance) {
+      throw new AppError({
+        code: "REMOTE_POST_CREDENTIAL_CONTEXT_CONFLICT",
+        message: "Remote read credential context khÃ´ng há»£p lá»‡.",
+        status: 500,
+      });
+    }
+    const context = input.credentialProvenance
+      ? await this.access.loadExact(localPageId, input.credentialProvenance)
+      : input.actorUserId
+        ? await this.access.loadForActor(localPageId, input.actorUserId)
+        : await this.access.loadAdminManaged(localPageId);
     const client = await this.readWithCredentialGuard(
       context.page.id,
       context.pageCredential,

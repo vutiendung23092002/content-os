@@ -6,19 +6,39 @@ import { facebookConnection, pageCredentials } from "@/db/schema";
 import type { EncryptedToken } from "@/lib/crypto/token-crypto";
 
 export type PageCredentialRecord = typeof pageCredentials.$inferSelect;
+export type FacebookCredentialSource =
+  "admin_managed" | "user_connected" | "legacy_admin";
+export type SelectedPageCredential = PageCredentialRecord & {
+  credentialSource: FacebookCredentialSource;
+};
 type CredentialCandidate = {
   credential: PageCredentialRecord;
   connectionType: "admin_managed" | "user_connected" | null;
   connectionUserId: string | null;
 };
 
+function selectedCredential(
+  candidate: CredentialCandidate | undefined,
+): SelectedPageCredential | undefined {
+  if (!candidate) return undefined;
+  return {
+    ...candidate.credential,
+    credentialSource:
+      candidate.connectionType ??
+      (candidate.credential.facebookConnectionId === null
+        ? "legacy_admin"
+        : "user_connected"),
+  };
+}
+
 function selectAdminManagedCredential(candidates: CredentialCandidate[]) {
-  return (
-    candidates.find((candidate) => candidate.connectionType === "admin_managed")
-      ?.credential ??
+  return selectedCredential(
     candidates.find(
-      (candidate) => candidate.credential.facebookConnectionId === null,
-    )?.credential
+      (candidate) => candidate.connectionType === "admin_managed",
+    ) ??
+      candidates.find(
+        (candidate) => candidate.credential.facebookConnectionId === null,
+      ),
   );
 }
 
@@ -27,12 +47,18 @@ function selectActorCredential(
   appUserId: string,
 ) {
   return (
-    candidates.find(
-      (candidate) =>
-        candidate.connectionType === "user_connected" &&
-        candidate.connectionUserId === appUserId,
-    )?.credential ?? selectAdminManagedCredential(candidates)
+    selectedCredential(
+      candidates.find(
+        (candidate) =>
+          candidate.connectionType === "user_connected" &&
+          candidate.connectionUserId === appUserId,
+      ),
+    ) ?? selectAdminManagedCredential(candidates)
   );
+}
+
+function uniquePageIds(records: Array<{ pageId: string }>): string[] {
+  return [...new Set(records.map((record) => record.pageId))];
 }
 
 export class PageCredentialRepository {
@@ -88,7 +114,7 @@ export class PageCredentialRepository {
 
   async findAdminManagedForPage(
     pageId: string,
-  ): Promise<PageCredentialRecord | undefined> {
+  ): Promise<SelectedPageCredential | undefined> {
     return selectAdminManagedCredential(
       await this.listAvailableCredentials(pageId),
     );
@@ -111,10 +137,38 @@ export class PageCredentialRepository {
     return record;
   }
 
-  async findForActor(pageId: string, appUserId: string) {
+  async findForActor(
+    pageId: string,
+    appUserId: string,
+  ): Promise<SelectedPageCredential | undefined> {
     return selectActorCredential(
       await this.listAvailableCredentials(pageId),
       appUserId,
+    );
+  }
+
+  async findExactUsable(input: {
+    pageId: string;
+    credentialId: string;
+    facebookConnectionId: string | null;
+  }): Promise<PageCredentialRecord | undefined> {
+    const candidates = await this.listAvailableCredentials(input.pageId);
+    return candidates.find(
+      (candidate) =>
+        candidate.credential.id === input.credentialId &&
+        candidate.credential.facebookConnectionId ===
+          input.facebookConnectionId,
+    )?.credential;
+  }
+
+  async listPageIdsForConnection(
+    facebookConnectionId: string,
+  ): Promise<string[]> {
+    return uniquePageIds(
+      await this.database
+        .select({ pageId: pageCredentials.pageId })
+        .from(pageCredentials)
+        .where(eq(pageCredentials.facebookConnectionId, facebookConnectionId)),
     );
   }
 

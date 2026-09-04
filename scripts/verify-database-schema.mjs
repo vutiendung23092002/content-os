@@ -58,6 +58,12 @@ const expectedFacebookConnectionColumns = [
   "user_token_fingerprint",
   "disconnected_at",
 ];
+const expectedFacebookOperationProvenanceColumns = [
+  "credential_source",
+  "facebook_connection_id",
+  "page_credential_id",
+  "actor_user_id",
+];
 
 if (!databaseUrl) {
   console.error(
@@ -245,6 +251,28 @@ try {
       and t.typname = 'facebook_connection_type'
     order by e.enumsortorder
   `;
+  const facebookCredentialSources = await sql`
+    select e.enumlabel as value
+    from pg_type t
+    join pg_enum e on e.enumtypid = t.oid
+    join pg_namespace n on n.oid = t.typnamespace
+    where n.nspname = 'hancontent_os'
+      and t.typname = 'facebook_credential_source'
+    order by e.enumsortorder
+  `;
+  const facebookOperationColumns = await sql`
+    select column_name
+    from information_schema.columns
+    where table_schema = 'hancontent_os'
+      and table_name = 'facebook_operations'
+  `;
+  const facebookOperationColumnNames = facebookOperationColumns.map(
+    (column) => column.column_name,
+  );
+  const missingFacebookOperationProvenanceColumns =
+    expectedFacebookOperationProvenanceColumns.filter(
+      (column) => !facebookOperationColumnNames.includes(column),
+    );
 
   const facebookSchemaIndexes = await sql`
     select indexname
@@ -256,7 +284,9 @@ try {
         'facebook_connection_user_status_idx',
         'page_credentials_legacy_page_unique',
         'page_credentials_page_connection_unique',
-        'page_credentials_connection_idx'
+        'page_credentials_connection_idx',
+        'facebook_operations_connection_idx',
+        'facebook_operations_credential_idx'
       )
   `;
   const facebookSchemaIndexNames = facebookSchemaIndexes.map(
@@ -269,6 +299,8 @@ try {
     "page_credentials_legacy_page_unique",
     "page_credentials_page_connection_unique",
     "page_credentials_connection_idx",
+    "facebook_operations_connection_idx",
+    "facebook_operations_credential_idx",
   ];
   const missingFacebookSchemaIndexes = expectedFacebookSchemaIndexes.filter(
     (index) => !facebookSchemaIndexNames.includes(index),
@@ -284,6 +316,9 @@ try {
         'facebook_connection_app_user_id_app_users_id_fk',
         'page_credentials_facebook_connection_id_facebook_connection_id_fk',
         'user_page_assignments_facebook_connection_id_facebook_connection_id_fk',
+        'facebook_operations_facebook_connection_id_facebook_connection_id_fk',
+        'facebook_operations_page_credential_id_page_credentials_id_fk',
+        'facebook_operations_actor_user_id_app_users_id_fk',
         'facebook_connection_user_connected_fields'
       )
   `;
@@ -295,6 +330,9 @@ try {
     "facebook_connection_app_user_id_app_users_id_fk",
     "page_credentials_facebook_connection_id_facebook_connection_id_fk",
     "user_page_assignments_facebook_connection_id_facebook_connection_id_fk",
+    "facebook_operations_facebook_connection_id_facebook_connection_id_fk",
+    "facebook_operations_page_credential_id_page_credentials_id_fk",
+    "facebook_operations_actor_user_id_app_users_id_fk",
     "facebook_connection_user_connected_fields",
   ];
   const missingFacebookSchemaConstraints =
@@ -310,6 +348,11 @@ try {
     assignmentProvenance: provenanceTables.includes("user_page_assignments"),
     credentialMetadata: hasCredentialMetadata,
     connectionTypes: facebookConnectionTypes.map((entry) => entry.value),
+    operationCredentialSources: facebookCredentialSources.map(
+      (entry) => entry.value,
+    ),
+    missingOperationProvenanceColumns:
+      missingFacebookOperationProvenanceColumns,
     missingIndexes: missingFacebookSchemaIndexes,
     missingConstraints: missingFacebookSchemaConstraints,
   };
@@ -322,6 +365,9 @@ try {
     hasCredentialMetadata &&
     facebookConnectSchema.connectionTypes.join(",") ===
       "admin_managed,user_connected" &&
+    facebookConnectSchema.operationCredentialSources.join(",") ===
+      "admin_managed,user_connected,legacy_admin" &&
+    missingFacebookOperationProvenanceColumns.length === 0 &&
     missingFacebookSchemaIndexes.length === 0 &&
     missingFacebookSchemaConstraints.length === 0;
 

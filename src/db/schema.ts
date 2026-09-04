@@ -97,6 +97,11 @@ export const facebookConnectionTypeEnum = applicationSchema.enum(
   ["admin_managed", "user_connected"],
 );
 
+export const facebookCredentialSourceEnum = applicationSchema.enum(
+  "facebook_credential_source",
+  ["admin_managed", "user_connected", "legacy_admin"],
+);
+
 export const appUsers = applicationSchema.table(
   "app_users",
   {
@@ -413,6 +418,18 @@ export const facebookOperations = applicationSchema.table(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    credentialSource: facebookCredentialSourceEnum("credential_source"),
+    facebookConnectionId: uuid("facebook_connection_id").references(
+      () => facebookConnection.id,
+      { onDelete: "restrict" },
+    ),
+    pageCredentialId: uuid("page_credential_id").references(
+      () => pageCredentials.id,
+      { onDelete: "set null" },
+    ),
+    actorUserId: uuid("actor_user_id").references(() => appUsers.id, {
+      onDelete: "set null",
+    }),
     httpStatus: integer("http_status"),
     providerErrorCode: text("provider_error_code"),
     providerErrorMessage: text("provider_error_message"),
@@ -446,6 +463,8 @@ export const facebookOperations = applicationSchema.table(
       table.status,
       table.startedAt,
     ),
+    index("facebook_operations_connection_idx").on(table.facebookConnectionId),
+    index("facebook_operations_credential_idx").on(table.pageCredentialId),
     check(
       "facebook_operations_duration_nonnegative",
       sql`${table.durationMs} is null or ${table.durationMs} >= 0`,

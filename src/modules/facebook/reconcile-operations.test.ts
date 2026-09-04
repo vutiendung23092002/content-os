@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { FacebookOperationRecord } from "@/db/repositories/facebook-operation-repository";
 import type { PostRecord } from "@/db/repositories/post-repository";
+import { AppError } from "@/lib/errors/app-error";
 import type { RemoteFacebookPost } from "./remote-post-reader";
 import { ReconcileFacebookOperationService } from "./reconcile-operations";
 
@@ -57,6 +58,10 @@ function makeOperation(
       assetCount: 0,
       scheduledFor: null,
     },
+    credentialSource: null,
+    facebookConnectionId: null,
+    pageCredentialId: null,
+    actorUserId: null,
     httpStatus: null,
     providerErrorCode: "FACEBOOK_NETWORK_ERROR",
     providerErrorMessage: null,
@@ -174,7 +179,7 @@ describe("ReconcileFacebookOperationService", () => {
       reason: "remote_schedule_updated",
     });
     expect(setupResult.reader.list).toHaveBeenCalledWith(
-      expect.objectContaining({ actorUserId: actorId }),
+      expect.objectContaining({ credentialProvenance: undefined }),
     );
     expect(setupResult.persistence.rescheduleSucceeded).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -244,8 +249,108 @@ describe("ReconcileFacebookOperationService", () => {
     );
     expect(setupResult.persistence.fail).not.toHaveBeenCalled();
     expect(setupResult.reader.list).toHaveBeenCalledWith(
-      expect.objectContaining({ actorUserId: undefined }),
+      expect.objectContaining({ credentialProvenance: undefined }),
     );
+  });
+
+  it("keeps App B-origin operations for actor reconciliation without a system read", async () => {
+    const setupResult = setup({
+      operation: makeOperation({
+        credentialSource: "user_connected",
+        facebookConnectionId: "11111111-1111-4111-8111-111111111111",
+        pageCredentialId: "22222222-2222-4222-8222-222222222222",
+        actorUserId: actorId,
+      }),
+    });
+
+    await expect(setupResult.service.reconcile(operationId)).resolves.toEqual(
+      expect.objectContaining({
+        status: "needs_attention",
+        reason: "actor_reconciliation_required",
+      }),
+    );
+    expect(setupResult.reader.list).not.toHaveBeenCalled();
+    expect(setupResult.persistence.needsAttention).toHaveBeenCalledWith(
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          reason: "actor_reconciliation_required",
+          credentialSource: "user_connected",
+        }),
+      }),
+    );
+    expect(
+      JSON.stringify(setupResult.persistence.needsAttention.mock.calls),
+    ).not.toMatch(/token|secret|ciphertext/i);
+  });
+
+  it("uses the exact original App B provenance for authorized Admin reconciliation", async () => {
+    const credentialProvenance = {
+      credentialId: "22222222-2222-4222-8222-222222222222",
+      facebookConnectionId: "11111111-1111-4111-8111-111111111111",
+    };
+    const setupResult = setup({
+      operation: makeOperation({
+        credentialSource: "user_connected",
+        facebookConnectionId: credentialProvenance.facebookConnectionId,
+        pageCredentialId: credentialProvenance.credentialId,
+        actorUserId: "33333333-3333-4333-8333-333333333333",
+      }),
+      remotePosts: [makeRemote("page_remote-app-b")],
+    });
+
+    await expect(
+      setupResult.service.reconcile(operationId, actorId),
+    ).resolves.toMatchObject({ status: "succeeded" });
+    expect(setupResult.reader.list).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialProvenance }),
+    );
+  });
+
+  it("uses exact App A provenance in system reconciliation", async () => {
+    const credentialProvenance = {
+      credentialId: "44444444-4444-4444-8444-444444444444",
+      facebookConnectionId: "55555555-5555-4555-8555-555555555555",
+    };
+    const setupResult = setup({
+      operation: makeOperation({
+        credentialSource: "admin_managed",
+        facebookConnectionId: credentialProvenance.facebookConnectionId,
+        pageCredentialId: credentialProvenance.credentialId,
+      }),
+      remotePosts: [makeRemote("page_remote-app-a")],
+    });
+
+    await setupResult.service.reconcile(operationId);
+
+    expect(setupResult.reader.list).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialProvenance }),
+    );
+  });
+
+  it("does not substitute another credential when stored App B provenance is unavailable", async () => {
+    const setupResult = setup({
+      operation: makeOperation({
+        credentialSource: "user_connected",
+        facebookConnectionId: "11111111-1111-4111-8111-111111111111",
+        pageCredentialId: "22222222-2222-4222-8222-222222222222",
+        actorUserId: actorId,
+      }),
+    });
+    setupResult.reader.list.mockRejectedValue(
+      new AppError({
+        code: "PAGE_CREDENTIAL_MISSING",
+        message: "Original connection is revoked",
+        status: 409,
+      }),
+    );
+
+    await expect(
+      setupResult.service.reconcile(operationId, actorId),
+    ).resolves.toMatchObject({
+      status: "needs_attention",
+      reason: "credential_provenance_unavailable",
+    });
+    expect(setupResult.reader.list).toHaveBeenCalledTimes(1);
   });
 
   it("resolves an exact native schedule using message and schedule evidence", async () => {

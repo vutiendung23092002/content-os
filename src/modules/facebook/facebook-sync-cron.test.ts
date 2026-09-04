@@ -106,21 +106,30 @@ describe("FacebookSyncCronService", () => {
           status: 409,
         }),
       ),
+      loadExact: vi.fn(),
     };
     const clientFactory = vi.fn();
     const reader = new RemotePostReader(access, clientFactory);
 
-    await expect(
-      new FacebookSyncCronService(
-        jobs,
-        pages,
-        mirrorStore(),
-        reader,
-        () => now,
-        async () => undefined,
-      ).run(),
-    ).rejects.toMatchObject({ code: "PAGE_CREDENTIAL_MISSING" });
+    const result = await new FacebookSyncCronService(
+      jobs,
+      pages,
+      mirrorStore(),
+      reader,
+      () => now,
+      async () => undefined,
+    ).run();
 
+    expect(result).toMatchObject({
+      status: "completed",
+      pagesProcessed: 0,
+      pagesSkippedNoAdminCredential: 1,
+      postsMirrored: 0,
+    });
+    expect(jobs.checkpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ cursor: appBOnlyPageId }),
+    );
+    expect(jobs.fail).not.toHaveBeenCalled();
     expect(access.loadAdminManaged).toHaveBeenCalled();
     expect(access.loadForActor).not.toHaveBeenCalled();
     expect(clientFactory).not.toHaveBeenCalled();
@@ -151,6 +160,7 @@ describe("FacebookSyncCronService", () => {
     expect(result).toEqual({
       status: "locked",
       pagesProcessed: 0,
+      pagesSkippedNoAdminCredential: 0,
       postsMirrored: 0,
       nextCursor: null,
     });
@@ -158,6 +168,54 @@ describe("FacebookSyncCronService", () => {
     expect(pages.listActiveBatch).not.toHaveBeenCalled();
     expect(reader.list).not.toHaveBeenCalled();
     expect(mirror.replaceWindow).not.toHaveBeenCalled();
+  });
+
+  it("continues to later App A Pages after credential-ineligible Pages", async () => {
+    const jobs = jobStore();
+    const pages = {
+      listActiveBatch: vi
+        .fn()
+        .mockResolvedValue([page("page-1"), page("page-2"), page("page-3")]),
+    };
+    const reader = {
+      list: vi
+        .fn()
+        .mockImplementation(
+          async ({ localPageId }: { localPageId: string }) => {
+            if (localPageId === "page-2") {
+              throw new AppError({
+                code: "PAGE_CREDENTIAL_EXPIRED",
+                message: "Admin credential unavailable",
+                status: 409,
+              });
+            }
+            return emptyRemotePage();
+          },
+        ),
+    };
+
+    const result = await new FacebookSyncCronService(
+      jobs,
+      pages,
+      mirrorStore(),
+      reader,
+      () => now,
+      async () => undefined,
+    ).run();
+
+    expect(result).toMatchObject({
+      status: "completed",
+      pagesProcessed: 2,
+      pagesSkippedNoAdminCredential: 1,
+    });
+    expect(jobs.checkpoint).toHaveBeenCalledTimes(3);
+    expect(jobs.checkpoint).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: "page-3" }),
+    );
+    expect(reader.list).toHaveBeenCalledWith(
+      expect.objectContaining({ localPageId: "page-3" }),
+    );
+    expect(jobs.fail).not.toHaveBeenCalled();
   });
 
   it("resumes after the last checkpoint and mirrors a native publish after app downtime", async () => {

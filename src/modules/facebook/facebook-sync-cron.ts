@@ -72,9 +72,29 @@ type Reader = Pick<RemotePostReader, "list">;
 export type FacebookSyncCronResult = {
   status: "completed" | "locked";
   pagesProcessed: number;
+  pagesSkippedNoAdminCredential: number;
   postsMirrored: number;
   nextCursor: string | null;
 };
+
+const SYSTEM_CREDENTIAL_INELIGIBLE_CODES = new Set([
+  "PAGE_CREDENTIAL_MISSING",
+  "PAGE_CREDENTIAL_EXPIRED",
+  "PAGE_NOT_ACTIVE",
+  "PAGE_CREDENTIAL_MUTATION_LOCKED",
+  "FACEBOOK_TOKEN_INVALID",
+  "FACEBOOK_PERMISSION_DENIED",
+  "TOKEN_DECRYPTION_FAILED",
+  "UNKNOWN_TOKEN_KEY_VERSION",
+]);
+
+function isSystemCredentialIneligible(error: unknown): error is AppError {
+  return (
+    error instanceof AppError &&
+    !error.retryable &&
+    SYSTEM_CREDENTIAL_INELIGIBLE_CODES.has(error.code)
+  );
+}
 
 function safeError(error: unknown): Record<string, unknown> {
   return {
@@ -113,6 +133,7 @@ export class FacebookSyncCronService {
       return {
         status: "locked",
         pagesProcessed: 0,
+        pagesSkippedNoAdminCredential: 0,
         postsMirrored: 0,
         nextCursor: null,
       };
@@ -121,6 +142,7 @@ export class FacebookSyncCronService {
     const limit = Math.min(Math.max(pageLimit, 1), 25);
     let cursor = claimed.cursor;
     let processed = 0;
+    let skippedNoAdminCredential = 0;
     let mirrored = 0;
 
     logger.info({ event: "cron.started", jobKey: JOB_KEY, owner });
@@ -135,8 +157,19 @@ export class FacebookSyncCronService {
       }
 
       for (const page of batch) {
-        mirrored += await this.syncPage(page.id, startedAt);
-        processed += 1;
+        try {
+          mirrored += await this.syncPage(page.id, startedAt);
+          processed += 1;
+        } catch (error) {
+          if (!isSystemCredentialIneligible(error)) throw error;
+          skippedNoAdminCredential += 1;
+          logger.info({
+            event: "cron.page_skipped",
+            jobKey: JOB_KEY,
+            pageId: page.id,
+            reason: error.code,
+          });
+        }
         cursor = page.id;
         const checkpointed = await this.jobs.checkpoint({
           jobKey: JOB_KEY,
@@ -174,11 +207,13 @@ export class FacebookSyncCronService {
         event: "cron.completed",
         jobKey: JOB_KEY,
         pagesProcessed: processed,
+        pagesSkippedNoAdminCredential: skippedNoAdminCredential,
         postsMirrored: mirrored,
       });
       return {
         status: "completed",
         pagesProcessed: processed,
+        pagesSkippedNoAdminCredential: skippedNoAdminCredential,
         postsMirrored: mirrored,
         nextCursor,
       };

@@ -165,9 +165,9 @@ Fields: `post_id uuid FK posts CASCADE`; `asset_id uuid FK assets RESTRICT`; `so
 
 Append-only safe request/outcome history.
 
-Fields: `id uuid PK`; `page_id uuid FK pages RESTRICT`; `post_id uuid NULL FK posts SET NULL`; `type operation_type NOT NULL`; `status operation_status NOT NULL`; `remote_post_id text NULL`; `request_fingerprint text NULL`; `request_metadata jsonb NOT NULL`; `resolution text NULL`; `resolution_evidence jsonb NOT NULL`; `resolved_by_user_id uuid NULL FK app_users SET NULL`; `resolved_at timestamptz NULL`; `http_status integer NULL`; `provider_error_code`, `provider_error_message` text NULL`; `provider_request_id text NULL`; `started_at`, `finished_at` timestamptz`; `duration_ms integer NULL`. Metadata/evidence chỉ giữ hash nội dung, loại/số lượng media, thời gian dự kiến, remote ID và timestamp; không giữ caption đầy đủ, token, authorization headers, signed URL hoặc raw sensitive provider body.
+Fields: `id uuid PK`; `page_id uuid FK pages RESTRICT`; `post_id uuid NULL FK posts SET NULL`; `type operation_type NOT NULL`; `status operation_status NOT NULL`; `remote_post_id text NULL`; `request_fingerprint text NULL`; `request_metadata jsonb NOT NULL`; nullable credential provenance gồm `credential_source`, `facebook_connection_id`, `page_credential_id`, `actor_user_id`; `resolution text NULL`; `resolution_evidence jsonb NOT NULL`; `resolved_by_user_id uuid NULL FK app_users SET NULL`; `resolved_at timestamptz NULL`; `http_status integer NULL`; `provider_error_code`, `provider_error_message` text NULL`; `provider_request_id text NULL`; `started_at`, `finished_at` timestamptz`; `duration_ms integer NULL`. Provenance chỉ định credential/connection đã được chọn trước remote call và không sao chép token/ciphertext/fingerprint. Metadata/evidence chỉ giữ hash nội dung, loại/số lượng media, thời gian dự kiến, remote ID và timestamp; không giữ caption đầy đủ, token, authorization headers, signed URL hoặc raw sensitive provider body.
 
-Indexes `(page_id,started_at DESC)`, `(post_id,started_at DESC)`, `(status,started_at)`.
+Indexes `(page_id,started_at DESC)`, `(post_id,started_at DESC)`, `(status,started_at)`, `facebook_connection_id` và `page_credential_id`.
 
 ## `ai_generations`
 
@@ -209,6 +209,10 @@ cron_jobs (global lease/cursor, không tạo quan hệ với publish intent)
   admin-managed credential; không dùng credential App B của user khác.
 - System/cron chỉ chọn App A connection-backed hoặc legacy; nếu Page chỉ có
   App B credential thì system nhận `none`, không chọn row user bất kỳ.
+- Operation mới ghi exact credential provenance trước remote mutation. System chỉ
+  reconcile App A; operation App B cần actor/Admin reconciliation bằng đúng stored
+  credential + connection, không fallback App A hoặc App B của user khác. Legacy
+  operation thiếu provenance chỉ dùng App A.
 - Disconnect App B chỉ revoke credentials/auto-assignments mang cùng
   `facebook_connection_id`; không xóa Page hoặc nội dung remote.
 - Admin/member chỉ đọc hoặc thao tác Page có assignment; Super Admin có quyền ngầm trên mọi Page active.

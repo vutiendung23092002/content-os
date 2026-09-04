@@ -15,6 +15,7 @@ import {
 import { AppError } from "@/lib/errors/app-error";
 import {
   RemotePostReader,
+  type RemotePostCredentialProvenance,
   type RemoteFacebookPost,
   type RemotePostKind,
 } from "./remote-post-reader";
@@ -24,6 +25,15 @@ const PUBLISHED_WINDOW_BEFORE_MS = 2 * 60 * 1000;
 const PUBLISHED_WINDOW_AFTER_MS = 10 * 60 * 1000;
 const MAX_REMOTE_PAGES = 5;
 const REMOTE_VISIBILITY_GRACE_MS = 10 * 60 * 1000;
+const CREDENTIAL_UNAVAILABLE_CODES = new Set([
+  "PAGE_CREDENTIAL_MISSING",
+  "PAGE_CREDENTIAL_EXPIRED",
+  "PAGE_NOT_ACTIVE",
+  "FACEBOOK_TOKEN_INVALID",
+  "FACEBOOK_PERMISSION_DENIED",
+  "TOKEN_DECRYPTION_FAILED",
+  "UNKNOWN_TOKEN_KEY_VERSION",
+]);
 
 const requestMetadataSchema = z.object({
   version: z.literal(1).optional(),
@@ -101,6 +111,15 @@ type ReconciliationPersistence = {
 };
 
 type ReconciliationReader = Pick<RemotePostReader, "list">;
+
+type ReconciliationCredentialAccess =
+  | { kind: "admin_managed" }
+  | { kind: "exact"; provenance: RemotePostCredentialProvenance }
+  | {
+      kind: "needs_attention";
+      reason:
+        "actor_reconciliation_required" | "credential_provenance_unavailable";
+    };
 
 export type ReconciliationResult = {
   operationId: string;
@@ -314,9 +333,20 @@ export class ReconcileFacebookOperationService {
       : undefined;
     const record = await this.requireReviewable(operationId);
     const metadata = this.metadataFor(record);
+    const credentialAccess = this.credentialAccessFor(record, actorUserId);
+    if (credentialAccess.kind === "needs_attention") {
+      return this.storeAttention(
+        record,
+        credentialAccess.reason,
+        [],
+        credentialAccess.reason === "actor_reconciliation_required"
+          ? "This user-connected operation requires authorized Admin reconciliation with its stored provenance."
+          : "The credential stored on this operation is unavailable; no other credential was substituted.",
+      );
+    }
 
     if (record.operation.type === "reschedule") {
-      return this.reconcileReschedule(record, metadata, actorUserId);
+      return this.reconcileReschedule(record, metadata, credentialAccess);
     }
 
     if (record.operation.type === "schedule" && !metadata.scheduledFor) {
@@ -328,7 +358,15 @@ export class ReconcileFacebookOperationService {
       );
     }
 
-    const scan = await this.findCandidates(record, metadata, actorUserId);
+    const scan = await this.findCandidates(record, metadata, credentialAccess);
+    if (scan.credentialUnavailable) {
+      return this.storeAttention(
+        record,
+        "credential_provenance_unavailable",
+        [],
+        "The credential stored on this operation is unavailable; no other credential was substituted.",
+      );
+    }
     const { candidates } = scan;
     if (!scan.complete || candidates.length !== 1) {
       const visibilityWindowOpen =
@@ -386,6 +424,15 @@ export class ReconcileFacebookOperationService {
     const actorUserId = z.uuid().parse(input.actorUserId);
     const resolution = manualResolutionSchema.parse(input.resolution);
     const record = await this.requireReviewable(operationId, true);
+    const credentialAccess = this.credentialAccessFor(record, actorUserId);
+    if (credentialAccess.kind === "needs_attention") {
+      throw new AppError({
+        code: "RECONCILIATION_CREDENTIAL_UNAVAILABLE",
+        message:
+          "The credential stored on this operation is unavailable and cannot be substituted.",
+        status: 409,
+      });
+    }
     if (record.operation.type === "reschedule") {
       throw new AppError({
         code: "FACEBOOK_OPERATION_MANUAL_RESOLUTION_UNSUPPORTED",
@@ -412,7 +459,7 @@ export class ReconcileFacebookOperationService {
         record,
         resolution.remotePostId,
         metadata,
-        actorUserId,
+        credentialAccess,
       );
       if (!candidate) {
         throw new AppError({
@@ -535,10 +582,55 @@ export class ReconcileFacebookOperationService {
     };
   }
 
+  private credentialAccessFor(
+    record: ReviewRecord,
+    actorUserId?: string,
+  ): ReconciliationCredentialAccess {
+    const source = record.operation.credentialSource;
+    if (!source) return { kind: "admin_managed" };
+
+    if (source === "user_connected" && !actorUserId) {
+      return {
+        kind: "needs_attention",
+        reason: "actor_reconciliation_required",
+      };
+    }
+
+    if (!record.operation.pageCredentialId) {
+      return {
+        kind: "needs_attention",
+        reason: "credential_provenance_unavailable",
+      };
+    }
+    if (source === "admin_managed" && !record.operation.facebookConnectionId) {
+      return {
+        kind: "needs_attention",
+        reason: "credential_provenance_unavailable",
+      };
+    }
+    if (source === "user_connected" && !record.operation.facebookConnectionId) {
+      return {
+        kind: "needs_attention",
+        reason: "credential_provenance_unavailable",
+      };
+    }
+
+    return {
+      kind: "exact",
+      provenance: {
+        credentialId: record.operation.pageCredentialId,
+        facebookConnectionId: record.operation.facebookConnectionId,
+      },
+    };
+  }
+
   private async reconcileReschedule(
     record: ReviewRecord,
     metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
-    actorUserId?: string,
+    credentialAccess: Exclude<
+      ReconciliationCredentialAccess,
+      { kind: "needs_attention" }
+    >,
   ): Promise<ReconciliationResult> {
     const { remotePostId, scheduledFor } = metadata;
     if (!remotePostId || !scheduledFor) {
@@ -549,7 +641,14 @@ export class ReconcileFacebookOperationService {
       );
     }
 
-    const scan = await this.readAll(record, "scheduled", actorUserId);
+    const scan = await this.readAll(record, "scheduled", credentialAccess);
+    if (scan.credentialUnavailable) {
+      return this.storeRescheduleAttention(
+        record,
+        "credential_provenance_unavailable",
+        [],
+      );
+    }
     const remote = scan.posts.find((post) => post.remoteId === remotePostId);
     if (!remote) {
       return this.storeRescheduleAttention(
@@ -622,13 +721,17 @@ export class ReconcileFacebookOperationService {
   private async findCandidates(
     record: ReviewRecord,
     metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
-    actorUserId?: string,
+    credentialAccess: Exclude<
+      ReconciliationCredentialAccess,
+      { kind: "needs_attention" }
+    >,
   ) {
     const kind: RemotePostKind =
       record.operation.type === "schedule" ? "scheduled" : "published";
-    const scan = await this.readAll(record, kind, actorUserId);
+    const scan = await this.readAll(record, kind, credentialAccess);
     return {
       complete: scan.complete,
+      credentialUnavailable: scan.credentialUnavailable,
       candidates: scan.posts.filter((post) =>
         this.matches(post, record, metadata),
       ),
@@ -639,11 +742,22 @@ export class ReconcileFacebookOperationService {
     record: ReviewRecord,
     remotePostId: string,
     metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
-    actorUserId?: string,
+    credentialAccess: Exclude<
+      ReconciliationCredentialAccess,
+      { kind: "needs_attention" }
+    >,
   ) {
     const kind: RemotePostKind =
       record.operation.type === "schedule" ? "scheduled" : "published";
-    const scan = await this.readAll(record, kind, actorUserId);
+    const scan = await this.readAll(record, kind, credentialAccess);
+    if (scan.credentialUnavailable) {
+      throw new AppError({
+        code: "RECONCILIATION_CREDENTIAL_UNAVAILABLE",
+        message:
+          "The credential stored on this operation is unavailable and cannot be substituted.",
+        status: 409,
+      });
+    }
     return scan.posts.find(
       (post) =>
         post.remoteId === remotePostId && this.matches(post, record, metadata),
@@ -653,32 +767,50 @@ export class ReconcileFacebookOperationService {
   private async readAll(
     record: ReviewRecord,
     kind: RemotePostKind,
-    actorUserId?: string,
+    credentialAccess: Exclude<
+      ReconciliationCredentialAccess,
+      { kind: "needs_attention" }
+    >,
   ) {
     const posts: RemoteFacebookPost[] = [];
     let after: string | undefined;
     let complete = false;
     for (let page = 0; page < MAX_REMOTE_PAGES; page += 1) {
-      const result = await this.reader.list({
-        localPageId: record.operation.pageId,
-        kind,
-        after,
-        limit: 100,
-        actorUserId,
-        window:
-          kind === "published"
-            ? {
-                since: new Date(
-                  record.operation.startedAt.getTime() -
-                    PUBLISHED_WINDOW_BEFORE_MS,
-                ),
-                until: new Date(
-                  record.operation.startedAt.getTime() +
-                    PUBLISHED_WINDOW_AFTER_MS,
-                ),
-              }
-            : undefined,
-      });
+      let result: Awaited<ReturnType<ReconciliationReader["list"]>>;
+      try {
+        result = await this.reader.list({
+          localPageId: record.operation.pageId,
+          kind,
+          after,
+          limit: 100,
+          credentialProvenance:
+            credentialAccess.kind === "exact"
+              ? credentialAccess.provenance
+              : undefined,
+          window:
+            kind === "published"
+              ? {
+                  since: new Date(
+                    record.operation.startedAt.getTime() -
+                      PUBLISHED_WINDOW_BEFORE_MS,
+                  ),
+                  until: new Date(
+                    record.operation.startedAt.getTime() +
+                      PUBLISHED_WINDOW_AFTER_MS,
+                  ),
+                }
+              : undefined,
+        });
+      } catch (error) {
+        if (
+          error instanceof AppError &&
+          !error.retryable &&
+          CREDENTIAL_UNAVAILABLE_CODES.has(error.code)
+        ) {
+          return { posts, complete: false, credentialUnavailable: true };
+        }
+        throw error;
+      }
       posts.push(...result.posts);
       if (!result.after) {
         complete = true;
@@ -686,7 +818,7 @@ export class ReconcileFacebookOperationService {
       }
       after = result.after;
     }
-    return { posts, complete };
+    return { posts, complete, credentialUnavailable: false };
   }
 
   private matches(
@@ -744,6 +876,7 @@ export class ReconcileFacebookOperationService {
       reason,
       checkedAt: this.now().toISOString(),
       requestFingerprint: record.operation.requestFingerprint,
+      credentialSource: record.operation.credentialSource,
       candidates: candidates.slice(0, 10).map(safeCandidate),
     };
   }

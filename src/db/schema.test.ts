@@ -4,6 +4,7 @@ import {
   appRoleEnum,
   connectionStatusEnum,
   generationTypeEnum,
+  facebookCredentialSourceEnum,
   facebookConnectionTypeEnum,
   operationStatusEnum,
   operationTypeEnum,
@@ -51,6 +52,11 @@ describe("database schema", () => {
     expect(facebookConnectionTypeEnum.enumValues).toEqual([
       "admin_managed",
       "user_connected",
+    ]);
+    expect(facebookCredentialSourceEnum.enumValues).toEqual([
+      "admin_managed",
+      "user_connected",
+      "legacy_admin",
     ]);
   });
 });

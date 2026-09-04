@@ -6,11 +6,9 @@ import {
   PageCredentialRepository,
   type PageCredentialRecord,
 } from "@/db/repositories/page-credential-repository";
-import {
-  PageRepository,
-  type PageRecord,
-} from "@/db/repositories/page-repository";
+import type { PageRecord } from "@/db/repositories/page-repository";
 import { AppError } from "@/lib/errors/app-error";
+import { reconcilePageCredentialHealth } from "./page-credential-health";
 
 export type PageCredentialIncidentStatus =
   "expired" | "revoked" | "permission_missing" | "error";
@@ -100,27 +98,17 @@ export async function recordPageCredentialIncident(
     await credentials.markLegacyRevoked(input.pageId, detectedAt);
   }
 
-  if (
-    await credentials.hasUsableCredentialForPage({
-      pageId: input.pageId,
-      excludingCredentialId: input.credentialId,
-      excludingConnectionId: input.facebookConnectionId ?? undefined,
-      excludingLegacy:
-        input.facebookConnectionId === null ||
-        (!input.credentialId && input.facebookConnectionId === undefined),
-      now: detectedAt,
-    })
-  ) {
-    return;
-  }
-
-  await new PageRepository(database).lockForCredentialIncident({
-    pageId: input.pageId,
+  await reconcilePageCredentialHealth(database, input.pageId, {
     status: input.status,
     errorCode: input.errorCode,
     operationId: input.operationId,
     detectedAt,
     credentialExpiresAt: input.credentialExpiresAt,
+    excludingCredentialId: input.credentialId,
+    excludingConnectionId: input.facebookConnectionId ?? undefined,
+    excludingLegacy:
+      input.facebookConnectionId === null ||
+      (!input.credentialId && input.facebookConnectionId === undefined),
   });
 }
 
