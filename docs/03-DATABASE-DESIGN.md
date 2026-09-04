@@ -207,6 +207,8 @@ cron_jobs (global lease/cursor, không tạo quan hệ với publish intent)
 - Page credential is decrypted only inside the Meta adapter.
 - Credential selection ưu tiên App B credential active của actor, rồi mới dùng App A
   admin-managed credential; không dùng credential App B của user khác.
+- System/cron chỉ chọn App A connection-backed hoặc legacy; nếu Page chỉ có
+  App B credential thì system nhận `none`, không chọn row user bất kỳ.
 - Disconnect App B chỉ revoke credentials/auto-assignments mang cùng
   `facebook_connection_id`; không xóa Page hoặc nội dung remote.
 - Admin/member chỉ đọc hoặc thao tác Page có assignment; Super Admin có quyền ngầm trên mọi Page active.

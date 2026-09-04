@@ -96,9 +96,22 @@ export async function recordPageCredentialIncident(
     if (input.status === "revoked" && input.credentialId) {
       await credentials.markRevokedById(input.credentialId, detectedAt);
     }
-    if (await credentials.findByPageId(input.pageId)) return;
   } else if (input.status === "revoked") {
-    await credentials.markRevoked(input.pageId, detectedAt);
+    await credentials.markLegacyRevoked(input.pageId, detectedAt);
+  }
+
+  if (
+    await credentials.hasUsableCredentialForPage({
+      pageId: input.pageId,
+      excludingCredentialId: input.credentialId,
+      excludingConnectionId: input.facebookConnectionId ?? undefined,
+      excludingLegacy:
+        input.facebookConnectionId === null ||
+        (!input.credentialId && input.facebookConnectionId === undefined),
+      now: detectedAt,
+    })
+  ) {
+    return;
   }
 
   await new PageRepository(database).lockForCredentialIncident({

@@ -6,6 +6,34 @@ import { facebookConnection, pageCredentials } from "@/db/schema";
 import type { EncryptedToken } from "@/lib/crypto/token-crypto";
 
 export type PageCredentialRecord = typeof pageCredentials.$inferSelect;
+type CredentialCandidate = {
+  credential: PageCredentialRecord;
+  connectionType: "admin_managed" | "user_connected" | null;
+  connectionUserId: string | null;
+};
+
+function selectAdminManagedCredential(candidates: CredentialCandidate[]) {
+  return (
+    candidates.find((candidate) => candidate.connectionType === "admin_managed")
+      ?.credential ??
+    candidates.find(
+      (candidate) => candidate.credential.facebookConnectionId === null,
+    )?.credential
+  );
+}
+
+function selectActorCredential(
+  candidates: CredentialCandidate[],
+  appUserId: string,
+) {
+  return (
+    candidates.find(
+      (candidate) =>
+        candidate.connectionType === "user_connected" &&
+        candidate.connectionUserId === appUserId,
+    )?.credential ?? selectAdminManagedCredential(candidates)
+  );
+}
 
 export class PageCredentialRepository {
   constructor(private readonly database: DatabaseExecutor) {}
@@ -58,10 +86,12 @@ export class PageCredentialRepository {
     return record;
   }
 
-  async findByPageId(
+  async findAdminManagedForPage(
     pageId: string,
   ): Promise<PageCredentialRecord | undefined> {
-    return this.findForPage(pageId);
+    return selectAdminManagedCredential(
+      await this.listAvailableCredentials(pageId),
+    );
   }
 
   async findByPageAndConnection(
@@ -81,12 +111,41 @@ export class PageCredentialRepository {
     return record;
   }
 
-  async findForPage(pageId: string, appUserId?: string) {
-    const rows = await this.database
+  async findForActor(pageId: string, appUserId: string) {
+    return selectActorCredential(
+      await this.listAvailableCredentials(pageId),
+      appUserId,
+    );
+  }
+
+  async hasUsableCredentialForPage(input: {
+    pageId: string;
+    excludingCredentialId?: string;
+    excludingConnectionId?: string;
+    excludingLegacy?: boolean;
+    now?: Date;
+  }): Promise<boolean> {
+    const now = input.now ?? new Date();
+    const candidates = await this.listAvailableCredentials(input.pageId);
+    return candidates.some(({ credential }) => {
+      if (
+        credential.id === input.excludingCredentialId ||
+        credential.facebookConnectionId === input.excludingConnectionId ||
+        (input.excludingLegacy && credential.facebookConnectionId === null)
+      ) {
+        return false;
+      }
+      return !credential.expiresAt || credential.expiresAt > now;
+    });
+  }
+
+  private async listAvailableCredentials(
+    pageId: string,
+  ): Promise<CredentialCandidate[]> {
+    return this.database
       .select({
         credential: pageCredentials,
         connectionType: facebookConnection.connectionType,
-        connectionStatus: facebookConnection.status,
         connectionUserId: facebookConnection.appUserId,
       })
       .from(pageCredentials)
@@ -104,22 +163,6 @@ export class PageCredentialRepository {
           ),
         ),
       );
-
-    const owned = appUserId
-      ? rows.find(
-          (row) =>
-            row.connectionType === "user_connected" &&
-            row.connectionUserId === appUserId,
-        )
-      : undefined;
-    if (owned) return owned.credential;
-    const admin = rows.find(
-      (row) =>
-        row.credential.facebookConnectionId === null ||
-        row.connectionType === "admin_managed",
-    );
-    if (admin) return admin.credential;
-    return appUserId ? undefined : rows[0]?.credential;
   }
 
   async hasActiveUserCredentialOutsideConnection(
@@ -203,11 +246,19 @@ export class PageCredentialRepository {
     return Boolean(updated);
   }
 
-  async markRevoked(pageId: string, revokedAt = new Date()): Promise<boolean> {
+  async markLegacyRevoked(
+    pageId: string,
+    revokedAt = new Date(),
+  ): Promise<boolean> {
     const updated = await this.database
       .update(pageCredentials)
       .set({ revokedAt, updatedAt: revokedAt })
-      .where(eq(pageCredentials.pageId, pageId))
+      .where(
+        and(
+          eq(pageCredentials.pageId, pageId),
+          isNull(pageCredentials.facebookConnectionId),
+        ),
+      )
       .returning({ pageId: pageCredentials.pageId });
     return updated.length > 0;
   }
@@ -233,3 +284,8 @@ export class PageCredentialRepository {
     return Boolean(updated);
   }
 }
+
+export const __testing = {
+  selectActorCredential,
+  selectAdminManagedCredential,
+};

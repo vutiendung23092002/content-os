@@ -37,6 +37,8 @@ nhìn thấy hoặc nhập raw User/Page token hay `APP_ACCESS_SECRET`.
   thế authorization bằng Google session/allowlist.
 - Khi thao tác, backend chỉ chọn App B credential active của chính actor hoặc App A
   admin-managed credential; không chọn App B credential của user khác.
+- Background/system không có actor chỉ được chọn App A; availability của
+  App B chỉ giúp quyết định Page có cần global lock, không cấp quyền cho cron.
 
 Trạng thái gồm `pending`, `approved`, `rejected`, `suspended`. Chỉ `approved` được gọi API nghiệp vụ.
 

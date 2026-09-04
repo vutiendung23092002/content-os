@@ -304,13 +304,19 @@ export class ReconcileFacebookOperationService {
     }));
   }
 
-  async reconcile(operationIdInput: unknown): Promise<ReconciliationResult> {
+  async reconcile(
+    operationIdInput: unknown,
+    actorUserIdInput?: string,
+  ): Promise<ReconciliationResult> {
     const operationId = z.uuid().parse(operationIdInput);
+    const actorUserId = actorUserIdInput
+      ? z.uuid().parse(actorUserIdInput)
+      : undefined;
     const record = await this.requireReviewable(operationId);
     const metadata = this.metadataFor(record);
 
     if (record.operation.type === "reschedule") {
-      return this.reconcileReschedule(record, metadata);
+      return this.reconcileReschedule(record, metadata, actorUserId);
     }
 
     if (record.operation.type === "schedule" && !metadata.scheduledFor) {
@@ -322,7 +328,7 @@ export class ReconcileFacebookOperationService {
       );
     }
 
-    const scan = await this.findCandidates(record, metadata);
+    const scan = await this.findCandidates(record, metadata, actorUserId);
     const { candidates } = scan;
     if (!scan.complete || candidates.length !== 1) {
       const visibilityWindowOpen =
@@ -406,6 +412,7 @@ export class ReconcileFacebookOperationService {
         record,
         resolution.remotePostId,
         metadata,
+        actorUserId,
       );
       if (!candidate) {
         throw new AppError({
@@ -531,6 +538,7 @@ export class ReconcileFacebookOperationService {
   private async reconcileReschedule(
     record: ReviewRecord,
     metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
+    actorUserId?: string,
   ): Promise<ReconciliationResult> {
     const { remotePostId, scheduledFor } = metadata;
     if (!remotePostId || !scheduledFor) {
@@ -541,7 +549,7 @@ export class ReconcileFacebookOperationService {
       );
     }
 
-    const scan = await this.readAll(record, "scheduled");
+    const scan = await this.readAll(record, "scheduled", actorUserId);
     const remote = scan.posts.find((post) => post.remoteId === remotePostId);
     if (!remote) {
       return this.storeRescheduleAttention(
@@ -614,10 +622,11 @@ export class ReconcileFacebookOperationService {
   private async findCandidates(
     record: ReviewRecord,
     metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
+    actorUserId?: string,
   ) {
     const kind: RemotePostKind =
       record.operation.type === "schedule" ? "scheduled" : "published";
-    const scan = await this.readAll(record, kind);
+    const scan = await this.readAll(record, kind, actorUserId);
     return {
       complete: scan.complete,
       candidates: scan.posts.filter((post) =>
@@ -630,17 +639,22 @@ export class ReconcileFacebookOperationService {
     record: ReviewRecord,
     remotePostId: string,
     metadata: ReturnType<ReconcileFacebookOperationService["metadataFor"]>,
+    actorUserId?: string,
   ) {
     const kind: RemotePostKind =
       record.operation.type === "schedule" ? "scheduled" : "published";
-    const scan = await this.readAll(record, kind);
+    const scan = await this.readAll(record, kind, actorUserId);
     return scan.posts.find(
       (post) =>
         post.remoteId === remotePostId && this.matches(post, record, metadata),
     );
   }
 
-  private async readAll(record: ReviewRecord, kind: RemotePostKind) {
+  private async readAll(
+    record: ReviewRecord,
+    kind: RemotePostKind,
+    actorUserId?: string,
+  ) {
     const posts: RemoteFacebookPost[] = [];
     let after: string | undefined;
     let complete = false;
@@ -650,6 +664,7 @@ export class ReconcileFacebookOperationService {
         kind,
         after,
         limit: 100,
+        actorUserId,
         window:
           kind === "published"
             ? {

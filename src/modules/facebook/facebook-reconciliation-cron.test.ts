@@ -63,6 +63,8 @@ describe("FacebookReconciliationCronService", () => {
     ).run();
 
     expect(reconciliation.reconcile).toHaveBeenCalledTimes(2);
+    expect(reconciliation.reconcile).toHaveBeenNthCalledWith(1, "uncertain-id");
+    expect(reconciliation.reconcile).toHaveBeenNthCalledWith(2, "pending-id");
     expect(reconciliation.reconcile).not.toHaveBeenCalledWith("attention-id");
     expect(result).toEqual({
       status: "completed",

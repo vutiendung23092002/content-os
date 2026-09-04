@@ -2,7 +2,11 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
-import { getDatabase, runInTransaction } from "@/db/client";
+import {
+  getDatabase,
+  runInTransaction,
+  type DatabaseExecutor,
+} from "@/db/client";
 import { FacebookConnectionRepository } from "@/db/repositories/facebook-connection-repository";
 import { FacebookOauthStateRepository } from "@/db/repositories/facebook-oauth-state-repository";
 import { PageCredentialRepository } from "@/db/repositories/page-credential-repository";
@@ -97,6 +101,39 @@ export type SafeUserFacebookConnection = {
   dataAccessExpiresAt: string | null;
 };
 
+type PersistUserConnectionInput = {
+  appUserId: string;
+  externalUserId: string;
+  metaAppId: string;
+  accountName: string;
+  accountAvatarUrl?: string;
+  grantedScopes: string[];
+  tokenExpiresAt?: Date;
+  dataAccessExpiresAt?: Date;
+  encryptedUserToken: ReturnType<TokenKeyring["encrypt"]>;
+  providerMetadata?: Record<string, unknown>;
+};
+
+export async function persistUserFacebookConnection(
+  database: DatabaseExecutor,
+  input: PersistUserConnectionInput,
+) {
+  const connections = new FacebookConnectionRepository(database);
+  const existing = await connections.findUserConnection(
+    input.appUserId,
+    input.metaAppId,
+  );
+  if (existing && existing.externalUserId !== input.externalUserId) {
+    await new PageCredentialRepository(database).markRevokedByConnection(
+      existing.id,
+    );
+    await new UserPageAssignmentRepository(database).deleteForConnection(
+      existing.id,
+    );
+  }
+  return connections.upsertUserConnected(input);
+}
+
 export class UserFacebookConnectionService {
   constructor(
     private readonly keyring: TokenKeyring = getTokenKeyring(),
@@ -162,18 +199,21 @@ export class UserFacebookConnectionService {
       });
     }
 
-    return new FacebookConnectionRepository(getDatabase()).upsertUserConnected({
-      appUserId: input.viewer.id,
-      externalUserId: account.id,
-      metaAppId: config.appId,
-      accountName: account.name,
-      accountAvatarUrl: account.avatarUrl,
-      grantedScopes: inspection.scopes,
-      tokenExpiresAt: unixDate(inspection.expiresAt),
-      dataAccessExpiresAt: unixDate(inspection.dataAccessExpiresAt),
-      encryptedUserToken: this.keyring.encrypt(token.accessToken),
-      providerMetadata: { oauthVersion: 1 },
-    });
+    const encryptedUserToken = this.keyring.encrypt(token.accessToken);
+    return runInTransaction((transaction) =>
+      persistUserFacebookConnection(transaction, {
+        appUserId: input.viewer.id,
+        externalUserId: account.id,
+        metaAppId: config.appId,
+        accountName: account.name,
+        accountAvatarUrl: account.avatarUrl,
+        grantedScopes: inspection.scopes,
+        tokenExpiresAt: unixDate(inspection.expiresAt),
+        dataAccessExpiresAt: unixDate(inspection.dataAccessExpiresAt),
+        encryptedUserToken,
+        providerMetadata: { oauthVersion: 1 },
+      }),
+    );
   }
 
   async rejectCallback(viewer: Viewer, stateInput: string): Promise<void> {

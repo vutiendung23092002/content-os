@@ -53,10 +53,14 @@ export type RemotePostPage = {
 };
 
 export type RemotePostAccess = {
-  load(
+  loadForActor(
     localPageId: string,
-    actorUserId?: string,
+    actorUserId: string,
   ): Promise<{
+    page: RemotePostPage;
+    pageCredential: StoredPageToken;
+  }>;
+  loadAdminManaged(localPageId: string): Promise<{
     page: RemotePostPage;
     pageCredential: StoredPageToken;
   }>;
@@ -81,7 +85,15 @@ const defaultIncidentRecorder: RemotePostIncidentRecorder = (input) =>
   );
 
 class DatabaseRemotePostAccess implements RemotePostAccess {
-  async load(localPageId: string, actorUserId?: string) {
+  loadForActor(localPageId: string, actorUserId: string) {
+    return this.load(localPageId, actorUserId);
+  }
+
+  loadAdminManaged(localPageId: string) {
+    return this.load(localPageId);
+  }
+
+  private async load(localPageId: string, actorUserId?: string) {
     const database = getDatabase();
     const page = await new PageRepository(database).findById(localPageId);
     if (!page || !page.isActive || page.connectionStatus !== "active") {
@@ -92,10 +104,10 @@ class DatabaseRemotePostAccess implements RemotePostAccess {
       });
     }
 
-    const credential = await new PageCredentialRepository(database).findForPage(
-      page.id,
-      actorUserId,
-    );
+    const credentials = new PageCredentialRepository(database);
+    const credential = actorUserId
+      ? await credentials.findForActor(page.id, actorUserId)
+      : await credentials.findAdminManagedForPage(page.id);
     if (!credential || credential.revokedAt) {
       throw new AppError({
         code: "PAGE_CREDENTIAL_MISSING",
@@ -229,8 +241,8 @@ export class RemotePostReader {
       ? z.string().trim().min(1).max(2048).parse(input.after)
       : undefined;
     const context = input.actorUserId
-      ? await this.access.load(localPageId, input.actorUserId)
-      : await this.access.load(localPageId);
+      ? await this.access.loadForActor(localPageId, input.actorUserId)
+      : await this.access.loadAdminManaged(localPageId);
     const client = await this.readWithCredentialGuard(
       context.page.id,
       context.pageCredential,

@@ -12,15 +12,18 @@ import { SyncCursorRepository } from "./sync-cursor-repository";
 import { UserPageAssignmentRepository } from "./user-page-assignment-repository";
 import { AssetRepository } from "./asset-repository";
 import { MutationRateLimitRepository } from "./mutation-rate-limit-repository";
-import { encryptToken } from "@/lib/crypto/token-crypto";
+import { decryptToken, encryptToken } from "@/lib/crypto/token-crypto";
 import { TokenKeyring } from "@/lib/crypto/token-keyring";
 import { recordPageCredentialIncident } from "@/modules/facebook/credential-incident";
 import { PageCredentialRotationService } from "@/modules/facebook/rotate-page-credentials";
+import { persistUserFacebookConnection } from "@/modules/facebook/user-facebook-connection-service";
 import { SubmitPostService } from "@/modules/posts/submit-post";
 import {
   appUsers,
   assets,
+  facebookConnection,
   facebookOperations,
+  pageCredentials,
   pages,
   posts,
   userPageAssignments,
@@ -85,9 +88,9 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         },
       });
 
-      const rotated = await new PageCredentialRepository(database).findByPageId(
-        page.id,
-      );
+      const rotated = await new PageCredentialRepository(
+        database,
+      ).findAdminManagedForPage(page.id);
       expect(rotated?.keyVersion).toBe(targetVersion);
       expect(
         keyring.decrypt({
@@ -163,7 +166,8 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         },
       });
       expect(
-        (await credentialRepository.findByPageId(page.id))?.revokedAt,
+        (await credentialRepository.findAdminManagedForPage(page.id))
+          ?.revokedAt,
       ).toBeNull();
       expect(await postRepository.findById(draft.id)).toMatchObject({
         status: "draft",
@@ -356,7 +360,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         await expect(
           connectionRepository.upsertUserConnected({
             appUserId: userA!.id,
-            externalUserId: "facebook-user-a-reconnected",
+            externalUserId: "facebook-user-a",
             metaAppId: "meta-app-b",
             accountName: "Account A reconnected",
             grantedScopes: ["pages_show_list", "pages_manage_posts"],
@@ -370,12 +374,6 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           ),
         ).resolves.toBeUndefined();
 
-        const adminCredential = await credentialRepository.upsert(
-          page.id,
-          encryptToken("admin-page-token", key),
-          undefined,
-          adminConnection!.id,
-        );
         const credentialA = await credentialRepository.upsert(
           page.id,
           encryptToken("user-a-page-token", key),
@@ -389,10 +387,19 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           connectionB.id,
         );
         expect(
-          (await credentialRepository.findForPage(page.id, userA!.id))?.id,
+          await credentialRepository.findAdminManagedForPage(page.id),
+        ).toBeUndefined();
+        const adminCredential = await credentialRepository.upsert(
+          page.id,
+          encryptToken("admin-page-token", key),
+          undefined,
+          adminConnection!.id,
+        );
+        expect(
+          (await credentialRepository.findForActor(page.id, userA!.id))?.id,
         ).toBe(credentialA.id);
         expect(
-          (await credentialRepository.findForPage(page.id, userB!.id))?.id,
+          (await credentialRepository.findForActor(page.id, userB!.id))?.id,
         ).toBe(credentialB.id);
 
         expect(
@@ -410,11 +417,11 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           new PageRepository(transaction).findById(page.id),
         ).resolves.toMatchObject({ connectionStatus: "active" });
         expect(
-          (await credentialRepository.findForPage(page.id, randomUUID()))?.id,
+          (await credentialRepository.findForActor(page.id, randomUUID()))?.id,
         ).toBe(adminCredential.id);
-        expect((await credentialRepository.findForPage(page.id))?.id).toBe(
-          adminCredential.id,
-        );
+        expect(
+          (await credentialRepository.findAdminManagedForPage(page.id))?.id,
+        ).toBe(adminCredential.id);
 
         await recordPageCredentialIncident(transaction, {
           pageId: page.id,
@@ -427,10 +434,10 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           new PageRepository(transaction).findById(page.id),
         ).resolves.toMatchObject({ connectionStatus: "active" });
         expect(
-          (await credentialRepository.findForPage(page.id, userA!.id))?.id,
+          (await credentialRepository.findForActor(page.id, userA!.id))?.id,
         ).toBe(adminCredential.id);
         expect(
-          (await credentialRepository.findForPage(page.id, userB!.id))?.id,
+          (await credentialRepository.findForActor(page.id, userB!.id))?.id,
         ).toBe(credentialB.id);
 
         await assignmentRepository.assignFromConnection({
@@ -473,16 +480,397 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         expect(await assignmentRepository.has(userA!.id, page.id)).toBe(false);
         expect(await assignmentRepository.has(userB!.id, page.id)).toBe(true);
         expect(
-          (await credentialRepository.findForPage(page.id, userA!.id))?.id,
+          (await credentialRepository.findForActor(page.id, userA!.id))?.id,
         ).toBe(adminCredential.id);
         expect(
-          (await credentialRepository.findForPage(page.id, userB!.id))?.id,
+          (await credentialRepository.findForActor(page.id, userB!.id))?.id,
         ).toBe(credentialB.id);
         expect(
           await connectionRepository.findOwnedUserConnection(
             adminConnection!.id,
             userA!.id,
           ),
+        ).toBeUndefined();
+
+        throw rollbackSignal;
+      }),
+    ).rejects.toBe(rollbackSignal);
+  }, 15_000);
+
+  it("switches Facebook identity atomically without corrupting credential provenance", async () => {
+    const database = getDatabase();
+    const key = randomBytes(32).toString("base64");
+    const suffix = randomUUID();
+    const [userA, userB] = await database
+      .insert(appUsers)
+      .values([
+        {
+          email: `facebook-reconnect-a-${suffix}@example.test`,
+          name: "Reconnect User A",
+          approvalStatus: "approved",
+        },
+        {
+          email: `facebook-reconnect-b-${suffix}@example.test`,
+          name: "Reconnect User B",
+          approvalStatus: "approved",
+        },
+      ])
+      .returning();
+    const pageRepository = new PageRepository(database);
+    const autoPage = await pageRepository.upsertManagedPage({
+      externalPageId: `facebook-reconnect-auto-${suffix}`,
+      name: "Reconnect Auto Page",
+    });
+    const manualPage = await pageRepository.upsertManagedPage({
+      externalPageId: `facebook-reconnect-manual-${suffix}`,
+      name: "Reconnect Manual Page",
+    });
+    const [adminConnection] = await database
+      .insert(facebookConnection)
+      .values({
+        externalUserId: `admin-${suffix}`,
+        metaAppId: `app-a-${suffix}`,
+        connectionType: "admin_managed",
+        status: "active",
+      })
+      .returning();
+
+    try {
+      const connections = new FacebookConnectionRepository(database);
+      const credentials = new PageCredentialRepository(database);
+      const assignments = new UserPageAssignmentRepository(database);
+      const originalToken = encryptToken("original-user-token", key);
+      const otherUserToken = encryptToken("other-user-token", key);
+      const connectionA = await connections.upsertUserConnected({
+        appUserId: userA!.id,
+        externalUserId: "facebook-account-a",
+        metaAppId: "app-b",
+        accountName: "Facebook Account A",
+        grantedScopes: ["pages_show_list"],
+        encryptedUserToken: originalToken,
+      });
+      const connectionB = await connections.upsertUserConnected({
+        appUserId: userB!.id,
+        externalUserId: "facebook-account-other-user",
+        metaAppId: "app-b",
+        accountName: "Other Facebook Account",
+        grantedScopes: ["pages_show_list"],
+        encryptedUserToken: otherUserToken,
+      });
+      const adminCredential = await credentials.upsert(
+        autoPage.id,
+        encryptToken("admin-page-token", key),
+        undefined,
+        adminConnection!.id,
+      );
+      await credentials.upsert(
+        autoPage.id,
+        encryptToken("user-a-page-token", key),
+        undefined,
+        connectionA.id,
+      );
+      await credentials.upsert(
+        manualPage.id,
+        encryptToken("user-a-manual-page-token", key),
+        undefined,
+        connectionA.id,
+      );
+      const credentialB = await credentials.upsert(
+        autoPage.id,
+        encryptToken("user-b-page-token", key),
+        undefined,
+        connectionB.id,
+      );
+      await assignments.assignFromConnection({
+        userId: userA!.id,
+        pageId: autoPage.id,
+        facebookConnectionId: connectionA.id,
+      });
+      await assignments.assignFromConnection({
+        userId: userB!.id,
+        pageId: autoPage.id,
+        facebookConnectionId: connectionB.id,
+      });
+      await database.insert(userPageAssignments).values({
+        userId: userA!.id,
+        pageId: manualPage.id,
+        assignedByUserId: userA!.id,
+      });
+      await assignments.assignFromConnection({
+        userId: userA!.id,
+        pageId: manualPage.id,
+        facebookConnectionId: connectionA.id,
+      });
+
+      const refreshedToken = encryptToken("refreshed-user-token", key);
+      const refreshed = await runInTransaction((transaction) =>
+        persistUserFacebookConnection(transaction, {
+          appUserId: userA!.id,
+          externalUserId: "facebook-account-a",
+          metaAppId: "app-b",
+          accountName: "Facebook Account A refreshed",
+          grantedScopes: ["pages_show_list", "pages_manage_posts"],
+          encryptedUserToken: refreshedToken,
+        }),
+      );
+      expect(refreshed.id).toBe(connectionA.id);
+      expect(refreshed.userTokenFingerprint).toBe(refreshedToken.fingerprint);
+      expect(
+        (await credentials.findByPageAndConnection(autoPage.id, connectionA.id))
+          ?.revokedAt,
+      ).toBeNull();
+      expect(await assignments.has(userA!.id, autoPage.id)).toBe(true);
+
+      const rollbackSignal = new Error("EXPECTED_IDENTITY_SWITCH_ROLLBACK");
+      await expect(
+        runInTransaction(async (transaction) => {
+          await persistUserFacebookConnection(transaction, {
+            appUserId: userA!.id,
+            externalUserId: "facebook-account-b",
+            metaAppId: "app-b",
+            accountName: "Facebook Account B",
+            grantedScopes: ["pages_show_list"],
+            encryptedUserToken: encryptToken("rolled-back-token", key),
+          });
+          throw rollbackSignal;
+        }),
+      ).rejects.toBe(rollbackSignal);
+      expect(
+        await connections.findUserConnection(userA!.id, "app-b"),
+      ).toMatchObject({
+        externalUserId: "facebook-account-a",
+        userTokenFingerprint: refreshedToken.fingerprint,
+      });
+      expect(
+        (await credentials.findByPageAndConnection(autoPage.id, connectionA.id))
+          ?.revokedAt,
+      ).toBeNull();
+      expect(await assignments.has(userA!.id, autoPage.id)).toBe(true);
+
+      const switchedToken = encryptToken("switched-user-token", key);
+      const switched = await runInTransaction((transaction) =>
+        persistUserFacebookConnection(transaction, {
+          appUserId: userA!.id,
+          externalUserId: "facebook-account-b",
+          metaAppId: "app-b",
+          accountName: "Facebook Account B",
+          grantedScopes: ["pages_show_list"],
+          encryptedUserToken: switchedToken,
+        }),
+      );
+      expect(switched).toMatchObject({
+        id: connectionA.id,
+        externalUserId: "facebook-account-b",
+        status: "active",
+      });
+      expect(
+        decryptToken(
+          {
+            ciphertext: switched.userTokenCiphertext!,
+            nonce: switched.userTokenNonce!,
+            authTag: switched.userTokenAuthTag!,
+            keyVersion: switched.userTokenKeyVersion!,
+            fingerprint: switched.userTokenFingerprint!,
+          },
+          key,
+        ),
+      ).toBe("switched-user-token");
+      expect(
+        (await credentials.findByPageAndConnection(autoPage.id, connectionA.id))
+          ?.revokedAt,
+      ).toBeInstanceOf(Date);
+      expect(
+        (
+          await credentials.findByPageAndConnection(
+            manualPage.id,
+            connectionA.id,
+          )
+        )?.revokedAt,
+      ).toBeInstanceOf(Date);
+      expect(await assignments.has(userA!.id, autoPage.id)).toBe(false);
+      expect(await assignments.has(userA!.id, manualPage.id)).toBe(true);
+      expect(
+        (await assignments.listForUser(userA!.id)).find(
+          (assignment) => assignment.pageId === manualPage.id,
+        )?.facebookConnectionId,
+      ).toBeNull();
+      expect(
+        (
+          await credentials.findByPageAndConnection(
+            autoPage.id,
+            adminConnection!.id,
+          )
+        )?.id,
+      ).toBe(adminCredential.id);
+      expect(
+        (await credentials.findByPageAndConnection(autoPage.id, connectionB.id))
+          ?.id,
+      ).toBe(credentialB.id);
+      expect(await assignments.has(userB!.id, autoPage.id)).toBe(true);
+
+      await runInTransaction(async (transaction) => {
+        await new FacebookConnectionRepository(transaction).markDisconnected(
+          connectionA.id,
+          userA!.id,
+        );
+        await new PageCredentialRepository(transaction).markRevokedByConnection(
+          connectionA.id,
+        );
+        await new UserPageAssignmentRepository(transaction).deleteForConnection(
+          connectionA.id,
+        );
+      });
+      const reconnected = await runInTransaction((transaction) =>
+        persistUserFacebookConnection(transaction, {
+          appUserId: userA!.id,
+          externalUserId: "facebook-account-b",
+          metaAppId: "app-b",
+          accountName: "Facebook Account B reconnected",
+          grantedScopes: ["pages_show_list"],
+          encryptedUserToken: encryptToken("reconnected-user-token", key),
+        }),
+      );
+      expect(reconnected.status).toBe("active");
+      expect(
+        (await credentials.findByPageAndConnection(autoPage.id, connectionA.id))
+          ?.revokedAt,
+      ).toBeInstanceOf(Date);
+    } finally {
+      await database
+        .delete(pages)
+        .where(eq(pages.externalPageId, autoPage.externalPageId));
+      await database
+        .delete(pages)
+        .where(eq(pages.externalPageId, manualPage.externalPageId));
+      await database.delete(appUsers).where(eq(appUsers.id, userA!.id));
+      await database.delete(appUsers).where(eq(appUsers.id, userB!.id));
+      await database
+        .delete(facebookConnection)
+        .where(eq(facebookConnection.id, adminConnection!.id));
+    }
+  }, 20_000);
+
+  it("revokes a legacy App A credential without touching App B credentials", async () => {
+    const rollbackSignal = new Error("EXPECTED_LEGACY_INCIDENT_ROLLBACK");
+
+    await expect(
+      runInTransaction(async (transaction) => {
+        const [userA, userB] = await transaction
+          .insert(appUsers)
+          .values([
+            {
+              email: `legacy-incident-a-${randomUUID()}@example.test`,
+              name: "Legacy Incident A",
+              approvalStatus: "approved",
+            },
+            {
+              email: `legacy-incident-b-${randomUUID()}@example.test`,
+              name: "Legacy Incident B",
+              approvalStatus: "approved",
+            },
+          ])
+          .returning();
+        const pageRepository = new PageRepository(transaction);
+        const page = await pageRepository.upsertManagedPage({
+          externalPageId: `legacy-incident-${randomUUID()}`,
+          name: "Legacy Incident Page",
+        });
+        const connections = new FacebookConnectionRepository(transaction);
+        const credentials = new PageCredentialRepository(transaction);
+        const key = randomBytes(32).toString("base64");
+        const connectionA = await connections.upsertUserConnected({
+          appUserId: userA!.id,
+          externalUserId: "legacy-facebook-user-a",
+          metaAppId: "legacy-app-b",
+          accountName: "Legacy A",
+          grantedScopes: ["pages_show_list"],
+          encryptedUserToken: encryptToken("legacy-user-a-token", key),
+        });
+        const connectionB = await connections.upsertUserConnected({
+          appUserId: userB!.id,
+          externalUserId: "legacy-facebook-user-b",
+          metaAppId: "legacy-app-b",
+          accountName: "Legacy B",
+          grantedScopes: ["pages_show_list"],
+          encryptedUserToken: encryptToken("legacy-user-b-token", key),
+        });
+        const legacyCredential = await credentials.upsert(
+          page.id,
+          encryptToken("legacy-app-a-page-token", key),
+        );
+        const credentialA = await credentials.upsert(
+          page.id,
+          encryptToken("legacy-app-b-a-page-token", key),
+          undefined,
+          connectionA.id,
+        );
+        const credentialB = await credentials.upsert(
+          page.id,
+          encryptToken("legacy-app-b-b-page-token", key),
+          undefined,
+          connectionB.id,
+        );
+
+        expect((await credentials.findForActor(page.id, userA!.id))?.id).toBe(
+          credentialA.id,
+        );
+        expect((await credentials.findForActor(page.id, userB!.id))?.id).toBe(
+          credentialB.id,
+        );
+        expect((await credentials.findAdminManagedForPage(page.id))?.id).toBe(
+          legacyCredential.id,
+        );
+
+        await recordPageCredentialIncident(transaction, {
+          pageId: page.id,
+          status: "revoked",
+          errorCode: "FACEBOOK_TOKEN_INVALID",
+          credentialId: legacyCredential.id,
+          facebookConnectionId: null,
+        });
+        const [revokedLegacy] = await transaction
+          .select()
+          .from(pageCredentials)
+          .where(eq(pageCredentials.id, legacyCredential.id));
+        expect(revokedLegacy?.revokedAt).toBeInstanceOf(Date);
+        expect(
+          (await credentials.findByPageAndConnection(page.id, connectionA.id))
+            ?.revokedAt,
+        ).toBeNull();
+        expect(
+          (await credentials.findByPageAndConnection(page.id, connectionB.id))
+            ?.revokedAt,
+        ).toBeNull();
+        await expect(pageRepository.findById(page.id)).resolves.toMatchObject({
+          connectionStatus: "active",
+        });
+
+        await recordPageCredentialIncident(transaction, {
+          pageId: page.id,
+          status: "revoked",
+          errorCode: "FACEBOOK_TOKEN_INVALID",
+          credentialId: credentialA.id,
+          facebookConnectionId: connectionA.id,
+        });
+        await expect(pageRepository.findById(page.id)).resolves.toMatchObject({
+          connectionStatus: "active",
+        });
+        expect((await credentials.findForActor(page.id, userB!.id))?.id).toBe(
+          credentialB.id,
+        );
+
+        await recordPageCredentialIncident(transaction, {
+          pageId: page.id,
+          status: "revoked",
+          errorCode: "FACEBOOK_TOKEN_INVALID",
+          credentialId: credentialB.id,
+          facebookConnectionId: connectionB.id,
+        });
+        await expect(pageRepository.findById(page.id)).resolves.toMatchObject({
+          connectionStatus: "revoked",
+        });
+        expect(
+          await credentials.findAdminManagedForPage(page.id),
         ).toBeUndefined();
 
         throw rollbackSignal;
@@ -674,7 +1062,8 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           },
         });
         expect(
-          (await credentialRepository.findByPageId(page.id))?.revokedAt,
+          (await credentialRepository.findAdminManagedForPage(page.id))
+            ?.revokedAt,
         ).toBeInstanceOf(Date);
 
         await pageRepository.upsertManagedPage({
@@ -686,7 +1075,8 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           connectionStatus: "active",
         });
         expect(
-          (await credentialRepository.findByPageId(page.id))?.revokedAt,
+          (await credentialRepository.findAdminManagedForPage(page.id))
+            ?.revokedAt,
         ).toBeNull();
         const draft = await postRepository.createDraft({
           pageId: page.id,
@@ -724,7 +1114,7 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
         });
 
         expect(
-          (await credentialRepository.findByPageId(page.id))
+          (await credentialRepository.findAdminManagedForPage(page.id))
             ?.accessTokenCiphertext,
         ).not.toEqual(Buffer.from("integration-page-token"));
         expect(operation.status).toBe("pending");

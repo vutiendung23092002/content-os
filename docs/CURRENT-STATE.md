@@ -79,7 +79,9 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
   dùng hardened manual verification rồi persist encrypted Page credential,
   connection provenance và assignment cho đúng viewer.
 - Disconnect/reconnect chỉ tác động App B connection/credentials/auto-assignments
-  của owner; App A và user khác không bị thay đổi.
+  của owner. Same-account reconnect refresh in-place; identity switch revoke derived
+  credential/assignment atomically trước khi persist account mới. App A, manual
+  assignment, Page/history và user khác không bị thay đổi.
 - User/Page token chỉ đi qua `Authorization: Bearer`, không nằm trong URL.
 - `GET /me/accounts` để đọc Page và Page token.
 - Publish text qua Page feed.
@@ -93,7 +95,8 @@ Drizzle dùng schema nội bộ `drizzle` riêng cho bảng lịch sử migratio
 
 - Repository cho Page, encrypted Page credential, draft và Facebook operation.
 - Credential selection theo browser actor ưu tiên owned App B rồi App A fallback;
-  cron/machine ưu tiên App A và không dùng App B credential của user khác.
+  cron/machine chỉ App A và không thể fallback sang App B. Credential incident
+  chỉ revoke source bị lỗi; Page global status chỉ lock khi không còn source usable.
 - Transaction boundary đã chạy integration test thật trên Supabase và rollback sạch dữ liệu test.
 - Page sync service đọc hết pagination trước persistence, mã hóa Page token và chỉ trả safe DTO; Page managed biến mất khỏi snapshot hoàn chỉnh được đánh dấu `permission_missing` mà không ảnh hưởng Page thêm thủ công.
 - Draft create/list/get/update/delete service và API.

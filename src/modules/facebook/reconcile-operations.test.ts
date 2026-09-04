@@ -163,7 +163,9 @@ describe("ReconcileFacebookOperationService", () => {
       ],
     });
 
-    await expect(setupResult.service.reconcile(operationId)).resolves.toEqual({
+    await expect(
+      setupResult.service.reconcile(operationId, actorId),
+    ).resolves.toEqual({
       operationId,
       postId,
       status: "succeeded",
@@ -171,6 +173,9 @@ describe("ReconcileFacebookOperationService", () => {
       remotePostId: "scheduled-1",
       reason: "remote_schedule_updated",
     });
+    expect(setupResult.reader.list).toHaveBeenCalledWith(
+      expect.objectContaining({ actorUserId: actorId }),
+    );
     expect(setupResult.persistence.rescheduleSucceeded).toHaveBeenCalledWith(
       expect.objectContaining({
         remotePostId: "scheduled-1",
@@ -238,6 +243,9 @@ describe("ReconcileFacebookOperationService", () => {
       }),
     );
     expect(setupResult.persistence.fail).not.toHaveBeenCalled();
+    expect(setupResult.reader.list).toHaveBeenCalledWith(
+      expect.objectContaining({ actorUserId: undefined }),
+    );
   });
 
   it("resolves an exact native schedule using message and schedule evidence", async () => {

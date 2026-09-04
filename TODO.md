@@ -292,7 +292,8 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
         Page discovery/selection, encrypted persistence và same-origin/rate-limited
         disconnect đã implement với strict validation.
   - [x] Browser read/mutation chọn owned App B credential trước rồi App A fallback;
-        cron giữ ưu tiên App A và không bao giờ chọn App B credential của user khác.
+        cron/system chỉ chọn App A và không bao giờ fallback App B. Reconnect đổi
+        Facebook identity và credential incident đều cô lập provenance/assignment.
   - [x] UI Pages có connect/reconnect/disconnect, Page selection và không expose raw
         User/Page token; Google vẫn là Supabase login provider duy nhất.
   - [x] Unit/migration tests pass; DB integration drill đã được thêm nhưng chỉ chạy

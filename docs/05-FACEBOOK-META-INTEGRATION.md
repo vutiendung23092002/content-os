@@ -51,14 +51,21 @@ explicit URI cùng origin/path, không query/hash). Callback cuối luôn redire
 - Browser read/mutation truyền actor ID xuống credential repository. Repository ưu
   tiên active App B credential của actor, sau đó mới fallback App A
   admin-managed/legacy; App B credential của user khác không bao giờ được chọn.
-- Cron/machine flow không có actor và ưu tiên App A để giữ hành vi cũ.
+- Cron/machine flow không có actor chỉ được dùng App A
+  admin-managed/legacy; không bao giờ fallback sang bất kỳ App B credential nào.
 - Disconnect giữ connection/Page/history, đánh dấu connection `revoked`, revoke chỉ
   Page credentials cùng `facebook_connection_id` và xóa chỉ auto-assignment do
   connection đó tạo. Không gọi delete Facebook, không đụng App A/user khác.
-- Reconnect upsert đúng `(app_user_id,meta_app_id,connection_type)`, mã hóa token mới;
-  Page selection tiếp theo refresh credential và assignment.
-- Expired/data-access-expired/revoked/permission failures khóa đúng App B connection.
-  Một credential active khác không bị khóa theo lỗi của connection này.
+- Reconnect cùng Facebook user refresh token/scope/expiry trên cùng connection ID
+  và giữ nguyên Page credential hiện có. Reconnect sang Facebook user khác
+  revoke toàn bộ Page credential và xóa auto-assignment của connection cũ trong
+  cùng transaction trước khi đổi identity; Page/history, manual assignment,
+  App A và user khác được giữ nguyên.
+- Credential incident chỉ vô hiệu hóa credential/connection bị lỗi. Legacy
+  App A revocation chỉ update row có `facebook_connection_id is null`; App B row
+  cùng Page không bị ảnh hưởng. Page chỉ bị global lock khi không còn
+  credential usable nào, nhưng availability check này không được dùng để
+  cấp App B credential cho cron.
 
 ## Capability smoke test before implementation
 

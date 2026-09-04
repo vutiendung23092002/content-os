@@ -17,7 +17,17 @@ const pageCredential = {
 
 function createSetup() {
   const access: RemotePostAccess = {
-    load: vi.fn().mockResolvedValue({
+    loadForActor: vi.fn().mockResolvedValue({
+      page: {
+        id: localPageId,
+        externalPageId: "page-123",
+        name: "Page Test",
+        avatarUrl: null,
+        timezone: "Asia/Ho_Chi_Minh",
+      },
+      pageCredential,
+    }),
+    loadAdminManaged: vi.fn().mockResolvedValue({
       page: {
         id: localPageId,
         externalPageId: "page-123",
@@ -143,7 +153,8 @@ describe("RemotePostReader", () => {
       kind: "published",
     });
 
-    expect(setup.access.load).toHaveBeenCalledWith(localPageId);
+    expect(setup.access.loadAdminManaged).toHaveBeenCalledWith(localPageId);
+    expect(setup.access.loadForActor).not.toHaveBeenCalled();
     expect(setup.clientFactory).toHaveBeenCalledWith(pageCredential);
     expect(setup.client.getPublishedPosts).toHaveBeenCalledWith(
       "page-123",
@@ -165,6 +176,21 @@ describe("RemotePostReader", () => {
     });
     expect(result.after).toBe("next-page");
     expect(JSON.stringify(result)).not.toContain("secret-page-token");
+  });
+
+  it("uses the actor-specific credential path only when an actor exists", async () => {
+    const setup = createSetup();
+    await setup.reader.list({
+      localPageId,
+      kind: "published",
+      actorUserId: "11111111-1111-4111-8111-111111111111",
+    });
+
+    expect(setup.access.loadForActor).toHaveBeenCalledWith(
+      localPageId,
+      "11111111-1111-4111-8111-111111111111",
+    );
+    expect(setup.access.loadAdminManaged).not.toHaveBeenCalled();
   });
 
   it("keeps the video object id exposed by a published attachment target", async () => {

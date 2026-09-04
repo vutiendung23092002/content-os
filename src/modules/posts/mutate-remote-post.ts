@@ -179,9 +179,10 @@ class DatabaseRemotePostMutationPersistence implements RemotePostMutationPersist
         "Page chưa sẵn sàng để cập nhật bài viết.",
       );
 
-      const credential = await new PageCredentialRepository(
-        transaction,
-      ).findForPage(page.id, input.actorUserId);
+      const credentials = new PageCredentialRepository(transaction);
+      const credential = input.actorUserId
+        ? await credentials.findForActor(page.id, input.actorUserId)
+        : await credentials.findAdminManagedForPage(page.id);
 
       if (!credential || credential.revokedAt) {
         throw new AppError({

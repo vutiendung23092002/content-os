@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors/app-error";
 import { FacebookSyncCronService } from "./facebook-sync-cron";
+import { RemotePostReader, type RemotePostAccess } from "./remote-post-reader";
 
 const now = new Date("2026-08-25T04:00:00.000Z");
 
@@ -75,6 +76,56 @@ function emptyRemotePage() {
 }
 
 describe("FacebookSyncCronService", () => {
+  it("never falls back to an actor App B credential", async () => {
+    const appBOnlyPageId = "11111111-1111-4111-8111-111111111111";
+    const jobs = jobStore();
+    const pages = {
+      listActiveBatch: vi.fn().mockResolvedValue([page(appBOnlyPageId)]),
+    };
+    const access: RemotePostAccess = {
+      loadForActor: vi.fn().mockResolvedValue({
+        page: {
+          id: appBOnlyPageId,
+          externalPageId: "external-page-1",
+          name: "User Page",
+          avatarUrl: null,
+          timezone: null,
+        },
+        pageCredential: {
+          ciphertext: Buffer.from("app-b-ciphertext"),
+          nonce: Buffer.alloc(12),
+          authTag: Buffer.alloc(16),
+          keyVersion: 1,
+          fingerprint: "app-b-fingerprint",
+        },
+      }),
+      loadAdminManaged: vi.fn().mockRejectedValue(
+        new AppError({
+          code: "PAGE_CREDENTIAL_MISSING",
+          message: "No admin-managed credential",
+          status: 409,
+        }),
+      ),
+    };
+    const clientFactory = vi.fn();
+    const reader = new RemotePostReader(access, clientFactory);
+
+    await expect(
+      new FacebookSyncCronService(
+        jobs,
+        pages,
+        mirrorStore(),
+        reader,
+        () => now,
+        async () => undefined,
+      ).run(),
+    ).rejects.toMatchObject({ code: "PAGE_CREDENTIAL_MISSING" });
+
+    expect(access.loadAdminManaged).toHaveBeenCalled();
+    expect(access.loadForActor).not.toHaveBeenCalled();
+    expect(clientFactory).not.toHaveBeenCalled();
+  });
+
   it("skips the run when another worker owns the lease", async () => {
     const jobs = jobStore();
     jobs.claim.mockResolvedValue(undefined);

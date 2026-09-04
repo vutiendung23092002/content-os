@@ -259,6 +259,49 @@ describe("UserFacebookConnectionService", () => {
         encryptedUserToken: encrypted,
       }),
     );
+    expect(mocks.revokeCredentials).not.toHaveBeenCalled();
+    expect(mocks.deleteAssignments).not.toHaveBeenCalled();
+  });
+
+  it("atomically invalidates derived state before switching Facebook identity", async () => {
+    mocks.findConnection.mockResolvedValue(
+      connection({ externalUserId: "old-facebook-user" }),
+    );
+
+    await new UserFacebookConnectionService(keyring as never).complete({
+      viewer,
+      state: "x".repeat(43),
+      code: "code",
+    });
+
+    expect(mocks.revokeCredentials).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(mocks.deleteAssignments).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(mocks.revokeCredentials.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.upsertConnection.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.deleteAssignments.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.upsertConnection.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("reactivates a disconnected same-account connection without reviving Page credentials", async () => {
+    mocks.findConnection.mockResolvedValue(connection({ status: "revoked" }));
+
+    await new UserFacebookConnectionService(keyring as never).complete({
+      viewer,
+      state: "x".repeat(43),
+      code: "code",
+    });
+
+    expect(mocks.upsertConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ externalUserId: "facebook-user" }),
+    );
+    expect(mocks.revokeCredentials).not.toHaveBeenCalled();
+    expect(mocks.deleteAssignments).not.toHaveBeenCalled();
   });
 
   it("persists a sanitized expired status for only the current connection", async () => {

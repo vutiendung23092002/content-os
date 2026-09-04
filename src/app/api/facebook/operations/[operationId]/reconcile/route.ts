@@ -25,6 +25,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { operationId } = await context.params;
     const result = await new ReconcileFacebookOperationService().reconcile(
       operationId,
+      actor.id,
     );
     return NextResponse.json({ operation: result, requestId });
   } catch (error) {

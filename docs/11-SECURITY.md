@@ -66,6 +66,11 @@ và ownership check lại trong service/repository. Disconnect chỉ tác độn
 cùng `facebook_connection_id`; không xóa remote content hoặc credential của user/App
 khác.
 
+Credential lookup tách hai API: actor ưu tiên App B của chính mình rồi App A;
+system/cron chỉ App A. Incident revoke theo credential/connection cụ thể, và
+legacy App A chỉ update row null-provenance. Page global lock chỉ xảy ra sau khi
+không còn credential usable khác.
+
 ## 5. Bảo vệ request và dữ liệu
 
 - Validate tất cả body, path parameter và timestamp.

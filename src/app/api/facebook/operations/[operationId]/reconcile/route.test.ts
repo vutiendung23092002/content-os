@@ -76,7 +76,7 @@ describe("Facebook operation reconciliation API", () => {
     expect(response.status).toBe(200);
     expect(mocks.assertSameOrigin).toHaveBeenCalledOnce();
     expect(mocks.requireAdmin).toHaveBeenCalledOnce();
-    expect(mocks.reconcile).toHaveBeenCalledWith(operationId);
+    expect(mocks.reconcile).toHaveBeenCalledWith(operationId, actorId);
   });
 
   it("passes the authenticated Admin identity into manual resolution", async () => {

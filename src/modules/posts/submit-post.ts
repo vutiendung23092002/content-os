@@ -134,10 +134,9 @@ class DatabaseSubmissionPersistence implements SubmissionPersistence {
       const page = await pages.findById(candidate.pageId);
       assertPageReadyForMutation(page, "Page chưa sẵn sàng để đăng bài.");
 
-      const credential = await credentials.findForPage(
-        page.id,
-        input.actorUserId,
-      );
+      const credential = input.actorUserId
+        ? await credentials.findForActor(page.id, input.actorUserId)
+        : await credentials.findAdminManagedForPage(page.id);
       if (!credential || credential.revokedAt) {
         throw new AppError({
           code: "PAGE_CREDENTIAL_MISSING",
