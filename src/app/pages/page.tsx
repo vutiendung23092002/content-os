@@ -67,6 +67,12 @@ type PersonalConnectionDto = {
   dataAccessExpiresAt: string | null;
 };
 
+type PersonalConnectionPayload = {
+  configured: boolean;
+  connection: PersonalConnectionDto | null;
+  loadError?: boolean;
+};
+
 type DiscoverablePageDto = {
   externalPageId: string;
   name: string;
@@ -131,6 +137,7 @@ export default function PagesPage() {
   );
   const [viewerRole, setViewerRole] = useState<ViewerRole>("member");
   const [personalConfigured, setPersonalConfigured] = useState(false);
+  const [personalLoadError, setPersonalLoadError] = useState(false);
   const [personalConnection, setPersonalConnection] =
     useState<PersonalConnectionDto | null>(null);
   const [discoverablePages, setDiscoverablePages] = useState<
@@ -169,13 +176,24 @@ export default function PagesPage() {
       fetch("/api/facebook/connection", {
         headers: { accept: "application/json" },
       })
-        .then((response) =>
-          readPayload<{
-            configured: boolean;
-            connection: PersonalConnectionDto | null;
-          }>(response),
-        )
-        .catch(() => ({ configured: false, connection: null })),
+        .then((response) => readPayload<PersonalConnectionPayload>(response))
+        .catch((reason: unknown) => {
+          if (active) {
+            showToast({
+              tone: "error",
+              title: "Không thể tải kết nối Facebook cá nhân",
+              description:
+                reason instanceof Error
+                  ? reason.message
+                  : "Vui lòng thử lại sau.",
+            });
+          }
+          return {
+            configured: false,
+            connection: null,
+            loadError: true,
+          } satisfies PersonalConnectionPayload;
+        }),
     ])
       .then(
         ([statusPayload, pagesPayload, sessionPayload, personalPayload]) => {
@@ -184,6 +202,7 @@ export default function PagesPage() {
           setStoredPages(pagesPayload.pages ?? []);
           setViewerRole(sessionPayload.viewer?.role ?? "member");
           setPersonalConfigured(personalPayload.configured);
+          setPersonalLoadError(Boolean(personalPayload.loadError));
           setPersonalConnection(personalPayload.connection);
         },
       )
@@ -434,7 +453,12 @@ export default function PagesPage() {
             </p>
           </div>
         </div>
-        {!personalConfigured ? (
+        {personalLoadError ? (
+          <p className="statusError">
+            Không thể tải trạng thái Meta App kết nối cá nhân. Vui lòng kiểm tra
+            thông báo lỗi và thử lại.
+          </p>
+        ) : !personalConfigured ? (
           <p className="statusError">
             Meta App kết nối cá nhân chưa được cấu hình.
           </p>
