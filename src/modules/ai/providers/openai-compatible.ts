@@ -7,6 +7,7 @@ export type TextGenerationRequest = {
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   temperature?: number;
   maxTokens?: number;
+  responseFormat?: "json_object";
 };
 
 export type TextGenerationResult = {
@@ -16,6 +17,7 @@ export type TextGenerationResult = {
 };
 
 export type RemoteModel = { id: string; metadata: Record<string, unknown> };
+const MAX_RESPONSE_BYTES = 1_000_000;
 
 function providerError(
   code: string,
@@ -39,6 +41,15 @@ export function normalizeProviderBaseUrl(value: string): string {
   }
   if (url.username || url.password || url.search || url.hash)
     throw providerError("AI_PROVIDER_URL_INVALID", 400);
+  const host = url.hostname.toLowerCase();
+  if (
+    process.env.NODE_ENV !== "development" &&
+    (host === "localhost" ||
+      host === "::1" ||
+      host.startsWith("127.") ||
+      host.startsWith("169.254."))
+  )
+    throw providerError("AI_PROVIDER_URL_UNSAFE", 400);
   if (process.env.NODE_ENV !== "development" && url.protocol !== "https:")
     throw providerError("AI_PROVIDER_URL_HTTPS_REQUIRED", 400);
   return url.toString().replace(/\/$/, "");
@@ -54,7 +65,14 @@ export class OpenAiCompatibleProvider {
     },
   ) {}
 
-  private async request(path: string, init: RequestInit): Promise<Response> {
+  private async request(
+    path: string,
+    init: RequestInit,
+  ): Promise<{
+    response: Response;
+    controller: AbortController;
+    timer: ReturnType<typeof setTimeout>;
+  }> {
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
@@ -84,28 +102,69 @@ export class OpenAiCompatibleProvider {
           response.status >= 500,
         );
       }
-      return response;
+      return { response, controller, timer };
     } catch (error) {
+      clearTimeout(timer);
       if (error instanceof AppError) throw error;
       if (error instanceof DOMException && error.name === "AbortError")
         throw providerError("AI_PROVIDER_TIMEOUT", 504, true);
       throw providerError("AI_PROVIDER_NETWORK_FAILED", 502, true);
+    }
+  }
+
+  private async json<T>(pending: {
+    response: Response;
+    controller: AbortController;
+    timer: ReturnType<typeof setTimeout>;
+  }): Promise<T> {
+    try {
+      const length = Number(pending.response.headers.get("content-length"));
+      if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES)
+        throw providerError("AI_PROVIDER_RESPONSE_TOO_LARGE", 502);
+      const reader = pending.response.body?.getReader();
+      if (!reader) throw providerError("AI_PROVIDER_MALFORMED_RESPONSE", 502);
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        size += next.value.byteLength;
+        if (size > MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw providerError("AI_PROVIDER_RESPONSE_TOO_LARGE", 502);
+        }
+        chunks.push(next.value);
+      }
+      const bytes = new Uint8Array(size);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return JSON.parse(new TextDecoder().decode(bytes)) as T;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      if (error instanceof DOMException && error.name === "AbortError")
+        throw providerError("AI_PROVIDER_TIMEOUT", 504, true);
+      throw providerError("AI_PROVIDER_MALFORMED_RESPONSE", 502);
     } finally {
-      clearTimeout(timer);
+      clearTimeout(pending.timer);
     }
   }
 
   async generateText(
     request: TextGenerationRequest,
   ): Promise<TextGenerationResult> {
-    const response = await this.request("/chat/completions", {
+    const pending = await this.request("/chat/completions", {
       method: "POST",
       body: JSON.stringify({
         model: request.model,
         messages: request.messages,
         temperature: request.temperature,
         max_tokens: request.maxTokens,
-        response_format: { type: "json_object" },
+        ...(request.responseFormat
+          ? { response_format: { type: request.responseFormat } }
+          : {}),
       }),
     });
     let body: {
@@ -117,7 +176,7 @@ export class OpenAiCompatibleProvider {
       };
     };
     try {
-      body = await response.json();
+      body = await this.json(pending);
     } catch {
       throw providerError("AI_PROVIDER_MALFORMED_RESPONSE", 502);
     }
@@ -131,18 +190,19 @@ export class OpenAiCompatibleProvider {
         outputTokens: body.usage?.completion_tokens,
         totalTokens: body.usage?.total_tokens,
       },
-      providerRequestId: response.headers.get("x-request-id") ?? undefined,
+      providerRequestId:
+        pending.response.headers.get("x-request-id") ?? undefined,
     };
   }
 
   async listModels(): Promise<RemoteModel[]> {
-    const response = await this.request("/models", {
+    const pending = await this.request("/models", {
       method: "GET",
       headers: { accept: "application/json" },
     });
     let body: { data?: Array<{ id?: unknown; [key: string]: unknown }> };
     try {
-      body = await response.json();
+      body = await this.json(pending);
     } catch {
       throw providerError("AI_PROVIDER_MALFORMED_RESPONSE", 502);
     }

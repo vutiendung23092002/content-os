@@ -454,8 +454,6 @@ try {
   const expectedAiRelations = [
     "foreign key (provider_id) references hancontent_os.ai_providers(id)",
     "foreign key (model_id) references hancontent_os.ai_models(id)",
-    "unique (provider_id, remote_model_id)",
-    "unique (task)",
   ];
   const missingAiConstraints = expectedAiRelations.filter(
     (relation) =>

@@ -84,6 +84,42 @@ export class AiRepository {
       .returning();
     return row;
   }
+  async listModels() {
+    return this.database.select().from(aiModels);
+  }
+  async findModel(id: string) {
+    const [row] = await this.database
+      .select()
+      .from(aiModels)
+      .where(eq(aiModels.id, id));
+    return row;
+  }
+  async saveBinding(input: {
+    modelId: string;
+    settings: Record<string, unknown>;
+    actorId: string;
+  }) {
+    const values = {
+      task: "facebook_caption",
+      modelId: input.modelId,
+      settings: input.settings,
+      updatedByUserId: input.actorId,
+      updatedAt: new Date(),
+    };
+    const [row] = await this.database
+      .insert(aiTaskBindings)
+      .values(values)
+      .onConflictDoUpdate({ target: aiTaskBindings.task, set: values })
+      .returning();
+    return row;
+  }
+  async getCaptionBinding() {
+    const [row] = await this.database
+      .select()
+      .from(aiTaskBindings)
+      .where(eq(aiTaskBindings.task, "facebook_caption"));
+    return row;
+  }
   async resolveCaptionBinding() {
     const [row] = await this.database
       .select({

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { AiRepository } from "@/db/repositories/ai-repository";
 import { assertSameOrigin } from "@/lib/access/same-origin";
-import { requireAdmin } from "@/lib/auth/session";
+import { requireAdmin, requireSuperAdmin } from "@/lib/auth/session";
 import { getTokenKeyring } from "@/lib/crypto/token-keyring";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { parseJsonBody } from "@/lib/http/request-body";
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   const requestId = request.headers.get("x-request-id") ?? randomUUID();
   try {
     assertSameOrigin(request);
-    const actor = await requireAdmin();
+    const actor = await requireSuperAdmin();
     const input = await parseJsonBody(request, inputSchema);
     await assertMutationRateLimit({ actor, action: "admin:ai:configure" });
     const provider = await new AiRepository(getDatabase()).saveProvider({

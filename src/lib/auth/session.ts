@@ -121,3 +121,15 @@ export async function requireAdmin(): Promise<Viewer> {
   }
   return viewer;
 }
+
+export async function requireSuperAdmin(): Promise<Viewer> {
+  const viewer = await requireApprovedViewer();
+  if (viewer.role !== "super_admin") {
+    throw new AppError({
+      code: "SUPER_ADMIN_REQUIRED",
+      message: "Thao tác này chỉ dành cho Super Admin.",
+      status: 403,
+    });
+  }
+  return viewer;
+}
