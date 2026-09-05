@@ -1,6 +1,7 @@
 import nextEnv from "@next/env";
 import postgres from "postgres";
 import { shouldLoadDefaultEnvironment } from "./explicit-environment.mjs";
+import { findMissingFacebookForeignKeys } from "./verify-database-schema-core.mjs";
 
 const { loadEnvConfig } = nextEnv;
 if (shouldLoadDefaultEnvironment()) loadEnvConfig(process.cwd());
@@ -306,39 +307,77 @@ try {
     (index) => !facebookSchemaIndexNames.includes(index),
   );
 
-  const facebookSchemaConstraints = await sql`
+  const facebookForeignKeys = await sql`
+    select
+      source_namespace.nspname as source_schema,
+      source_table.relname as source_table,
+      array_agg(source_column.attname order by source_key.ordinality) as source_columns,
+      target_namespace.nspname as target_schema,
+      target_table.relname as target_table,
+      array_agg(target_column.attname order by source_key.ordinality) as target_columns,
+      case constraint_record.confdeltype
+        when 'a' then 'NO ACTION'
+        when 'r' then 'RESTRICT'
+        when 'c' then 'CASCADE'
+        when 'n' then 'SET NULL'
+        when 'd' then 'SET DEFAULT'
+      end as on_delete
+    from pg_constraint constraint_record
+    join pg_class source_table
+      on source_table.oid = constraint_record.conrelid
+    join pg_namespace source_namespace
+      on source_namespace.oid = source_table.relnamespace
+    join pg_class target_table
+      on target_table.oid = constraint_record.confrelid
+    join pg_namespace target_namespace
+      on target_namespace.oid = target_table.relnamespace
+    cross join lateral unnest(constraint_record.conkey)
+      with ordinality as source_key(attnum, ordinality)
+    join pg_attribute source_column
+      on source_column.attrelid = source_table.oid
+      and source_column.attnum = source_key.attnum
+      and not source_column.attisdropped
+    cross join lateral unnest(constraint_record.confkey)
+      with ordinality as target_key(attnum, ordinality)
+    join pg_attribute target_column
+      on target_column.attrelid = target_table.oid
+      and target_column.attnum = target_key.attnum
+      and target_key.ordinality = source_key.ordinality
+      and not target_column.attisdropped
+    where constraint_record.contype = 'f'
+      and source_namespace.nspname = 'hancontent_os'
+    group by
+      constraint_record.oid,
+      source_namespace.nspname,
+      source_table.relname,
+      target_namespace.nspname,
+      target_table.relname,
+      constraint_record.confdeltype
+  `;
+  const missingFacebookForeignKeyConstraints = findMissingFacebookForeignKeys(
+    facebookForeignKeys.map((foreignKey) => ({
+      sourceSchema: foreignKey.source_schema,
+      sourceTable: foreignKey.source_table,
+      sourceColumns: foreignKey.source_columns,
+      targetSchema: foreignKey.target_schema,
+      targetTable: foreignKey.target_table,
+      targetColumns: foreignKey.target_columns,
+      onDelete: foreignKey.on_delete,
+    })),
+  );
+  const facebookCheckConstraints = await sql`
     select c.conname
     from pg_constraint c
     join pg_namespace n on n.oid = c.connamespace
     where n.nspname = 'hancontent_os'
-      and c.conname in (
-        'facebook_oauth_states_app_user_id_app_users_id_fk',
-        'facebook_connection_app_user_id_app_users_id_fk',
-        'page_credentials_facebook_connection_id_facebook_connection_id_fk',
-        'user_page_assignments_facebook_connection_id_facebook_connection_id_fk',
-        'facebook_operations_facebook_connection_id_facebook_connection_id_fk',
-        'facebook_operations_page_credential_id_page_credentials_id_fk',
-        'facebook_operations_actor_user_id_app_users_id_fk',
-        'facebook_connection_user_connected_fields'
-      )
+      and c.conname = 'facebook_connection_user_connected_fields'
   `;
-  const facebookSchemaConstraintNames = facebookSchemaConstraints.map(
-    (constraint) => constraint.conname,
-  );
-  const expectedFacebookSchemaConstraints = [
-    "facebook_oauth_states_app_user_id_app_users_id_fk",
-    "facebook_connection_app_user_id_app_users_id_fk",
-    "page_credentials_facebook_connection_id_facebook_connection_id_fk",
-    "user_page_assignments_facebook_connection_id_facebook_connection_id_fk",
-    "facebook_operations_facebook_connection_id_facebook_connection_id_fk",
-    "facebook_operations_page_credential_id_page_credentials_id_fk",
-    "facebook_operations_actor_user_id_app_users_id_fk",
-    "facebook_connection_user_connected_fields",
+  const missingFacebookSchemaConstraints = [
+    ...missingFacebookForeignKeyConstraints,
+    ...(facebookCheckConstraints.length === 0
+      ? ["facebook_connection_user_connected_fields"]
+      : []),
   ];
-  const missingFacebookSchemaConstraints =
-    expectedFacebookSchemaConstraints.filter(
-      (constraint) => !facebookSchemaConstraintNames.includes(constraint),
-    );
 
   const facebookConnectSchema = {
     missingOauthColumns: missingFacebookOauthColumns,
