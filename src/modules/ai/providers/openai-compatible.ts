@@ -177,7 +177,8 @@ export class OpenAiCompatibleProvider {
     };
     try {
       body = await this.json(pending);
-    } catch {
+    } catch (error) {
+      if (error instanceof AppError) throw error;
       throw providerError("AI_PROVIDER_MALFORMED_RESPONSE", 502);
     }
     const text = body.choices?.[0]?.message?.content;
@@ -203,7 +204,8 @@ export class OpenAiCompatibleProvider {
     let body: { data?: Array<{ id?: unknown; [key: string]: unknown }> };
     try {
       body = await this.json(pending);
-    } catch {
+    } catch (error) {
+      if (error instanceof AppError) throw error;
       throw providerError("AI_PROVIDER_MALFORMED_RESPONSE", 502);
     }
     if (!Array.isArray(body.data))

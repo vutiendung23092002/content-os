@@ -84,6 +84,73 @@ export class AiRepository {
       .returning();
     return row;
   }
+  async createModel(input: {
+    providerId: string;
+    remoteModelId: string;
+    displayName: string;
+    modality: "text" | "vision" | "image";
+    enabled: boolean;
+    capabilities: Record<string, unknown>;
+  }) {
+    const [row] = await this.database
+      .insert(aiModels)
+      .values(input)
+      .returning();
+    return row;
+  }
+  async updateModel(
+    id: string,
+    input: Partial<{
+      displayName: string;
+      modality: "text" | "vision" | "image";
+      enabled: boolean;
+      capabilities: Record<string, unknown>;
+    }>,
+  ) {
+    const [row] = await this.database
+      .update(aiModels)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(aiModels.id, id))
+      .returning();
+    return row;
+  }
+  async syncModelFromProvider(input: {
+    providerId: string;
+    remoteModelId: string;
+    providerMetadata?: Record<string, unknown>;
+  }) {
+    const existing = await this.findModelByRemoteId(
+      input.providerId,
+      input.remoteModelId,
+    );
+    if (!existing) {
+      const [row] = await this.database
+        .insert(aiModels)
+        .values({
+          providerId: input.providerId,
+          remoteModelId: input.remoteModelId,
+          displayName: input.remoteModelId,
+          modality: "text",
+          enabled: false,
+          capabilities: {},
+          providerMetadata: input.providerMetadata ?? {},
+        })
+        .returning();
+      return { model: row, outcome: "created" as const };
+    }
+    const providerMetadata = input.providerMetadata ?? {};
+    if (
+      JSON.stringify(existing.providerMetadata) ===
+      JSON.stringify(providerMetadata)
+    )
+      return { model: existing, outcome: "unchanged" as const };
+    const [row] = await this.database
+      .update(aiModels)
+      .set({ providerMetadata, updatedAt: new Date() })
+      .where(eq(aiModels.id, existing.id))
+      .returning();
+    return { model: row, outcome: "updated" as const };
+  }
   async listModels() {
     return this.database.select().from(aiModels);
   }
@@ -92,6 +159,18 @@ export class AiRepository {
       .select()
       .from(aiModels)
       .where(eq(aiModels.id, id));
+    return row;
+  }
+  async findModelByRemoteId(providerId: string, remoteModelId: string) {
+    const [row] = await this.database
+      .select()
+      .from(aiModels)
+      .where(
+        and(
+          eq(aiModels.providerId, providerId),
+          eq(aiModels.remoteModelId, remoteModelId),
+        ),
+      );
     return row;
   }
   async saveBinding(input: {

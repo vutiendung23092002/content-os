@@ -459,12 +459,37 @@ try {
     (relation) =>
       !definitions.some((definition) => definition.includes(relation)),
   );
+  const aiIndexes = await sql`
+    select indexdef from pg_indexes where schemaname = 'hancontent_os'
+      and tablename in ('ai_models', 'ai_task_bindings')
+  `;
+  const aiIndexDefinitions = aiIndexes.map((row) =>
+    row.indexdef.toLowerCase().replaceAll('"', "").replace(/\s+/g, " ").trim(),
+  );
+  const requiredAiUniqueIndexes = [
+    { table: "ai_models", columns: "(provider_id, remote_model_id)" },
+    { table: "ai_task_bindings", columns: "(task)" },
+  ];
+  const missingAiUniqueIndexes = requiredAiUniqueIndexes
+    .filter(
+      ({ table, columns }) =>
+        !aiIndexDefinitions.some(
+          (definition) =>
+            definition.includes("create unique index") &&
+            definition.includes(`on hancontent_os.${table} using`) &&
+            definition.includes(columns),
+        ),
+    )
+    .map(({ table, columns }) => `unique ${table}${columns}`);
   const aiSchema = {
     missingColumns: missingAiColumns,
     missingConstraints: missingAiConstraints,
+    missingUniqueIndexes: missingAiUniqueIndexes,
   };
   const aiSchemaOk =
-    missingAiColumns.length === 0 && missingAiConstraints.length === 0;
+    missingAiColumns.length === 0 &&
+    missingAiConstraints.length === 0 &&
+    missingAiUniqueIndexes.length === 0;
 
   const ok =
     missingTables.length === 0 &&

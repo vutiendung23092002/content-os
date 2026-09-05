@@ -51,9 +51,7 @@ describe("AI provider registry migration", () => {
       ),
     ).not.toHaveLength(0);
     expect(
-      Object.keys(
-        snapshot.tables["hancontent_os.ai_models"]?.indexes ?? {},
-      ),
+      Object.keys(snapshot.tables["hancontent_os.ai_models"]?.indexes ?? {}),
     ).not.toHaveLength(0);
   });
 });
