@@ -413,11 +413,67 @@ try {
     missingFacebookSchemaIndexes.length === 0 &&
     missingFacebookSchemaConstraints.length === 0;
 
+  const aiColumns = await sql`
+    select table_name, column_name from information_schema.columns
+    where table_schema = 'hancontent_os' and table_name in ('ai_providers','ai_models','ai_task_bindings','ai_generations')
+  `;
+  const aiColumnMap = new Map();
+  for (const row of aiColumns)
+    aiColumnMap.set(`${row.table_name}.${row.column_name}`, true);
+  const expectedAiColumns = [
+    "ai_providers.api_key_ciphertext",
+    "ai_providers.api_key_nonce",
+    "ai_providers.api_key_auth_tag",
+    "ai_providers.api_key_version",
+    "ai_providers.api_key_fingerprint",
+    "ai_models.provider_id",
+    "ai_models.remote_model_id",
+    "ai_models.modality",
+    "ai_models.enabled",
+    "ai_models.capabilities",
+    "ai_task_bindings.model_id",
+    "ai_task_bindings.task",
+    "ai_task_bindings.settings",
+    "ai_task_bindings.updated_by_user_id",
+    "ai_generations.actor_user_id",
+    "ai_generations.provider_id",
+    "ai_generations.model_id",
+    "ai_generations.output_data",
+    "ai_generations.duration_ms",
+  ];
+  const missingAiColumns = expectedAiColumns.filter(
+    (column) => !aiColumnMap.has(column),
+  );
+  const aiConstraints = await sql`
+    select pg_get_constraintdef(c.oid) as definition from pg_constraint c
+    join pg_namespace n on n.oid = c.connamespace where n.nspname = 'hancontent_os' and c.contype in ('f','u')
+  `;
+  const definitions = aiConstraints.map((row) =>
+    row.definition.toLowerCase().replaceAll('"', ""),
+  );
+  const expectedAiRelations = [
+    "foreign key (provider_id) references hancontent_os.ai_providers(id)",
+    "foreign key (model_id) references hancontent_os.ai_models(id)",
+    "unique (provider_id, remote_model_id)",
+    "unique (task)",
+  ];
+  const missingAiConstraints = expectedAiRelations.filter(
+    (relation) =>
+      !definitions.some((definition) => definition.includes(relation)),
+  );
+  const aiSchema = {
+    missingColumns: missingAiColumns,
+    missingConstraints: missingAiConstraints,
+  };
+  const aiSchemaOk =
+    missingAiColumns.length === 0 && missingAiConstraints.length === 0;
+
   const ok =
     missingTables.length === 0 &&
     unexpectedTables.length === 0 &&
     rateLimitSchemaOk &&
-    facebookConnectSchemaOk;
+    facebookConnectSchemaOk &&
+    aiSchemaOk;
   console.log(
     JSON.stringify({
       ok,
@@ -430,6 +486,7 @@ try {
       legacyTables,
       rateLimitSchema,
       facebookConnectSchema,
+      aiSchema,
     }),
   );
 
