@@ -6,6 +6,7 @@ import { AppError } from "@/lib/errors/app-error";
 
 export const mutationActions = [
   "admin:user:create",
+  "admin:ai:configure",
   "admin:user:approval",
   "admin:user:pages",
   "admin:user:role",
@@ -21,6 +22,7 @@ export const mutationActions = [
   "facebook:pages:sync",
   "facebook:connection:disconnect",
   "facebook:connection:pages",
+  "ai:caption:generate",
   "page:delete",
   "post:draft:create",
   "post:draft:delete",
@@ -46,6 +48,7 @@ const policies: Partial<Record<MutationAction, RateLimitPolicy>> = {
   "post:schedule": { limit: 10, windowMs: ONE_MINUTE },
   "post:reschedule": { limit: 10, windowMs: ONE_MINUTE },
   "post:remote:delete": { limit: 10, windowMs: ONE_MINUTE },
+  "ai:caption:generate": { limit: 6, windowMs: ONE_MINUTE },
 };
 
 export type MutationRateLimitStore = {

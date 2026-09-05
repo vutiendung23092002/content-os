@@ -9,6 +9,9 @@ if (shouldLoadDefaultEnvironment()) loadEnvConfig(process.cwd());
 const databaseUrl = process.env.DIRECT_DATABASE_URL;
 const expectedTables = [
   "ai_generations",
+  "ai_models",
+  "ai_providers",
+  "ai_task_bindings",
   "app_users",
   "assets",
   "cron_jobs",

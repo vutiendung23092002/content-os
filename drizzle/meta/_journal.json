@@ -78,6 +78,13 @@
       "when": 1788509352094,
       "tag": "0010_shiny_captain_america",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788590000000,
+      "tag": "0011_ai_provider_registry",
+      "breakpoints": true
     }
   ]
 }

@@ -49,7 +49,9 @@ describe("Facebook operation credential provenance migration", () => {
     const snapshot = JSON.parse(readFileSync(snapshotPath, "utf8")) as Snapshot;
     const operation = snapshot.tables["hancontent_os.facebook_operations"]!;
 
-    expect(journal.entries.at(-1)?.tag).toBe(migrationTag);
+    expect(journal.entries.some((entry) => entry.tag === migrationTag)).toBe(
+      true,
+    );
     expect(
       snapshot.enums["hancontent_os.facebook_credential_source"]?.values,
     ).toEqual(["admin_managed", "user_connected", "legacy_admin"]);

@@ -420,6 +420,12 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
   - Acceptance criteria: Budget/rate limit cấu hình được; xóa history không xóa draft; prompt/log không có secret.
   - Tests: Budget exceeded, warning categories, deletion integrity và credential scan.
 
+- [ ] AI-006 — Image AI provider abstraction and generation
+  - Goal: Image-capable provider interface, bounded aspect ratio/count, normalized cost/status/error and async jobs when required.
+
+- [ ] AI-007 — Generated image ingestion and composer assets
+  - Goal: Fetch provider output server-side, validate/store private assets, then attach a selected image through the existing composer flow.
+
 ## Image publishing extension
 
 - [x] ASSET-001 — Private object storage
@@ -525,4 +531,4 @@ Backlog này bao phủ công cụ nội bộ cho một nhóm nhỏ có Google al
 
 ## Explicitly deferred
 
-Không tạo task triển khai cho OAuth Facebook đa tenant, team/workflow duyệt nội dung, full analytics, AI image, carousel/Reels, pgvector hoặc Trigger.dev cho đến khi có nhu cầu mới được xác nhận. Video thường của Page, Google allowlist, role và phân quyền Page cho nhóm nội bộ đã được xác nhận và triển khai.
+Không tạo task triển khai cho OAuth Facebook đa tenant, team/workflow duyệt nội dung, full analytics, carousel/Reels, pgvector hoặc Trigger.dev cho đến khi có nhu cầu mới được xác nhận. Video thường của Page, Google allowlist, role và phân quyền Page cho nhóm nội bộ đã được xác nhận và triển khai.

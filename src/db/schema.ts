@@ -472,10 +472,98 @@ export const facebookOperations = applicationSchema.table(
   ],
 );
 
+export const aiProviders = applicationSchema.table(
+  "ai_providers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    adapterType: text("adapter_type").notNull(),
+    baseUrl: text("base_url").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    apiKeyCiphertext: bytea("api_key_ciphertext"),
+    apiKeyNonce: bytea("api_key_nonce"),
+    apiKeyAuthTag: bytea("api_key_auth_tag"),
+    apiKeyVersion: integer("api_key_version"),
+    apiKeyFingerprint: text("api_key_fingerprint"),
+    providerMetadata: jsonb("provider_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdByUserId: uuid("created_by_user_id").references(() => appUsers.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => appUsers.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("ai_providers_name_unique").on(table.name)],
+);
+
+export const aiModels = applicationSchema.table(
+  "ai_models",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: uuid("provider_id")
+      .notNull()
+      .references(() => aiProviders.id, { onDelete: "restrict" }),
+    remoteModelId: text("remote_model_id").notNull(),
+    displayName: text("display_name").notNull(),
+    modality: text("modality").notNull().default("text"),
+    enabled: boolean("enabled").notNull().default(false),
+    capabilities: jsonb("capabilities")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    providerMetadata: jsonb("provider_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("ai_models_provider_remote_unique").on(
+      table.providerId,
+      table.remoteModelId,
+    ),
+  ],
+);
+
+export const aiTaskBindings = applicationSchema.table(
+  "ai_task_bindings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    task: text("task").notNull(),
+    modelId: uuid("model_id")
+      .notNull()
+      .references(() => aiModels.id, { onDelete: "restrict" }),
+    settings: jsonb("settings")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    updatedByUserId: uuid("updated_by_user_id").references(() => appUsers.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [uniqueIndex("ai_task_bindings_task_unique").on(table.task)],
+);
+
 export const aiGenerations = applicationSchema.table(
   "ai_generations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: uuid("actor_user_id").references(() => appUsers.id, {
+      onDelete: "set null",
+    }),
+    providerId: uuid("provider_id").references(() => aiProviders.id, {
+      onDelete: "set null",
+    }),
+    modelId: uuid("model_id").references(() => aiModels.id, {
+      onDelete: "set null",
+    }),
     postId: uuid("post_id").references(() => posts.id, {
       onDelete: "set null",
     }),
@@ -488,6 +576,7 @@ export const aiGenerations = applicationSchema.table(
     templateVersion: text("template_version").notNull(),
     inputData: jsonb("input_data").$type<Record<string, unknown>>().notNull(),
     outputText: text("output_text"),
+    outputData: jsonb("output_data").$type<Record<string, unknown>>(),
     usageData: jsonb("usage_data")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -495,6 +584,7 @@ export const aiGenerations = applicationSchema.table(
     estimatedCost: numeric("estimated_cost", { precision: 14, scale: 6 }),
     status: operationStatusEnum("status").notNull().default("pending"),
     error: jsonb("error").$type<Record<string, unknown>>(),
+    durationMs: integer("duration_ms"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
