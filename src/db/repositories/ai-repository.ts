@@ -138,7 +138,9 @@ export class AiRepository {
         .returning();
       return { model: row, outcome: "created" as const };
     }
-    const providerMetadata = input.providerMetadata ?? {};
+    if (input.providerMetadata === undefined)
+      return { model: existing, outcome: "unchanged" as const };
+    const providerMetadata = input.providerMetadata;
     if (
       JSON.stringify(existing.providerMetadata) ===
       JSON.stringify(providerMetadata)

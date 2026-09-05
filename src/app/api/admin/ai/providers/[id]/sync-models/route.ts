@@ -9,7 +9,10 @@ import { AppError } from "@/lib/errors/app-error";
 import { toErrorResponse } from "@/lib/errors/api-error";
 import { assertEmptyBody } from "@/lib/http/request-body";
 import { assertMutationRateLimit } from "@/lib/security/mutation-rate-limit";
-import { OpenAiCompatibleProvider } from "@/modules/ai/providers/openai-compatible";
+import {
+  OpenAiCompatibleProvider,
+  sanitizeProviderMetadata,
+} from "@/modules/ai/providers/openai-compatible";
 
 export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ id: string }> };
@@ -79,6 +82,7 @@ export async function POST(request: Request, context: RouteContext) {
       const result = await repo.syncModelFromProvider({
         providerId: provider.id,
         remoteModelId: remoteModel.id,
+        providerMetadata: sanitizeProviderMetadata(remoteModel.metadata),
       });
       summary[result.outcome] += 1;
     }

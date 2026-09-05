@@ -18,6 +18,48 @@ export type TextGenerationResult = {
 
 export type RemoteModel = { id: string; metadata: Record<string, unknown> };
 const MAX_RESPONSE_BYTES = 1_000_000;
+const PROVIDER_METADATA_KEYS = new Set([
+  "owned_by",
+  "owner",
+  "object",
+  "type",
+  "created",
+  "context_length",
+  "pricing",
+]);
+
+/** Keep only small, explicitly provider-owned catalog fields. */
+export function sanitizeProviderMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (!PROVIDER_METADATA_KEYS.has(key)) continue;
+    if (typeof value === "string" && value.length > 0 && value.length <= 200) {
+      result[key] = value;
+    } else if (
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      Math.abs(value) <= Number.MAX_SAFE_INTEGER
+    ) {
+      result[key] = value;
+    } else if (key === "pricing" && value && typeof value === "object") {
+      const pricing: Record<string, string | number> = {};
+      for (const [pricingKey, pricingValue] of Object.entries(value)) {
+        if (!/^[a-zA-Z0-9_.-]{1,40}$/.test(pricingKey)) continue;
+        if (
+          (typeof pricingValue === "string" && pricingValue.length <= 100) ||
+          (typeof pricingValue === "number" && Number.isFinite(pricingValue))
+        ) {
+          pricing[pricingKey] = pricingValue;
+        }
+      }
+      if (Object.keys(pricing).length > 0) result[key] = pricing;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
 function providerError(
   code: string,

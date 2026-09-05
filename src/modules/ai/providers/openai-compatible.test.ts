@@ -1,8 +1,47 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors/app-error";
-import { OpenAiCompatibleProvider } from "./openai-compatible";
+import {
+  OpenAiCompatibleProvider,
+  sanitizeProviderMetadata,
+} from "./openai-compatible";
 
 describe("OpenAiCompatibleProvider", () => {
+  it("sanitizes allowlisted catalog metadata and skips unknown blobs", () => {
+    expect(
+      sanitizeProviderMetadata({
+        owned_by: "team",
+        created: 123,
+        context_length: 8192,
+        pricing: { input: 1, output: "2" },
+        api_key: "secret",
+        nested: { secret: "secret" },
+      }),
+    ).toEqual({
+      owned_by: "team",
+      created: 123,
+      context_length: 8192,
+      pricing: { input: 1, output: "2" },
+    });
+    expect(
+      sanitizeProviderMetadata({ unknown: { huge: true } }),
+    ).toBeUndefined();
+  });
+  it("skips malformed individual model entries while requiring a valid top-level shape", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://api.example.test",
+      apiKey: "key",
+      fetcher: vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ data: [{ id: "ok" }, { id: 42 }, {}] }),
+          ),
+        ),
+    });
+    await expect(provider.listModels()).resolves.toEqual([
+      { id: "ok", metadata: {} },
+    ]);
+  });
   it("normalizes a successful OpenAI-compatible response", async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(
