@@ -159,7 +159,7 @@ export default function PagesPage() {
   useEffect(() => {
     let active = true;
 
-    void Promise.all([
+    void Promise.allSettled([
       fetch("/api/facebook/status", {
         headers: { accept: "application/json" },
       }).then((response) =>
@@ -177,44 +177,63 @@ export default function PagesPage() {
         headers: { accept: "application/json" },
       })
         .then((response) => readPayload<PersonalConnectionPayload>(response))
-        .catch((reason: unknown) => {
-          if (active) {
-            showToast({
-              tone: "error",
-              title: "Không thể tải kết nối Facebook cá nhân",
-              description:
-                reason instanceof Error
-                  ? reason.message
-                  : "Vui lòng thử lại sau.",
-            });
-          }
-          return {
-            configured: false,
-            connection: null,
-            loadError: true,
-          } satisfies PersonalConnectionPayload;
-        }),
+        .then((payload) => payload),
     ])
-      .then(
-        ([statusPayload, pagesPayload, sessionPayload, personalPayload]) => {
-          if (!active) return;
-          setConnection(statusPayload.connection ?? null);
-          setStoredPages(pagesPayload.pages ?? []);
-          setViewerRole(sessionPayload.viewer?.role ?? "member");
-          setPersonalConfigured(personalPayload.configured);
-          setPersonalLoadError(Boolean(personalPayload.loadError));
-          setPersonalConnection(personalPayload.connection);
-        },
-      )
-      .catch((reason: unknown) => {
-        if (active) {
+      .then(([statusResult, pagesResult, sessionResult, personalResult]) => {
+        if (!active) return;
+
+        if (statusResult.status === "fulfilled") {
+          setConnection(statusResult.value.connection ?? null);
+        } else {
           showToast({
             tone: "error",
             title: "Không thể tải Facebook Pages",
             description:
-              reason instanceof Error
-                ? reason.message
+              statusResult.reason instanceof Error
+                ? statusResult.reason.message
                 : "Không thể tải trạng thái Facebook.",
+          });
+        }
+
+        if (pagesResult.status === "fulfilled") {
+          setStoredPages(pagesResult.value.pages ?? []);
+        } else {
+          showToast({
+            tone: "error",
+            title: "Không thể tải danh sách Page",
+            description:
+              pagesResult.reason instanceof Error
+                ? pagesResult.reason.message
+                : "Vui lòng thử lại sau.",
+          });
+        }
+
+        if (sessionResult.status === "fulfilled") {
+          setViewerRole(sessionResult.value.viewer?.role ?? "member");
+        } else {
+          showToast({
+            tone: "error",
+            title: "Không thể tải phiên đăng nhập",
+            description:
+              sessionResult.reason instanceof Error
+                ? sessionResult.reason.message
+                : "Vui lòng đăng nhập lại.",
+          });
+        }
+
+        if (personalResult.status === "fulfilled") {
+          setPersonalConfigured(personalResult.value.configured);
+          setPersonalLoadError(Boolean(personalResult.value.loadError));
+          setPersonalConnection(personalResult.value.connection);
+        } else {
+          setPersonalLoadError(true);
+          showToast({
+            tone: "error",
+            title: "Không thể tải kết nối Facebook cá nhân",
+            description:
+              personalResult.reason instanceof Error
+                ? personalResult.reason.message
+                : "Vui lòng thử lại sau.",
           });
         }
       })
