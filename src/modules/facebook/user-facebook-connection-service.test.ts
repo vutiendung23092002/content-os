@@ -348,9 +348,84 @@ describe("UserFacebookConnectionService", () => {
         },
       }),
     );
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      {
+        status: "expired",
+        errorCode: "FACEBOOK_CONNECTION_EXPIRED",
+        detectedAt: new Date("2026-09-04T00:00:00.000Z"),
+      },
+    );
     expect(JSON.stringify(mocks.markStatus.mock.calls)).not.toContain(
       "stored-user-token",
     );
+  });
+
+  it("reconciles affected Pages when discovery finds an expired connection", async () => {
+    mocks.findConnection.mockResolvedValue(
+      connection({ dataAccessExpiresAt: new Date("2026-01-01T00:00:00.000Z") }),
+    );
+
+    await expect(
+      new UserFacebookConnectionService(
+        keyring as never,
+        () => new Date("2026-09-04T00:00:00.000Z"),
+      ).discover(viewer),
+    ).rejects.toMatchObject({ code: "FACEBOOK_CONNECTION_EXPIRED" });
+
+    expect(mocks.markStatus).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+      "expired",
+      expect.objectContaining({
+        credentialIncident: expect.objectContaining({
+          errorCode: "FACEBOOK_CONNECTION_EXPIRED",
+        }),
+      }),
+    );
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      expect.objectContaining({
+        status: "expired",
+        errorCode: "FACEBOOK_CONNECTION_EXPIRED",
+      }),
+    );
+    expect(mocks.getManagedPages).not.toHaveBeenCalled();
+  });
+
+  it("reconciles affected Pages when the App B token cannot be decrypted", async () => {
+    keyring.decrypt.mockImplementationOnce(() => {
+      throw new AppError({
+        code: "TOKEN_DECRYPTION_FAILED",
+        message: "Token cannot be decrypted",
+        status: 500,
+      });
+    });
+
+    await expect(
+      new UserFacebookConnectionService(keyring as never).discover(viewer),
+    ).rejects.toMatchObject({ code: "TOKEN_DECRYPTION_FAILED" });
+
+    expect(mocks.markStatus).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+      "error",
+      expect.objectContaining({
+        credentialIncident: expect.objectContaining({
+          status: "error",
+          errorCode: "TOKEN_DECRYPTION_FAILED",
+        }),
+      }),
+    );
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      expect.objectContaining({
+        status: "error",
+        errorCode: "TOKEN_DECRYPTION_FAILED",
+      }),
+    );
+    expect(mocks.getManagedPages).not.toHaveBeenCalled();
   });
 
   it("does not let one user disconnect another user's connection", async () => {
@@ -495,6 +570,48 @@ describe("UserFacebookConnectionService", () => {
       }),
     );
     expect(mocks.revokeCredentials).not.toHaveBeenCalled();
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      {
+        status: "revoked",
+        errorCode: "FACEBOOK_TOKEN_INVALID",
+        detectedAt: expect.any(Date),
+      },
+    );
+  });
+
+  it("propagates a Meta permission incident to affected Page health", async () => {
+    mocks.getManagedPages.mockRejectedValue(
+      new AppError({
+        code: "FACEBOOK_PERMISSION_DENIED",
+        message: "Permission denied",
+        status: 403,
+      }),
+    );
+
+    await expect(
+      new UserFacebookConnectionService(keyring as never).discover(viewer),
+    ).rejects.toMatchObject({ code: "FACEBOOK_PERMISSION_DENIED" });
+
+    expect(mocks.markStatus).toHaveBeenCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+      "permission_missing",
+      expect.objectContaining({
+        credentialIncident: expect.objectContaining({
+          status: "permission_missing",
+          errorCode: "FACEBOOK_PERMISSION_DENIED",
+        }),
+      }),
+    );
+    expect(mocks.reconcileConnectionHealth).toHaveBeenCalledWith(
+      {},
+      ["33333333-3333-4333-8333-333333333333"],
+      expect.objectContaining({
+        status: "permission_missing",
+        errorCode: "FACEBOOK_PERMISSION_DENIED",
+      }),
+    );
   });
 
   it("persists a verified encrypted Page credential, provenance and assignment", async () => {

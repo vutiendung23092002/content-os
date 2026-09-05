@@ -64,6 +64,35 @@ function incidentMetadata(
   };
 }
 
+type ConnectionIncidentStatus =
+  "expired" | "revoked" | "permission_missing" | "error";
+
+async function markConnectionIncidentAndReconcilePages(
+  database: DatabaseExecutor,
+  input: {
+    connectionId: string;
+    status: ConnectionIncidentStatus;
+    errorCode: string;
+    providerMetadata: Record<string, unknown>;
+    detectedAt: Date;
+  },
+): Promise<void> {
+  const credentials = new PageCredentialRepository(database);
+  const affectedPageIds = await credentials.listPageIdsForConnection(
+    input.connectionId,
+  );
+  await new FacebookConnectionRepository(database).markStatus(
+    input.connectionId,
+    input.status,
+    input.providerMetadata,
+  );
+  await reconcileConnectionPageCredentialHealth(database, affectedPageIds, {
+    status: input.status,
+    errorCode: input.errorCode,
+    detectedAt: input.detectedAt,
+  });
+}
+
 function storedUserToken(connection: {
   userTokenCiphertext: Buffer | null;
   userTokenNonce: Buffer | null;
@@ -260,15 +289,20 @@ export class UserFacebookConnectionService {
       expiration &&
       expiration <= this.now()
     ) {
-      await repository.markStatus(
-        connection.id,
-        "expired",
-        incidentMetadata(
-          connection,
-          "expired",
-          "FACEBOOK_CONNECTION_EXPIRED",
-          this.now(),
-        ),
+      const detectedAt = this.now();
+      await runInTransaction((transaction) =>
+        markConnectionIncidentAndReconcilePages(transaction, {
+          connectionId: connection.id,
+          status: "expired",
+          errorCode: "FACEBOOK_CONNECTION_EXPIRED",
+          providerMetadata: incidentMetadata(
+            connection,
+            "expired",
+            "FACEBOOK_CONNECTION_EXPIRED",
+            detectedAt,
+          ),
+          detectedAt,
+        }),
       );
       connection.status = "expired";
     }
@@ -449,15 +483,20 @@ export class UserFacebookConnectionService {
       .filter((value): value is Date => Boolean(value))
       .sort((a, b) => a.getTime() - b.getTime())[0];
     if (expiration && expiration <= this.now()) {
-      await new FacebookConnectionRepository(getDatabase()).markStatus(
-        connection.id,
-        "expired",
-        incidentMetadata(
-          connection,
-          "expired",
-          "FACEBOOK_CONNECTION_EXPIRED",
-          this.now(),
-        ),
+      const detectedAt = this.now();
+      await runInTransaction((transaction) =>
+        markConnectionIncidentAndReconcilePages(transaction, {
+          connectionId: connection.id,
+          status: "expired",
+          errorCode: "FACEBOOK_CONNECTION_EXPIRED",
+          providerMetadata: incidentMetadata(
+            connection,
+            "expired",
+            "FACEBOOK_CONNECTION_EXPIRED",
+            detectedAt,
+          ),
+          detectedAt,
+        }),
       );
       throw new AppError({
         code: "FACEBOOK_CONNECTION_EXPIRED",
@@ -469,15 +508,22 @@ export class UserFacebookConnectionService {
     try {
       token = this.keyring.decrypt(storedUserToken(connection));
     } catch (error) {
-      await new FacebookConnectionRepository(getDatabase()).markStatus(
-        connection.id,
-        "error",
-        incidentMetadata(
-          connection,
-          "error",
-          error instanceof AppError ? error.code : "TOKEN_DECRYPTION_FAILED",
-          this.now(),
-        ),
+      const detectedAt = this.now();
+      const errorCode =
+        error instanceof AppError ? error.code : "TOKEN_DECRYPTION_FAILED";
+      await runInTransaction((transaction) =>
+        markConnectionIncidentAndReconcilePages(transaction, {
+          connectionId: connection.id,
+          status: "error",
+          errorCode,
+          providerMetadata: incidentMetadata(
+            connection,
+            "error",
+            errorCode,
+            detectedAt,
+          ),
+          detectedAt,
+        }),
       );
       throw error;
     }
@@ -500,17 +546,22 @@ export class UserFacebookConnectionService {
     } catch (error) {
       const status = getPageCredentialIncidentStatus(error);
       if (status) {
-        await new FacebookConnectionRepository(getDatabase()).markStatus(
-          connection.id,
-          status,
-          incidentMetadata(
-            connection,
+        const detectedAt = this.now();
+        const errorCode =
+          error instanceof AppError ? error.code : "FACEBOOK_CREDENTIAL_ERROR";
+        await runInTransaction((transaction) =>
+          markConnectionIncidentAndReconcilePages(transaction, {
+            connectionId: connection.id,
             status,
-            error instanceof AppError
-              ? error.code
-              : "FACEBOOK_CREDENTIAL_ERROR",
-            this.now(),
-          ),
+            errorCode,
+            providerMetadata: incidentMetadata(
+              connection,
+              status,
+              errorCode,
+              detectedAt,
+            ),
+            detectedAt,
+          }),
         );
       }
       throw error;
