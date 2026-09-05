@@ -1210,9 +1210,14 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           },
         });
         expect(
-          (await credentialRepository.findAdminManagedForPage(page.id))
-            ?.revokedAt,
-        ).toBeInstanceOf(Date);
+          await credentialRepository.findAdminManagedForPage(page.id),
+        ).toBeUndefined();
+        const [revokedCredential] = await transaction
+          .select()
+          .from(pageCredentials)
+          .where(eq(pageCredentials.id, verifiedCredential.id))
+          .limit(1);
+        expect(revokedCredential?.revokedAt).toBeInstanceOf(Date);
 
         await pageRepository.upsertManagedPage({
           externalPageId,
@@ -1223,9 +1228,8 @@ describe.skipIf(!integrationEnabled)("database repositories", () => {
           connectionStatus: "active",
         });
         expect(
-          (await credentialRepository.findAdminManagedForPage(page.id))
-            ?.revokedAt,
-        ).toBeNull();
+          await credentialRepository.findAdminManagedForPage(page.id),
+        ).toMatchObject({ id: verifiedCredential.id, revokedAt: null });
         const draft = await postRepository.createDraft({
           pageId: page.id,
           message: "Integration draft",
